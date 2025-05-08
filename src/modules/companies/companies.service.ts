@@ -34,6 +34,7 @@ export class CompaniesService {
   }
 
   async findAll(): Promise<Company[]> {
+    console.log('test');
     return findAllEntity<Company>(
       'Company',
       this.companyModel,
@@ -66,7 +67,6 @@ export class CompaniesService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<Company> {
-    console.log('test');
     return softDelete<Company>('Company', this.companyModel, id, user);
   }
 }
