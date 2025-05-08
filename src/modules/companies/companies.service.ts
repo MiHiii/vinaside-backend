@@ -66,6 +66,7 @@ export class CompaniesService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<Company> {
+    console.log('test');
     return softDelete<Company>('Company', this.companyModel, id, user);
   }
 }
