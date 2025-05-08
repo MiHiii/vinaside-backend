@@ -34,7 +34,6 @@ export class CompaniesService {
   }
 
   async findAll(): Promise<Company[]> {
-    console.log('test');
     return findAllEntity<Company>(
       'Company',
       this.companyModel,
