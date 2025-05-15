@@ -13,6 +13,7 @@ import {
   findAllEntity,
 } from 'src/utils/db.util';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
+import { log } from 'console';
 
 @Injectable()
 export class CompaniesService {
@@ -48,6 +49,7 @@ export class CompaniesService {
   }
 
   async findOne(id: string): Promise<Company> {
+    console.log('id', id);
     return findEntity<Company>('Company', this.companyModel, id);
   }
 
