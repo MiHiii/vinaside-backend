@@ -13,7 +13,6 @@ import {
   findAllEntity,
 } from 'src/utils/db.util';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
-import { log } from 'console';
 
 @Injectable()
 export class CompaniesService {
