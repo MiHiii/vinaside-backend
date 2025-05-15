@@ -49,7 +49,6 @@ export class CompaniesService {
   }
 
   async findOne(id: string): Promise<Company> {
-    console.log('id', id);
     return findEntity<Company>('Company', this.companyModel, id);
   }
 
