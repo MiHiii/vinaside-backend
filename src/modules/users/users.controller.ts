@@ -1,7 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { Public } from 'src/decorators/public.decorator';
-import { CreateUserDto } from './dto/create-user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -11,13 +10,6 @@ export class UsersController {
   @Get()
   findAll() {
     return this.usersService.findAll();
-  }
-
-  @Public()
-  @Post()
-  createUser(@Body() createUserDto: CreateUserDto) {
-    const user = this.usersService.createUser(createUserDto);
-    return user;
   }
 
   @Public()

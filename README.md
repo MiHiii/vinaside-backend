@@ -96,3 +96,71 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+# Vinaside Backend
+
+## Mail Module
+
+Dự án sử dụng module mail chuyên nghiệp để gửi các loại email khác nhau:
+
+### Cấu trúc
+
+```
+src/modules/mail/
+├── dto/
+│   └── send-mail.dto.ts
+├── interfaces/
+│   └── reservation-data.interface.ts
+├── templates/
+│   ├── verification-email.hbs
+│   ├── reset-password.hbs
+│   ├── reservation-confirmation.hbs
+│   └── host-reservation-notification.hbs
+├── mail.controller.ts
+├── mail.module.ts
+└── mail.service.ts
+```
+
+### Cấu hình
+
+Thêm các biến môi trường sau vào file `.env`:
+
+```
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_SECURE=false
+MAIL_USER=your-email@example.com
+MAIL_PASSWORD=your-password
+MAIL_FROM_NAME=Vinaside
+MAIL_FROM_ADDRESS=noreply@vinaside.com
+FRONTEND_URL=http://localhost:3000
+```
+
+### Các loại email
+
+1. **Email xác minh tài khoản**: Gửi sau khi người dùng đăng ký
+2. **Email đặt lại mật khẩu**: Gửi khi người dùng yêu cầu đặt lại mật khẩu
+3. **Email xác nhận đặt phòng**: Gửi cho khách sau khi đặt phòng thành công
+4. **Email thông báo cho chủ nhà**: Gửi cho chủ nhà khi có đơn đặt phòng mới
+
+### Sử dụng
+
+```typescript
+// Inject MailService
+constructor(private readonly mailService: MailService) {}
+
+// Gửi email xác minh
+await this.mailService.sendVerificationEmail(email, token);
+
+// Gửi email đặt lại mật khẩu
+await this.mailService.sendResetPasswordEmail(email, token);
+
+// Gửi email xác nhận đặt phòng
+await this.mailService.sendReservationConfirmation(email, reservationData);
+
+// Gửi email thông báo cho chủ nhà
+await this.mailService.sendHostReservationNotification(hostEmail, reservationData);
+
+// Gửi email tùy chỉnh
+await this.mailService.sendEmail(to, subject, template, context);
+```

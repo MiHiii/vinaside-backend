@@ -1,13 +1,8 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema';
-import { genSaltSync, hashSync, compare } from 'bcryptjs';
-import { CreateUserDto } from './dto/create-user.dto';
+import { compare } from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
@@ -16,27 +11,9 @@ export class UsersService {
     private userModel: Model<User>,
   ) {}
 
-  async createUser(createUserDto: CreateUserDto) {
-    // 1. Kiểm tra xem email đã tồn tại chưa
-    const existingUser = await this.userModel.findOne({
-      email: createUserDto.email,
-    });
-    if (existingUser) {
-      throw new ConflictException('Email is already in use');
-    }
-
-    // 2. Hash mật khẩu
-    const salt = genSaltSync(10);
-    const hashedPassword = hashSync(createUserDto.password, salt);
-
-    // 3. Tạo user mới
-    const user = new this.userModel({
-      email: createUserDto.email,
-      name: createUserDto.name,
-      password: hashedPassword,
-    });
-
-    return await user.save();
+  async create(data: Partial<User>) {
+    const user = new this.userModel(data);
+    return user.save();
   }
 
   async findAll() {
@@ -59,6 +36,18 @@ export class UsersService {
 
   async findById(id: string) {
     return await this.userModel.findById(id);
+  }
+
+  async verifyUser(userId: string): Promise<void> {
+    await this.userModel.findByIdAndUpdate(userId, {
+      is_verified: true,
+    });
+  }
+
+  async updatePassword(userId: string, newPasswordHash: string): Promise<void> {
+    await this.userModel.findByIdAndUpdate(userId, {
+      password_hash: newPasswordHash,
+    });
   }
 
   async deleteUserById(id: string) {

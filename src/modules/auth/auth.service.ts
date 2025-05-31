@@ -1,27 +1,229 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from 'src/modules/users/users.interface';
 import { UsersService } from 'src/modules/users/users.service';
+import { RegisterDto } from './dto/register.dto';
+import * as bcryptjs from 'bcryptjs';
+import { EmailQueueService } from '../mail/mail.queue';
 import { UserDocument } from '../users/schemas/user.schema';
+import { AuthRepo } from './auth.repo';
+import { User } from '../users/users.interface';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private userService: UsersService,
-    private jwtService: JwtService,
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+    private readonly emailQueueService: EmailQueueService,
+    private readonly authRepo: AuthRepo,
   ) {}
+
   async validateUser(
-    username: string,
+    email: string,
     password: string,
   ): Promise<UserDocument | null> {
-    const user = await this.userService.findOneByUsername(username);
-    if (!user) return null;
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
+    }
 
-    const isValid = await this.userService.isValidPassword(
+    const isValid = await this.usersService.isValidPassword(
       password,
-      user.password,
+      user.password_hash,
     );
     return isValid ? user : null;
+  }
+
+  async register(dto: RegisterDto) {
+    const existing = await this.usersService.findByEmail(dto.email);
+
+    // Tạo OTP và token
+    const otp = this.authRepo.generateOtp();
+    const token = this.authRepo.generateToken(dto.email);
+
+    // Lưu OTP và token vào Redis
+    await this.authRepo.storeOtpAndToken(dto.email, otp, token);
+
+    if (existing) {
+      if (existing.is_verified) {
+        throw new ConflictException('Email đã tồn tại');
+      }
+
+      // Gửi lại email xác minh
+      await this.emailQueueService.addVerificationEmail({
+        email: existing.email,
+        token,
+        otp,
+      });
+
+      return {
+        email: existing.email,
+      };
+    }
+
+    // Nếu chưa tồn tại => tạo mới
+    const hash = await bcryptjs.hash(dto.password, 10);
+    const newUser = await this.usersService.create({
+      ...dto,
+      password_hash: hash,
+      is_verified: false,
+    });
+
+    // Gửi email xác minh mới
+    await this.emailQueueService.addVerificationEmail({
+      email: newUser.email,
+      token,
+      otp,
+    });
+
+    return {
+      email: newUser.email,
+    };
+  }
+
+  async resendVerificationEmail(email: string) {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      return {
+        message: 'Nếu email tồn tại, hướng dẫn xác minh đã được gửi.',
+      };
+    }
+
+    if (user.is_verified) {
+      return {
+        message: 'Tài khoản này đã được xác minh. Bạn có thể đăng nhập.',
+      };
+    }
+
+    // Tạo OTP và token mới
+    const otp = this.authRepo.generateOtp();
+    const token = this.authRepo.generateToken(email);
+
+    // Lưu OTP và token vào Redis
+    await this.authRepo.storeOtpAndToken(email, otp, token);
+
+    // Gửi email xác minh
+    await this.emailQueueService.addVerificationEmail({
+      email,
+      token,
+      otp,
+    });
+
+    return {
+      email,
+    };
+  }
+
+  async verifyEmailWithToken(token: string) {
+    let decoded: { email: string };
+
+    try {
+      decoded = this.jwtService.verify<{ email: string }>(token);
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const email = decoded.email;
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new NotFoundException('Email không tồn tại');
+    }
+
+    if (user.is_verified) {
+      return { message: 'Tài khoản đã được xác minh trước đó.' };
+    }
+
+    const isValid = await this.authRepo.verifyToken(email, token);
+    if (!isValid) {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
+
+    await this.usersService.verifyUser(user._id.toString());
+    await this.authRepo.clearVerificationData(email); // xoá token + otp sau xác minh
+
+    return {
+      email,
+      isVerified: true,
+    };
+  }
+
+  async verifyEmailWithOtp(email: string, otp: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new NotFoundException('Email không tồn tại');
+    }
+
+    if (user.isDeleted) {
+      throw new ForbiddenException('Tài khoản đã bị vô hiệu hóa');
+    }
+
+    if (user.is_verified) {
+      return { message: 'Tài khoản này đã được xác minh trước đó' };
+    }
+
+    const isValid = await this.authRepo.verifyOtp(email, otp);
+    if (!isValid) {
+      throw new BadRequestException('Mã OTP không hợp lệ hoặc đã hết hạn');
+    }
+
+    await this.usersService.verifyUser(user._id.toString());
+    await this.authRepo.clearVerificationData(email);
+
+    return {
+      email,
+      isVerified: true,
+    };
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      // Không thông báo user không tồn tại để tránh lộ thông tin
+      return {
+        message: 'Hướng dẫn đặt lại mật khẩu đã được gửi đến email của bạn.',
+      };
+    }
+
+    // Tạo token reset password
+    const token = this.jwtService.sign(
+      { email: user.email },
+      { expiresIn: '1h' },
+    );
+
+    // Thêm vào email queue
+    await this.emailQueueService.addResetPasswordEmail({
+      email: user.email,
+      token,
+    });
+
+    return {
+      email: user.email,
+    };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    try {
+      const decoded = this.jwtService.verify<{ email: string }>(token);
+      const user = await this.usersService.findByEmail(decoded.email);
+      if (!user) throw new Error('Token không hợp lệ hoặc user không tồn tại');
+
+      const hash = await bcryptjs.hash(newPassword, 10);
+      await this.usersService.updatePassword(user._id.toString(), hash);
+
+      return {
+        email: user.email,
+      };
+    } catch {
+      throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
+    }
   }
 
   login(user: User) {
@@ -40,7 +242,6 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
-        permissions: user.permissions,
       },
     };
   }
