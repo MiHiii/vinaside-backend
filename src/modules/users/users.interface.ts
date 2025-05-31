@@ -2,14 +2,11 @@ export interface User {
   _id: string;
   name: string;
   email: string;
-  role: {
-    _id: string;
-    name: string;
-  };
-  permissions?: {
-    _id: string;
-    name: string;
-    apiPath: string;
-    module: string;
-  }[];
+  role: string;
+  language: string;
+  phone: string;
+  avatar_url: string;
+  is_verified: boolean;
+  isDeleted: boolean;
+  deletedAt: Date;
 }

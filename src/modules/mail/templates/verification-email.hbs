@@ -1,0 +1,100 @@
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Xác minh tài khoản</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .container {
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .logo {
+        max-width: 150px;
+        margin-bottom: 15px;
+      }
+      .button {
+        display: inline-block;
+        background-color: #4caf50;
+        color: white;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        margin: 20px 0;
+        font-weight: bold;
+      }
+      .otp-box {
+        font-size: 20px;
+        font-weight: bold;
+        text-align: center;
+        background: #fff;
+        border: 1px dashed #4caf50;
+        padding: 10px;
+        margin: 20px 0;
+        letter-spacing: 3px;
+        color: #4caf50;
+      }
+      .footer {
+        margin-top: 30px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='container'>
+      <div class='header'>
+        <h2>Xác minh tài khoản Vinaside</h2>
+      </div>
+
+      <p>Xin chào {{name}},</p>
+
+      <p>Cảm ơn bạn đã đăng ký tài khoản trên Vinaside. Để hoàn tất quá trình
+        đăng ký, bạn có thể:</p>
+
+      <ul>
+        <li>👉 Nhấp vào nút bên dưới để xác minh qua liên kết</li>
+        <li>hoặc</li>
+        <li>👉 Nhập mã OTP được cung cấp bên dưới vào ứng dụng</li>
+      </ul>
+
+      <div style='text-align: center;'>
+        <a href='{{verifyUrl}}' class='button'>Xác minh email</a>
+      </div>
+
+      <p style='text-align:center;'>Hoặc nhập mã OTP:</p>
+      <div class='otp-box'>
+        {{otp}}
+      </div>
+
+      <p>Nếu bạn không thể nhấp vào nút trên, vui lòng sao chép và dán liên kết
+        sau vào trình duyệt của bạn:</p>
+
+      <p style='word-break: break-all;'>{{verifyUrl}}</p>
+
+      <p>Liên kết và mã OTP này sẽ hết hạn sau 24 giờ. Nếu bạn không thực hiện
+        yêu cầu này, vui lòng bỏ qua email này.</p>
+
+      <p>Trân trọng,<br />Đội ngũ Vinaside</p>
+    </div>
+
+    <div class='footer'>
+      <p>© {{year}} Vinaside. Tất cả các quyền được bảo lưu.</p>
+      <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+    </div>
+  </body>
+</html>

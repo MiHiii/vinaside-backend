@@ -1,42 +1,33 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { HydratedDocument } from 'mongoose';
+import { Document } from 'mongoose';
 
-export type UserDocument = HydratedDocument<User>;
+export type UserDocument = User & Document;
 
 @Schema({ timestamps: true })
 export class User {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email: string;
 
   @Prop({ required: true })
-  password: string;
+  password_hash: string;
+
+  @Prop({ required: true })
+  phone: string;
 
   @Prop()
-  age: number;
+  avatar_url: string;
 
-  @Prop()
-  gender: string;
+  @Prop({ enum: ['guest', 'host', 'admin'], default: 'guest' })
+  role: string;
 
-  @Prop()
-  address: string;
+  @Prop({ default: 'vi' })
+  language: string;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Company' })
-  company: mongoose.Schema.Types.ObjectId;
-
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Role' })
-  role: mongoose.Schema.Types.ObjectId;
-
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
-  createdBy: mongoose.Schema.Types.ObjectId;
-
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
-  updatedBy: mongoose.Schema.Types.ObjectId;
-
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User' })
-  deletedBy: mongoose.Schema.Types.ObjectId;
+  @Prop({ default: false })
+  is_verified: boolean;
 
   @Prop({ default: false })
   isDeleted: boolean;

@@ -1,0 +1,143 @@
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Xác nhận đặt phòng</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .container {
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .logo {
+        max-width: 150px;
+        margin-bottom: 15px;
+      }
+      .reservation-details {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .room-image {
+        width: 100%;
+        max-height: 200px;
+        object-fit: cover;
+        border-radius: 5px;
+        margin-bottom: 15px;
+      }
+      .details-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+      }
+      .total-price {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: right;
+        margin-top: 20px;
+      }
+      .button {
+        display: inline-block;
+        background-color: #ff5a5f;
+        color: white;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        margin: 20px 0;
+        font-weight: bold;
+      }
+      .footer {
+        margin-top: 30px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='container'>
+      <div class='header'>
+        <h2>Xác nhận đặt phòng thành công</h2>
+      </div>
+
+      <p>Xin chào {{name}},</p>
+
+      <p>Cảm ơn bạn đã đặt phòng trên Vinaside. Đơn đặt phòng của bạn đã được
+        xác nhận!</p>
+
+      <div class='reservation-details'>
+        <h3>Chi tiết đặt phòng #{{reservationId}}</h3>
+
+        {{#if roomInfo.image}}
+          <img
+            src='{{roomInfo.image}}'
+            alt='{{roomInfo.name}}'
+            class='room-image'
+          />
+        {{/if}}
+
+        <div class='details-row'>
+          <span>Phòng/Căn hộ:</span>
+          <span>{{roomInfo.name}}</span>
+        </div>
+
+        {{#if roomInfo.address}}
+          <div class='details-row'>
+            <span>Địa chỉ:</span>
+            <span>{{roomInfo.address}}</span>
+          </div>
+        {{/if}}
+
+        <div class='details-row'>
+          <span>Ngày nhận phòng:</span>
+          <span>{{checkIn}}</span>
+        </div>
+
+        <div class='details-row'>
+          <span>Ngày trả phòng:</span>
+          <span>{{checkOut}}</span>
+        </div>
+
+        <div class='total-price'>
+          Tổng tiền:
+          {{totalPrice}}
+          VND
+        </div>
+      </div>
+
+      <p>Vui lòng kiểm tra thông tin đặt phòng của bạn và liên hệ với chúng tôi
+        nếu có bất kỳ thắc mắc nào.</p>
+
+      <div style='text-align: center;'>
+        <a href='https://vinaside.com/bookings' class='button'>Xem đặt phòng của
+          tôi</a>
+      </div>
+
+      <p>Chúc bạn có một kỳ nghỉ tuyệt vời!</p>
+
+      <p>Trân trọng,<br />Đội ngũ Vinaside</p>
+    </div>
+
+    <div class='footer'>
+      <p>© 2023 Vinaside. Tất cả các quyền được bảo lưu.</p>
+      <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+    </div>
+  </body>
+</html>

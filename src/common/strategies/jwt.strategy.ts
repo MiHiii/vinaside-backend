@@ -10,7 +10,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const jwtSecret = configService.get<string>('JWT_ACCESS_SECRET');
     if (!jwtSecret) {
       throw new Error(
-        'JWT_ACCESS_SECRET is not defined in environment variables',
+        'JWT_ACCESS_SECRET không được định nghĩa trong biến môi trường',
       );
     }
     super({
@@ -21,9 +21,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
-    const { sub, email, name, role, iss } = payload;
+    const { _id, email, name, role, iss } = payload;
     return {
-      sub,
+      _id,
       email,
       name,
       role,

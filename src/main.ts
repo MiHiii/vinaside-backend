@@ -3,13 +3,22 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { setupSwagger } from './swagger/swagger.config';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
+  app.setGlobalPrefix('api/v1');
+
   // Apply global pipes
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   // Setup CORS
   app.enableCors({
@@ -21,12 +30,15 @@ async function bootstrap() {
   // Setup Swagger
   setupSwagger(app);
 
+  // Sử dụng cookie parser
+  app.use(cookieParser());
+
   // Start server
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
+  console.log(`Application is running on: http://localhost:${port}/api/v1`);
   console.log(
-    `Swagger documentation is available at: http://localhost:${port}/api/docs`,
+    `Swagger documentation is available at: http://localhost:${port}/api/v1/docs`,
   );
 }
 
