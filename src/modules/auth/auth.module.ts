@@ -19,7 +19,7 @@ import { AuthRepo } from './auth.repo';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get('JWT_SECRET'),
-        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '1h') },
       }),
     }),
     MailModule,

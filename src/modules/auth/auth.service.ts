@@ -51,7 +51,13 @@ export class AuthService {
     await this.authRepo.storeOtpAndToken(dto.email, otp, token);
 
     if (existing) {
-      if (existing.is_verified) {
+      // Nếu tài khoản bị vô hiệu hóa
+      if (this.authRepo.isDeleted(existing)) {
+        throw new ForbiddenException('Email này không thể sử dụng để đăng ký.');
+      }
+
+      // Nếu tài khoản đã xác minh
+      if (this.authRepo.isVerified(existing)) {
         throw new ConflictException('Email đã tồn tại');
       }
 
@@ -96,7 +102,11 @@ export class AuthService {
       };
     }
 
-    if (user.is_verified) {
+    // Kiểm tra tài khoản bị vô hiệu hóa
+    this.authRepo.throwIfDeleted(user);
+
+    // Nếu đã xác minh rồi
+    if (this.authRepo.isVerified(user)) {
       return {
         message: 'Tài khoản này đã được xác minh. Bạn có thể đăng nhập.',
       };
@@ -137,7 +147,11 @@ export class AuthService {
       throw new NotFoundException('Email không tồn tại');
     }
 
-    if (user.is_verified) {
+    // Kiểm tra tài khoản bị vô hiệu hóa
+    this.authRepo.throwIfDeleted(user);
+
+    // Nếu đã xác minh rồi
+    if (this.authRepo.isVerified(user)) {
       return { message: 'Tài khoản đã được xác minh trước đó.' };
     }
 
@@ -161,11 +175,11 @@ export class AuthService {
       throw new NotFoundException('Email không tồn tại');
     }
 
-    if (user.isDeleted) {
-      throw new ForbiddenException('Tài khoản đã bị vô hiệu hóa');
-    }
+    // Kiểm tra tài khoản bị vô hiệu hóa
+    this.authRepo.throwIfDeleted(user);
 
-    if (user.is_verified) {
+    // Nếu đã xác minh rồi
+    if (this.authRepo.isVerified(user)) {
       return { message: 'Tài khoản này đã được xác minh trước đó' };
     }
 
@@ -185,20 +199,32 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const user = await this.usersService.findByEmail(email);
+
+    // Nếu không tìm thấy tài khoản, trả về thông báo mặc định
     if (!user) {
-      // Không thông báo user không tồn tại để tránh lộ thông tin
-      return {
-        message: 'Hướng dẫn đặt lại mật khẩu đã được gửi đến email của bạn.',
-      };
+      throw new NotFoundException('Email không tồn tại');
     }
 
-    // Tạo token reset password
+    // Nếu tài khoản bị vô hiệu hóa, trả về thông báo lỗi
+    if (this.authRepo.isDeleted(user)) {
+      throw new ForbiddenException('Tài khoản đã bị vô hiệu hóa');
+    }
+
+    // Nếu tài khoản chưa xác minh, gợi ý xác minh trước
+    if (!this.authRepo.isVerified(user)) {
+      // Có thể thêm logic gửi lại email xác minh ở đây
+      throw new UnauthorizedException(
+        'Tài khoản chưa được xác minh. Vui lòng xác minh email trước.',
+      );
+    }
+
+    // Tạo token reset password (1 giờ)
     const token = this.jwtService.sign(
       { email: user.email },
       { expiresIn: '1h' },
     );
 
-    // Thêm vào email queue
+    // Gửi email hướng dẫn reset password
     await this.emailQueueService.addResetPasswordEmail({
       email: user.email,
       token,
@@ -206,27 +232,41 @@ export class AuthService {
 
     return {
       email: user.email,
+      token,
     };
   }
 
   async resetPassword(token: string, newPassword: string) {
+    let decoded: { email: string };
+
     try {
-      const decoded = this.jwtService.verify<{ email: string }>(token);
-      const user = await this.usersService.findByEmail(decoded.email);
-      if (!user) throw new Error('Token không hợp lệ hoặc user không tồn tại');
-
-      const hash = await bcryptjs.hash(newPassword, 10);
-      await this.usersService.updatePassword(user._id.toString(), hash);
-
-      return {
-        email: user.email,
-      };
+      decoded = this.jwtService.verify<{ email: string }>(token);
     } catch {
       throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
     }
+
+    const email = decoded.email;
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new NotFoundException('Tài khoản không tồn tại');
+    }
+
+    // Kiểm tra tài khoản bị vô hiệu hóa
+    this.authRepo.throwIfDeleted(user);
+
+    // Kiểm tra tài khoản đã xác minh chưa
+    this.authRepo.throwIfNotVerified(user);
+
+    const hash = await bcryptjs.hash(newPassword, 10);
+    await this.usersService.updatePassword(user._id.toString(), hash);
+
+    return {
+      email: user.email,
+    };
   }
 
-  login(user: User) {
+  login(user: UserDocument | User) {
     const payload = {
       sub: user._id,
       email: user.email,

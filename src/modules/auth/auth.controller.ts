@@ -61,6 +61,23 @@ export class AuthController {
     return this.authService.verifyEmailWithToken(token);
   }
 
+  @Public()
+  @Post('forgot-password')
+  @ResponseMessage('Hướng dẫn đặt lại mật khẩu đã được gửi đến email của bạn.')
+  async forgotPassword(@Body('email') email: string) {
+    return this.authService.forgotPassword(email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @ResponseMessage('Mật khẩu đã được đặt lại thành công.')
+  async resetPassword(
+    @Body('token') token: string,
+    @Body('newPassword') newPassword: string,
+  ) {
+    return this.authService.resetPassword(token, newPassword);
+  }
+
   @Get('profile')
   getProfile(@Request() req: { user: UserDocument }) {
     return req.user;
