@@ -30,7 +30,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         throw new UnauthorizedException('Token has expired');
       }
       if (info?.name === 'JsonWebTokenError') {
-        throw new UnauthorizedException('Invalid token');
+        throw new UnauthorizedException('Invalid token sai ở jwt auth');
       }
       throw err || new UnauthorizedException('No authorization token provided');
     }

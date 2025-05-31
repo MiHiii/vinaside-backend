@@ -29,7 +29,7 @@ export async function createEntity<T extends BaseDocument, C>(
 
   const doc = await model.create({
     ...createData,
-    createdBy: user.sub,
+    createdBy: user._id,
   });
 
   return doc;
@@ -59,7 +59,7 @@ export async function softDelete<T extends BaseDocument>(
     {
       isDeleted: true,
       deletedAt: new Date(),
-      deletedBy: user.sub,
+      deletedBy: user._id,
     },
     { new: true },
   );
@@ -101,7 +101,7 @@ export async function updateEntity<T extends BaseDocument, U>(
     { _id: id, isDeleted: { $ne: true } },
     {
       ...updateData,
-      updatedBy: user.sub,
+      updatedBy: user._id,
     },
     { new: true },
   );

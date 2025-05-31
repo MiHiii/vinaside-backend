@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { setupSwagger } from './swagger/swagger.config';
+import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,7 +12,13 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1');
 
   // Apply global pipes
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   // Setup CORS
   app.enableCors({
@@ -22,6 +29,9 @@ async function bootstrap() {
 
   // Setup Swagger
   setupSwagger(app);
+
+  // Sử dụng cookie parser
+  app.use(cookieParser());
 
   // Start server
   const port = configService.get<number>('PORT') || 3000;

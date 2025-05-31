@@ -14,6 +14,9 @@ import { EmailQueueService } from '../mail/mail.queue';
 import { UserDocument } from '../users/schemas/user.schema';
 import { AuthRepo } from './auth.repo';
 import { User } from '../users/users.interface';
+import { RefreshTokenService } from './services/refresh-token.service';
+import { Request, Response } from 'express';
+import { toSafeString } from 'src/utils';
 
 @Injectable()
 export class AuthService {
@@ -22,7 +25,23 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly emailQueueService: EmailQueueService,
     private readonly authRepo: AuthRepo,
+    private readonly refreshTokenService: RefreshTokenService,
   ) {}
+
+  /**
+   * Tìm người dùng theo ID
+   */
+  async findUserById(userId: string): Promise<UserDocument> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại');
+    }
+    return user;
+  }
+
+  /**
+   * Xác thực người dùng
+   */
 
   async validateUser(
     email: string,
@@ -160,7 +179,7 @@ export class AuthService {
       throw new BadRequestException('Token không hợp lệ hoặc đã hết hạn');
     }
 
-    await this.usersService.verifyUser(user._id.toString());
+    await this.usersService.verifyUser(toSafeString(user._id));
     await this.authRepo.clearVerificationData(email); // xoá token + otp sau xác minh
 
     return {
@@ -188,7 +207,7 @@ export class AuthService {
       throw new BadRequestException('Mã OTP không hợp lệ hoặc đã hết hạn');
     }
 
-    await this.usersService.verifyUser(user._id.toString());
+    await this.usersService.verifyUser(toSafeString(user._id));
     await this.authRepo.clearVerificationData(email);
 
     return {
@@ -259,22 +278,212 @@ export class AuthService {
     this.authRepo.throwIfNotVerified(user);
 
     const hash = await bcryptjs.hash(newPassword, 10);
-    await this.usersService.updatePassword(user._id.toString(), hash);
+    await this.usersService.updatePassword(toSafeString(user._id), hash);
 
     return {
       email: user.email,
     };
   }
 
-  login(user: UserDocument | User) {
+  /**
+   * Xử lý đăng nhập
+   */
+  async handleLogin(
+    user: UserDocument,
+    req: Request,
+    res: Response,
+  ): Promise<{
+    access_token: string;
+    user: { _id: any; name: string; email: string; role: string };
+  }> {
+    // Tạo JWT access token
+    const authResult = this.login(user as unknown as User);
+
+    // Tạo refresh token và lưu vào DB
+    const refreshTokenResult =
+      await this.refreshTokenService.createRefreshToken(user, req);
+
+    // Đặt refresh token vào HTTP only cookie
+    this.refreshTokenService.setRefreshTokenCookie(
+      res,
+      refreshTokenResult.token,
+      refreshTokenResult.expiresIn,
+    );
+
+    // Trả về access token và thông tin người dùng
+    return authResult;
+  }
+
+  /**
+   * Xử lý refresh token
+   */
+  async handleRefreshToken(
+    refreshToken: string,
+    req: Request,
+    res: Response,
+  ): Promise<{
+    access_token: string;
+    user: { _id: any; name: string; email: string; role: string };
+  }> {
+    if (!refreshToken) {
+      this.refreshTokenService.clearRefreshTokenCookie(res);
+      throw new UnauthorizedException('Không tìm thấy refresh token');
+    }
+
+    try {
+      // Tìm và xác thực refresh token
+      const tokenDoc =
+        await this.refreshTokenService.findAndValidateRefreshToken(
+          refreshToken,
+        );
+
+      // Lấy userId từ tokenDoc và chuyển thành string an toàn
+      const userId = toSafeString(tokenDoc.userId);
+      if (!userId) {
+        throw new UnauthorizedException('Token không hợp lệ: thiếu userId');
+      }
+
+      // Tìm user tương ứng
+      const user = await this.findUserById(userId);
+
+      // Tạo refresh token mới (rotation) và lưu vào DB
+      const refreshTokenResult =
+        await this.refreshTokenService.createRefreshToken(user, req);
+
+      // Đặt refresh token mới vào cookie
+      this.refreshTokenService.setRefreshTokenCookie(
+        res,
+        refreshTokenResult.token,
+        refreshTokenResult.expiresIn,
+      );
+
+      // Thu hồi refresh token cũ
+      const tokenId = toSafeString(tokenDoc._id);
+      const userIdStr = toSafeString(user._id);
+
+      await this.refreshTokenService.revokeRefreshToken(tokenId, userIdStr);
+
+      // Trả về access token mới
+      return this.login(user as unknown as User);
+    } catch (error) {
+      // Xóa cookie nếu có lỗi
+      this.refreshTokenService.clearRefreshTokenCookie(res);
+      console.log(
+        'Lỗi khi refresh token:',
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+      throw new UnauthorizedException(
+        'Phiên đăng nhập hết hạn hoặc không hợp lệ, vui lòng đăng nhập lại',
+      );
+    }
+  }
+
+  /**
+   * Xử lý đăng xuất
+   */
+  async handleLogout(
+    user: UserDocument,
+    refreshToken: string | undefined,
+    res: Response,
+  ): Promise<void> {
+    // Xóa refresh token cookie
+    this.refreshTokenService.clearRefreshTokenCookie(res);
+    console.log('user', user);
+
+    // Thu hồi refresh token hiện tại (nếu có)
+    if (refreshToken) {
+      try {
+        const tokenDoc =
+          await this.refreshTokenService.findAndValidateRefreshToken(
+            refreshToken,
+          );
+
+        const tokenId = toSafeString(tokenDoc._id);
+        const userId = toSafeString(user._id);
+        console.log('handleLogout', tokenId, userId);
+
+        await this.refreshTokenService.revokeRefreshToken(tokenId, userId);
+      } catch (error) {
+        // Thử thu hồi theo cách khác nếu không tìm thấy token chính xác
+        const userId = toSafeString(user._id);
+
+        // Thu hồi tất cả token của user để đảm bảo an toàn
+        await this.refreshTokenService.revokeAllRefreshTokens(userId);
+        console.log(
+          'Đã thu hồi tất cả token sau khi không thể xác định token cụ thể:',
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+      }
+    }
+  }
+
+  /**
+   * Xử lý đăng xuất khỏi các thiết bị khác
+   */
+  async handleLogoutOtherDevices(
+    user: UserDocument,
+    refreshToken: string | undefined,
+  ): Promise<void> {
+    if (!refreshToken) {
+      throw new UnauthorizedException(
+        'Không tìm thấy phiên đăng nhập hiện tại',
+      );
+    }
+
+    try {
+      const tokenDoc =
+        await this.refreshTokenService.findAndValidateRefreshToken(
+          refreshToken,
+        );
+
+      const tokenId = toSafeString(tokenDoc._id);
+      const userId = toSafeString(user._id);
+
+      await this.refreshTokenService.revokeOtherRefreshTokens(userId, tokenId);
+    } catch {
+      // Nếu không tìm được token hiện tại, vẫn có thể thu hồi tất cả
+      const userId = toSafeString(user._id);
+      await this.refreshTokenService.revokeAllRefreshTokens(userId);
+      throw new UnauthorizedException(
+        'Phiên đăng nhập không hợp lệ, đã thu hồi tất cả phiên để đảm bảo an toàn',
+      );
+    }
+  }
+
+  /**
+   * Lấy danh sách các phiên đăng nhập
+   */
+  async getSessions(user: UserDocument): Promise<any[]> {
+    const userId = toSafeString(user._id);
+    return this.refreshTokenService.getRefreshTokens(userId);
+  }
+
+  /**
+   * Thu hồi một phiên đăng nhập cụ thể
+   */
+  async revokeSession(sessionId: string, user: UserDocument): Promise<void> {
+    const userId = toSafeString(user._id);
+    return this.refreshTokenService.revokeRefreshToken(sessionId, userId);
+  }
+
+  /**
+   * Thu hồi tất cả phiên đăng nhập
+   */
+  async revokeAllSessions(user: UserDocument): Promise<void> {
+    const userId = toSafeString(user._id);
+    return this.refreshTokenService.revokeAllRefreshTokens(userId);
+  }
+
+  login(user: User) {
     const payload = {
-      sub: user._id,
+      _id: user._id,
       email: user.email,
       name: user.name,
       role: user.role,
       iss: 'api',
     };
     const token = this.jwtService.sign(payload);
+
     return {
       access_token: token,
       user: {

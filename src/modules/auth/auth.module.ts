@@ -9,6 +9,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtStrategy } from '../../common/strategies/jwt.strategy';
 import { MailModule } from '../mail/mail.module';
 import { AuthRepo } from './auth.repo';
+import { MongooseModule } from '@nestjs/mongoose';
+import {
+  RefreshToken,
+  RefreshTokenSchema,
+} from './schemas/refresh-token.schema';
+import { RefreshTokenService } from './services/refresh-token.service';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -18,14 +25,24 @@ import { AuthRepo } from './auth.repo';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET'),
-        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '1h') },
+        secret: config.get('JWT_ACCESS_SECRET'),
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '7d') },
       }),
     }),
+    MongooseModule.forFeature([
+      { name: RefreshToken.name, schema: RefreshTokenSchema },
+    ]),
+    ScheduleModule.forRoot(),
     MailModule,
   ],
-  providers: [AuthService, LocalStrategy, JwtStrategy, AuthRepo],
+  providers: [
+    AuthService,
+    LocalStrategy,
+    JwtStrategy,
+    AuthRepo,
+    RefreshTokenService,
+  ],
   controllers: [AuthController],
-  exports: [AuthService, AuthRepo],
+  exports: [AuthService, AuthRepo, RefreshTokenService],
 })
 export class AuthModule {}
