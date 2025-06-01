@@ -95,7 +95,9 @@ export class AuthService {
     // Nếu chưa tồn tại => tạo mới
     const hash = await bcryptjs.hash(dto.password, 10);
     const newUser = await this.usersService.create({
-      ...dto,
+      name: dto.name,
+      email: dto.email,
+      phone: dto.phone,
       password_hash: hash,
       is_verified: false,
     });
@@ -370,7 +372,7 @@ export class AuthService {
       this.refreshTokenService.clearRefreshTokenCookie(res);
       console.log(
         'Lỗi khi refresh token:',
-        error instanceof Error ? error.message : 'Unknown error',
+        error instanceof Error ? error.message : 'Lỗi không xác định',
       );
       throw new UnauthorizedException(
         'Phiên đăng nhập hết hạn hoặc không hợp lệ, vui lòng đăng nhập lại',
@@ -388,7 +390,7 @@ export class AuthService {
   ): Promise<void> {
     // Xóa refresh token cookie
     this.refreshTokenService.clearRefreshTokenCookie(res);
-    console.log('user', user);
+    console.log('người dùng', user);
 
     // Thu hồi refresh token hiện tại (nếu có)
     if (refreshToken) {
@@ -400,7 +402,7 @@ export class AuthService {
 
         const tokenId = toSafeString(tokenDoc._id);
         const userId = toSafeString(user._id);
-        console.log('handleLogout', tokenId, userId);
+        console.log('xử lý đăng xuất', tokenId, userId);
 
         await this.refreshTokenService.revokeRefreshToken(tokenId, userId);
       } catch (error) {
@@ -411,7 +413,7 @@ export class AuthService {
         await this.refreshTokenService.revokeAllRefreshTokens(userId);
         console.log(
           'Đã thu hồi tất cả token sau khi không thể xác định token cụ thể:',
-          error instanceof Error ? error.message : 'Unknown error',
+          error instanceof Error ? error.message : 'Lỗi không xác định',
         );
       }
     }
@@ -492,6 +494,33 @@ export class AuthService {
         email: user.email,
         role: user.role,
       },
+    };
+  }
+
+  async deleteAccount(user: UserDocument) {
+    this.authRepo.throwIfDeleted(user);
+
+    await this.usersService.deleteUserById(toSafeString(user._id));
+    await this.authRepo.clearVerificationData(user.email);
+
+    return {
+      email: user.email,
+      name: user.name,
+      deleted: user.isDeleted,
+    };
+  }
+
+  async getMe(user: UserDocument) {
+    const userInfo = await this.usersService.findById(toSafeString(user._id));
+    if (!userInfo) {
+      throw new NotFoundException('Không tìm thấy thông tin người dùng');
+    }
+
+    this.authRepo.throwIfNotVerified(userInfo);
+    this.authRepo.throwIfDeleted(userInfo);
+
+    return {
+      user: userInfo,
     };
   }
 }

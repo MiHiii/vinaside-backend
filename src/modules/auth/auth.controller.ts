@@ -165,8 +165,15 @@ export class AuthController {
     return this.authService.resetPassword(token, newPassword);
   }
 
-  @Get('profile')
-  getProfile(@Request() req: { user: UserDocument }) {
-    return req.user;
+  @Delete('delete-account')
+  @ResponseMessage('Xóa tài khoản thành công.')
+  async deleteAccount(@Request() req: RequestWithUser) {
+    return this.authService.deleteAccount(req.user);
+  }
+
+  @Get('me')
+  @ResponseMessage('Lấy thông tin người dùng thành công.')
+  getMe(@Request() req: RequestWithUser) {
+    return this.authService.getMe(req.user);
   }
 }

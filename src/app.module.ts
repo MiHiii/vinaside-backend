@@ -17,6 +17,7 @@ import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { MailModule } from './modules/mail/mail.module';
 import { BullModule } from '@nestjs/bull';
 import { redisConfigFactory } from './configs/redis.config';
@@ -56,6 +57,10 @@ import { RedisModule } from '@nestjs-modules/ioredis';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
     {
       provide: APP_FILTER,
