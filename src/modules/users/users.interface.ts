@@ -4,7 +4,7 @@ export interface User {
   email: string;
   role: string;
   language: string;
-  phone: string;
+  phone?: string;
   avatar_url: string;
   is_verified: boolean;
   isDeleted: boolean;
