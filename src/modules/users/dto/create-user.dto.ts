@@ -1,19 +1,46 @@
-import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Length,
+} from 'class-validator';
 
 export class CreateUserDto {
-  @IsNotEmpty({ message: 'Email is required' })
-  @IsEmail({}, { message: 'Email is not valid' })
+  @IsNotEmpty()
+  @IsString()
+  @Length(2, 100)
+  name: string;
+
+  @IsNotEmpty()
+  @IsEmail()
   email: string;
 
-  @IsNotEmpty({ message: 'Password is required' })
-  @MinLength(6, {
-    message: 'Password is too short. Minimum length is 6 characters.',
-  })
-  password: string;
+  @IsNotEmpty()
+  @IsString()
+  password_hash: string;
 
-  @IsNotEmpty({ message: 'Name is required' })
-  @MinLength(3, {
-    message: 'Name is too short. Minimum length is 3 characters.',
+  @IsNotEmpty()
+  @IsString()
+  phone: string;
+
+  @IsOptional()
+  @IsString()
+  avatar_url?: string;
+
+  @IsOptional()
+  @IsEnum(['guest', 'host', 'admin'], {
+    message: 'Vai trò phải là một trong các giá trị: guest, host, admin',
   })
-  name: string;
+  role?: string = 'guest';
+
+  @IsOptional()
+  @IsEnum(['vi', 'en'], {
+    message: 'Ngôn ngữ phải là một trong các giá trị: vi, en',
+  })
+  language?: string = 'vi';
+
+  @IsOptional()
+  is_verified?: boolean = false;
 }

@@ -87,7 +87,6 @@ export class RefreshTokenService {
       maxAge: expiresIn, // milliseconds
       path: '/', // Chỉ gửi cookie khi gọi API refresh
     });
-    console.log('refresh_token', token);
   }
 
   /**
