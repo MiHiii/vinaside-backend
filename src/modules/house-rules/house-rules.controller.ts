@@ -39,7 +39,10 @@ export class HouseRulesController {
 
   @Get()
   @ResponseMessage('Lấy danh sách quy tắc nhà thành công')
-  findAll(@Query() query: Record<string, any>, @Req() req: AuthenticatedRequest) {
+  findAll(
+    @Query() query: Record<string, any>,
+    @Req() req: AuthenticatedRequest,
+  ) {
     // Filter quy tắc nhà theo user hiện tại (host)
     const userQuery = { ...query, createdBy: req.user._id };
     return this.houseRulesService.findAll(userQuery);
@@ -47,10 +50,7 @@ export class HouseRulesController {
 
   @Get('search')
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
-  search(
-    @Query('query') query: string,
-    @Req() req: AuthenticatedRequest,
-  ) {
+  search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
     return this.houseRulesService.search(query, req.user._id);
   }
 

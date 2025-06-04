@@ -5,4 +5,4 @@ export interface IHouseRule {
   default_checked: boolean;
   is_active: boolean;
   isDeleted?: boolean;
-} 
+}
