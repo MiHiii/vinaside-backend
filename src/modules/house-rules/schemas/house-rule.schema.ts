@@ -3,8 +3,7 @@ import { Document, Types } from 'mongoose';
 
 export type HouseRuleDocument = HouseRule & Document;
 
-@Schema ({timestamps: {createdAt: 'created_at', updatedAt: 'updated_at'}})
-
+@Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
 export class HouseRule {
     @Prop({ required: true })
     name: string;

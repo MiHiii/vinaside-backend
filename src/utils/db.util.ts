@@ -259,7 +259,12 @@ export async function searchEntity<T extends BaseDocument>(
   additionalFilters: FilterQuery<T> = {},
 ): Promise<T[]> {
   // Return empty array if query is empty or no search fields provided
-  if (!query || query.trim() === '' || !searchFields || searchFields.length === 0) {
+  if (
+    !query ||
+    query.trim() === '' ||
+    !searchFields ||
+    searchFields.length === 0
+  ) {
     return [];
   }
 
@@ -277,30 +282,24 @@ export async function searchEntity<T extends BaseDocument>(
   const regexOptions = caseSensitive ? '' : 'i';
 
   // Build search conditions for each field
-  const searchConditions = searchFields.map(field => ({
-    [field]: { $regex: trimmedQuery, $options: regexOptions }
+  const searchConditions = searchFields.map((field) => ({
+    [field]: { $regex: trimmedQuery, $options: regexOptions },
   }));
 
   // Build search query
-  let searchQuery: FilterQuery<T> = {
-    $or: searchConditions as unknown as FilterQuery<T>[]
+  const searchQuery: FilterQuery<T> = {
+    $or: searchConditions as unknown as FilterQuery<T>[],
   };
 
   // Combine with additional filters
   let finalQuery: FilterQuery<T> = {
-    $and: [
-      searchQuery,
-      additionalFilters
-    ]
+    $and: [searchQuery, additionalFilters],
   };
 
   // Add soft delete filter if needed
   if (!includeDeleted) {
     finalQuery = {
-      $and: [
-        { isDeleted: { $ne: true } },
-        finalQuery
-      ]
+      $and: [{ isDeleted: { $ne: true } }, finalQuery],
     };
   }
 

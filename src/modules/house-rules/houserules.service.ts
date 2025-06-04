@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
@@ -9,7 +13,7 @@ import {
   findEntity,
   findAllEntity,
   restoreEntity,
-  searchEntity
+  searchEntity,
 } from 'src/utils/db.util';
 
 import { HouseRule, HouseRuleDocument } from './schemas/house-rule.schema';
@@ -20,7 +24,8 @@ import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
 @Injectable()
 export class HouseRulesService {
   constructor(
-    @InjectModel(HouseRule.name) private houseRuleModel: Model<HouseRuleDocument>,
+    @InjectModel(HouseRule.name)
+    private houseRuleModel: Model<HouseRuleDocument>,
   ) {}
 
   /**
@@ -32,18 +37,29 @@ export class HouseRulesService {
     }
   }
 
-  
+  /**
+   * Tạo quy tắc nhà mới (chỉ host)
+   */
   async create(createDto: CreateHouseRuleDto, user: JwtPayload) {
     this.validateHost(user);
     return createEntity('HouseRule', this.houseRuleModel, createDto, user);
   }
 
-  
+  /**
+   * Lấy tất cả quy tắc nhà của host hiện tại
+   */
   async findAll(query = {}, options = {}) {
     try {
-      return await findAllEntity('HouseRule', this.houseRuleModel, query, options);
+      return await findAllEntity(
+        'HouseRule',
+        this.houseRuleModel,
+        query,
+        options,
+      );
     } catch (error) {
-      return error instanceof NotFoundException ? [] : Promise.reject(error);
+      return error instanceof NotFoundException
+        ? []
+        : Promise.reject(new Error('Database error'));
     }
   }
 
@@ -54,11 +70,17 @@ export class HouseRulesService {
     if (userId) {
       // Sử dụng findAllEntity với filter để kiểm tra ownership
       try {
-        const results = await findAllEntity('HouseRule', this.houseRuleModel, 
-          { _id: id, createdBy: userId }, { limit: 1 });
+        const results = await findAllEntity(
+          'HouseRule',
+          this.houseRuleModel,
+          { _id: id, createdBy: userId },
+          { limit: 1 },
+        );
         return results[0];
-      } catch (error) {
-        throw new NotFoundException('HouseRule not found or you do not have permission to access it');
+      } catch {
+        throw new NotFoundException(
+          'HouseRule not found or you do not have permission to access it',
+        );
       }
     }
     return findEntity('HouseRule', this.houseRuleModel, id);
@@ -72,9 +94,6 @@ export class HouseRulesService {
     return updateEntity('HouseRule', this.houseRuleModel, id, updateDto, user);
   }
 
-  /**
-   * Xóa mềm quy tắc nhà (với kiểm tra ownership)
-   */
   async softDelete(id: string, user: JwtPayload) {
     await this.findOne(id, user._id); // Kiểm tra ownership
     return softDelete('HouseRule', this.houseRuleModel, id, user);
@@ -86,10 +105,16 @@ export class HouseRulesService {
   async restore(id: string, user: JwtPayload) {
     // Kiểm tra ownership cho deleted record
     try {
-      await findAllEntity('HouseRule', this.houseRuleModel, 
-        { _id: id, createdBy: user._id }, { includeDeleted: true, limit: 1 });
-    } catch (error) {
-      throw new NotFoundException('HouseRule not found, not deleted, or you do not have permission to restore it');
+      await findAllEntity(
+        'HouseRule',
+        this.houseRuleModel,
+        { _id: id, createdBy: user._id },
+        { includeDeleted: true, limit: 1 },
+      );
+    } catch {
+      throw new NotFoundException(
+        'HouseRule not found, not deleted, or you do not have permission to restore it',
+      );
     }
     return restoreEntity('HouseRule', this.houseRuleModel, id, user);
   }
@@ -99,19 +124,19 @@ export class HouseRulesService {
    */
   async search(query: string, userId?: string) {
     if (!query?.trim()) return [];
-    
+
     const userFilter = userId ? { createdBy: userId } : {};
-    
+
     try {
       return await searchEntity(
-        'HouseRule', 
-        this.houseRuleModel, 
-        query, 
+        'HouseRule',
+        this.houseRuleModel,
+        query,
         ['name', 'description'],
         { sort: { createdAt: -1 } },
-        userFilter
+        userFilter,
       );
-    } catch (error) {
+    } catch {
       return [];
     }
   }
