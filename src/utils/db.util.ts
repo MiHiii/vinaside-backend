@@ -72,6 +72,45 @@ export async function softDelete<T extends BaseDocument>(
 }
 
 /**
+ * Restores a soft-deleted entity by marking it as not deleted.
+ * @param entityName - Name of the entity for error messages
+ * @param model - Mongoose model for the entity
+ * @param id - ID of the entity to restore
+ * @param user - JWT payload containing user information
+ * @returns The restored entity
+ * @throws NotFoundException if the entity is not found or not deleted
+ */
+export async function restoreEntity<T extends BaseDocument>(
+  entityName: string,
+  model: Model<T>,
+  id: string,
+  user: JwtPayload,
+): Promise<T> {
+  if (!isValidObjectId(id)) {
+    throw new NotFoundException(`${entityName} not found: Invalid ID`);
+  }
+
+  const doc = await model.findOneAndUpdate(
+    { _id: id, isDeleted: true },
+    {
+      isDeleted: false,
+      $unset: {
+        deletedAt: 1,
+        deletedBy: 1,
+      },
+      updatedBy: user._id,
+    },
+    { new: true },
+  );
+
+  if (!doc) {
+    throw new NotFoundException(`${entityName} not found or not deleted`);
+  }
+
+  return doc;
+}
+
+/**
  * Updates an entity with the provided data.
  * @param entityName - Name of the entity for error messages
  * @param model - Mongoose model for the entity
@@ -191,4 +230,87 @@ export async function findAllEntity<T extends BaseDocument>(
   }
 
   return docs;
+}
+
+/**
+ * Searches entities based on text query across specified fields.
+ * @param entityName - Name of the entity for error messages
+ * @param model - Mongoose model for the entity
+ * @param query - Search query string
+ * @param searchFields - Array of field names to search in
+ * @param options - Options for pagination, sorting, etc.
+ * @param additionalFilters - Additional query filters to apply
+ * @returns Array of matching entities
+ */
+export async function searchEntity<T extends BaseDocument>(
+  entityName: string,
+  model: Model<T>,
+  query: string,
+  searchFields: string[],
+  options: {
+    limit?: number;
+    skip?: number;
+    sort?: Record<string, 1 | -1>;
+    select?: string;
+    populate?: { path: string; select?: string };
+    includeDeleted?: boolean;
+    caseSensitive?: boolean;
+  } = {},
+  additionalFilters: FilterQuery<T> = {},
+): Promise<T[]> {
+  // Return empty array if query is empty or no search fields provided
+  if (!query || query.trim() === '' || !searchFields || searchFields.length === 0) {
+    return [];
+  }
+
+  const {
+    limit,
+    skip,
+    sort,
+    select,
+    populate,
+    includeDeleted = false,
+    caseSensitive = false,
+  } = options;
+
+  const trimmedQuery = query.trim();
+  const regexOptions = caseSensitive ? '' : 'i';
+
+  // Build search conditions for each field
+  const searchConditions = searchFields.map(field => ({
+    [field]: { $regex: trimmedQuery, $options: regexOptions }
+  }));
+
+  // Build search query
+  let searchQuery: FilterQuery<T> = {
+    $or: searchConditions as unknown as FilterQuery<T>[]
+  };
+
+  // Combine with additional filters
+  let finalQuery: FilterQuery<T> = {
+    $and: [
+      searchQuery,
+      additionalFilters
+    ]
+  };
+
+  // Add soft delete filter if needed
+  if (!includeDeleted) {
+    finalQuery = {
+      $and: [
+        { isDeleted: { $ne: true } },
+        finalQuery
+      ]
+    };
+  }
+
+  let queryBuilder = model.find(finalQuery);
+
+  if (limit) queryBuilder = queryBuilder.limit(limit);
+  if (skip) queryBuilder = queryBuilder.skip(skip);
+  if (sort) queryBuilder = queryBuilder.sort(sort);
+  if (select) queryBuilder = queryBuilder.select(select);
+  if (populate) queryBuilder = queryBuilder.populate(populate);
+
+  return queryBuilder.exec();
 }

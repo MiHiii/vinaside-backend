@@ -32,14 +32,25 @@ export class HouseRulesController {
 
   @Get()
   @ResponseMessage('Lấy danh sách quy tắc nhà thành công')
-  findAll(@Query() query) {
-    return this.houseRulesService.findAll(query);
+  findAll(@Query() query, @Req() req: Request) {
+    const user = req.user as any; // JwtPayload
+    // Filter quy tắc nhà theo user hiện tại (host)
+    const userQuery = { ...query, createdBy: user._id };
+    return this.houseRulesService.findAll(userQuery);
+  }
+
+  @Get('search')
+  @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
+  search(@Query('query') query: string, @Req() req: Request) {
+    const user = req.user as any; // JwtPayload
+    return this.houseRulesService.search(query, user._id);
   }
 
   @Get(':id')
   @ResponseMessage('Lấy quy tắc nhà thành công')
-  findOne(@Param('id') id: string) {
-    return this.houseRulesService.findOne(id);
+  findOne(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as any; // JwtPayload
+    return this.houseRulesService.findOne(id, user._id);
   }
 
   @Put(':id')
@@ -54,5 +65,13 @@ export class HouseRulesController {
   softDelete(@Param('id') id: string, @Req() req: Request) {
     const user = req.user as any;
     return this.houseRulesService.softDelete(id, user);
+  }
+
+  // khôi phục quy tắc nhà
+  @Put('restore/:id')
+  @ResponseMessage('Khôi phục quy tắc nhà thành công')
+  restore(@Param('id') id: string, @Req() req: Request) {
+    const user = req.user as any;
+    return this.houseRulesService.restore(id, user);
   }
 }
