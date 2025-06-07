@@ -23,6 +23,7 @@ import { BullModule } from '@nestjs/bull';
 import { redisConfigFactory } from './configs/redis.config';
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { HouseRulesModule } from './modules/house-rules/house-rules.module';
+import { AmenitiesModule } from './modules/amenities/amenities.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { HouseRulesModule } from './modules/house-rules/house-rules.module';
     ReservationModule,
     MailModule,
     HouseRulesModule,
+    AmenitiesModule,
   ],
   controllers: [AppController],
   providers: [
