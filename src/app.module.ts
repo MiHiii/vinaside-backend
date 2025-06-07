@@ -9,8 +9,7 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
-import { CompaniesModule } from './modules/companies/companies.module';
-import { ReservationModule } from './modules/reservation/reservation.module';
+import { BookingModule } from './modules/booking/booking.module';
 import { MongooseConfigModule } from './database/mongoose.providers';
 import { LoggerMiddleware } from './middlewares/logger.middleware';
 import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
@@ -23,6 +22,8 @@ import { BullModule } from '@nestjs/bull';
 import { redisConfigFactory } from './configs/redis.config';
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { HouseRulesModule } from './modules/house-rules/house-rules.module';
+import { UploadModule } from './modules/upload/upload.module';
+import { ListingModule } from './modules/listing/listing.module';
 
 @Module({
   imports: [
@@ -48,10 +49,11 @@ import { HouseRulesModule } from './modules/house-rules/house-rules.module';
     }),
     UsersModule,
     AuthModule,
-    CompaniesModule,
-    ReservationModule,
+    BookingModule,
     MailModule,
     HouseRulesModule,
+    UploadModule,
+    ListingModule,
   ],
   controllers: [AppController],
   providers: [
