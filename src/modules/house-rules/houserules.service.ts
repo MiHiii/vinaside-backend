@@ -140,4 +140,24 @@ export class HouseRulesService {
       return [];
     }
   }
+
+  /**
+   * Tìm kiếm quy tắc nhà công khai (cho guest)
+   */
+  async searchPublic(query: string) {
+    if (!query?.trim()) return [];
+
+    try {
+      return await searchEntity(
+        'HouseRule',
+        this.houseRuleModel,
+        query,
+        ['name', 'description'],
+        { sort: { createdAt: -1 } },
+        { isDeleted: false, is_active: true },
+      );
+    } catch {
+      return [];
+    }
+  }
 }

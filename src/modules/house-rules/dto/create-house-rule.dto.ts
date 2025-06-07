@@ -16,7 +16,6 @@ export class CreateHouseRuleDto {
   @IsBoolean()
   default_checked?: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  is_active?: boolean;
+  @IsString()
+  room_id: string;
 }

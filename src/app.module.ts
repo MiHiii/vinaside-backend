@@ -24,6 +24,8 @@ import { RedisModule } from '@nestjs-modules/ioredis';
 import { HouseRulesModule } from './modules/house-rules/house-rules.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { ListingModule } from './modules/listing/listing.module';
+import { AmenitiesModule } from './modules/amenities/amenities.module';
+import { SafetyFeaturesModule } from './modules/safety_features/safety_features.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { ListingModule } from './modules/listing/listing.module';
     HouseRulesModule,
     UploadModule,
     ListingModule,
+    AmenitiesModule,
+    SafetyFeaturesModule,
   ],
   controllers: [AppController],
   providers: [
