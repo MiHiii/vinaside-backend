@@ -23,7 +23,6 @@ import {
 
 @Injectable()
 export class SafetyFeaturesService {
-
   constructor(
     @InjectModel(SafetyFeature.name)
     private safetyFeatureModel: Model<SafetyFeatureDocument>,

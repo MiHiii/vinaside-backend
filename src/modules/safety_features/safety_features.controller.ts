@@ -60,7 +60,7 @@ export class SafetyFeaturesController {
       return this.safetyFeaturesService.search(query, req.user._id);
     } else {
       return this.safetyFeaturesService.search(query, undefined, {
-        isDeleted: false
+        isDeleted: false,
       });
     }
   }
