@@ -1,11 +1,25 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
 import { UpdateSafetyFeatureDto } from './dto/update-safety_feature.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { SafetyFeature, SafetyFeatureDocument } from './schemas/safety_feature.schema';
+import {
+  SafetyFeature,
+  SafetyFeatureDocument,
+} from './schemas/safety_feature.schema';
 import { Model } from 'mongoose';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
-import { createEntity, findAllEntity, softDelete, updateEntity, restoreEntity, searchEntity } from 'src/utils/db.util';
+import {
+  createEntity,
+  findAllEntity,
+  softDelete,
+  updateEntity,
+  restoreEntity,
+  searchEntity,
+} from 'src/utils/db.util';
 
 @Injectable()
 export class SafetyFeaturesService {
@@ -21,21 +35,36 @@ export class SafetyFeaturesService {
     }
   }
 
-  async create(createSafetyFeatureDto: CreateSafetyFeatureDto, user: JwtPayload) {
+  async create(
+    createSafetyFeatureDto: CreateSafetyFeatureDto,
+    user: JwtPayload,
+  ) {
     this.validateHost(user);
-    return createEntity('SafetyFeature', this.safetyFeatureModel, createSafetyFeatureDto, user);
+    return createEntity(
+      'SafetyFeature',
+      this.safetyFeatureModel,
+      createSafetyFeatureDto,
+      user,
+    );
   }
 
   async findAll(query = {}, options = {}) {
     try {
-      return await findAllEntity('SafetyFeature', this.safetyFeatureModel, query, options);
+      return await findAllEntity(
+        'SafetyFeature',
+        this.safetyFeatureModel,
+        query,
+        options,
+      );
     } catch (error) {
-      return error instanceof NotFoundException ? [] : Promise.reject(new Error('Database error'));
+      return error instanceof NotFoundException
+        ? []
+        : Promise.reject(new Error('Database error'));
     }
   }
 
   async findOne(id: string, userId?: string) {
-    if(userId) {
+    if (userId) {
       try {
         const results = await findAllEntity(
           'SafetyFeature',
@@ -52,9 +81,19 @@ export class SafetyFeaturesService {
     }
   }
 
-  async update(id: string, updateSafetyFeatureDto: UpdateSafetyFeatureDto, user: JwtPayload) {
+  async update(
+    id: string,
+    updateSafetyFeatureDto: UpdateSafetyFeatureDto,
+    user: JwtPayload,
+  ) {
     this.validateHost(user);
-    return updateEntity('SafetyFeature', this.safetyFeatureModel, id, updateSafetyFeatureDto, user);
+    return updateEntity(
+      'SafetyFeature',
+      this.safetyFeatureModel,
+      id,
+      updateSafetyFeatureDto,
+      user,
+    );
   }
 
   async softDelete(id: string, user: JwtPayload) {

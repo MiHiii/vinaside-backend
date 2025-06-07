@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Delete, Req, Query, NotFoundException, Put } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Req,
+  Query,
+  NotFoundException,
+  Put,
+} from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
 import { UpdateSafetyFeatureDto } from './dto/update-safety_feature.dto';
@@ -66,7 +77,9 @@ export class SafetyFeaturesController {
         { limit: 1 },
       );
       if (!results || results.length === 0) {
-        throw new NotFoundException('Safety feature not found or not available');
+        throw new NotFoundException(
+          'Safety feature not found or not available',
+        );
       }
       return results[0];
     }
@@ -76,11 +89,15 @@ export class SafetyFeaturesController {
   @Roles('host')
   @ResponseMessage('Cập nhật tiện ích an toàn thành công')
   update(
-    @Param('id') id: string, 
+    @Param('id') id: string,
     @Body() updateSafetyFeatureDto: UpdateSafetyFeatureDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.safetyFeaturesService.update(id, updateSafetyFeatureDto, req.user!);
+    return this.safetyFeaturesService.update(
+      id,
+      updateSafetyFeatureDto,
+      req.user!,
+    );
   }
 
   @Delete(':id')
