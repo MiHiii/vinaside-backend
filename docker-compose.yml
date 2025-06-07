@@ -20,5 +20,18 @@ services:
       - 6380:6379
     restart: unless-stopped
 
+  file-server:
+    image: node:22
+    container_name: file-server
+    working_dir: /app
+    volumes:
+      - ./uploads:/app/uploads
+      - ./server.js:/app/server.js
+    ports:
+      - 3000:3000
+    command: >
+      sh -c "npm install express multer && node server.js"
+    restart: unless-stopped
+
 volumes:
   mongodb_data_container:
