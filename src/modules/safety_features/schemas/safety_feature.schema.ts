@@ -1,10 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
-export type AmenityDocument = Amenity & Document;
+export type SafetyFeatureDocument = SafetyFeature & Document;
 
 @Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
-export class Amenity {
+export class SafetyFeature {
   @Prop({ required: true })
   name: string;
 
@@ -27,4 +27,4 @@ export class Amenity {
   updatedBy?: Types.ObjectId;
 }
 
-export const AmenitySchema = SchemaFactory.createForClass(Amenity);
+export const SafetyFeatureSchema = SchemaFactory.createForClass(SafetyFeature);

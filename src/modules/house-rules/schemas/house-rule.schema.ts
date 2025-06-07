@@ -17,8 +17,8 @@ export class HouseRule {
   @Prop({ default: false })
   default_checked: boolean;
 
-  @Prop({ default: true })
-  is_active: boolean;
+  @Prop({ required: true })
+  room_id: Types.ObjectId;
 
   @Prop({ default: false })
   isDeleted?: boolean;

@@ -1,4 +1,4 @@
-export interface IAmenity {
+export interface ISafetyFeature {
   name: string;
   description?: string;
   icon_url: string;
