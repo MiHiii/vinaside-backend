@@ -47,7 +47,7 @@ export class HouseRulesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    if(req.user?.role === 'host') {
+    if (req.user?.role === 'host') {
       const userQuery = { ...query, createdBy: req.user._id };
       return this.houseRulesService.findAll(userQuery);
     } else {
@@ -62,7 +62,7 @@ export class HouseRulesController {
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
     if (req.user?.role === 'host') {
       return this.houseRulesService.search(query, req.user._id);
-    } else {  
+    } else {
       return this.houseRulesService.searchPublic(query);
     }
   }

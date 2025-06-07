@@ -1,11 +1,23 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CreateAmenityDto } from './dto/create-amenity.dto';
 import { UpdateAmenityDto } from './dto/update-amenity.dto';
 import { Amenity, AmenityDocument } from './schemas/amenity.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
-import { createEntity, findAllEntity, findEntity, updateEntity, softDelete, restoreEntity, searchEntity } from 'src/utils/db.util';
+import {
+  createEntity,
+  findAllEntity,
+  findEntity,
+  updateEntity,
+  softDelete,
+  restoreEntity,
+  searchEntity,
+} from 'src/utils/db.util';
 
 @Injectable()
 export class AmenitiesService {
@@ -19,7 +31,7 @@ export class AmenitiesService {
       throw new UnauthorizedException('Only hosts can manage amenities');
     }
   }
-  
+
   /**
    * Tạo tiện ích mới
    * @param createAmenityDto
@@ -47,7 +59,7 @@ export class AmenitiesService {
   }
 
   async findOne(id: string, userId?: string) {
-    if(userId){
+    if (userId) {
       try {
         const results = await findAllEntity(
           'Amenity',
@@ -65,9 +77,19 @@ export class AmenitiesService {
     return findEntity('Amenity', this.amenityModel, id);
   }
 
-  async update(id: string, updateAmenityDto: UpdateAmenityDto, user: JwtPayload) {
+  async update(
+    id: string,
+    updateAmenityDto: UpdateAmenityDto,
+    user: JwtPayload,
+  ) {
     await this.findOne(id, user._id); // Kiểm tra ownership
-    return updateEntity('Amenity', this.amenityModel, id, updateAmenityDto, user);
+    return updateEntity(
+      'Amenity',
+      this.amenityModel,
+      id,
+      updateAmenityDto,
+      user,
+    );
   }
 
   async softDelete(id: string, user: JwtPayload) {
@@ -94,16 +116,22 @@ export class AmenitiesService {
   }
 
   async search(query: string, userId?: string, additionalFilter = {}) {
-    if(!query?.trim()) return [];
+    if (!query?.trim()) return [];
 
     const userFilter = userId ? { createdBy: userId } : {};
     const finalFilter = { ...userFilter, ...additionalFilter };
 
     try {
-      return await searchEntity('Amenity', this.amenityModel, query, ['name', 'description'], { sort: { createdAt: -1 } }, finalFilter);
+      return await searchEntity(
+        'Amenity',
+        this.amenityModel,
+        query,
+        ['name', 'description'],
+        { sort: { createdAt: -1 } },
+        finalFilter,
+      );
     } catch {
       return [];
     }
   }
-
 }
