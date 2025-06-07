@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
 
 import { HouseRulesService } from './houserules.service';
@@ -51,7 +52,7 @@ export class HouseRulesController {
       const userQuery = { ...query, createdBy: req.user._id };
       return this.houseRulesService.findAll(userQuery);
     } else {
-      const publicQuery = { ...query, isDeleted: false, is_active: true };
+      const publicQuery = { ...query, isDeleted: false};
       return this.houseRulesService.findAll(publicQuery);
     }
   }
@@ -69,11 +70,18 @@ export class HouseRulesController {
 
   @Get(':id')
   @ResponseMessage('Lấy quy tắc nhà thành công')
-  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
+  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    if(req.user?.role === 'host') {
       return this.houseRulesService.findOne(id, req.user._id);
     } else {
-      return this.houseRulesService.findOne(id);
+      const results = await this.houseRulesService.findAll(
+        { _id: id, isDeleted: false },
+        { limit: 1 },
+      );
+      if(!results || results.length === 0) {
+        throw new NotFoundException('House rule not found or not available');
+      }
+      return results[0];
     }
   }
 

@@ -24,6 +24,7 @@ import { redisConfigFactory } from './configs/redis.config';
 import { RedisModule } from '@nestjs-modules/ioredis';
 import { HouseRulesModule } from './modules/house-rules/house-rules.module';
 import { AmenitiesModule } from './modules/amenities/amenities.module';
+import { SafetyFeaturesModule } from './modules/safety_features/safety_features.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { AmenitiesModule } from './modules/amenities/amenities.module';
     MailModule,
     HouseRulesModule,
     AmenitiesModule,
+    SafetyFeaturesModule,
   ],
   controllers: [AppController],
   providers: [

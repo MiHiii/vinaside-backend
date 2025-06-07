@@ -35,13 +35,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw err || new UnauthorizedException('No authorization token provided');
     }
 
-    // const typedUser = user as { role: string };
-    // if (typedUser.role !== 'host') {
-    //   throw new UnauthorizedException(
-    //     'You are not authorized to perform this action',
-    //   );
-    // }
-
     return user;
   }
 }

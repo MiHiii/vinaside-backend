@@ -47,7 +47,7 @@ export class AmenitiesController {
       const userQuery = { ...query, createdBy: req.user._id };
       return this.amenitiesService.findAll(userQuery);
     } else {
-      const publicQuery = { ...query, isDeleted: false, is_active: true };
+      const publicQuery = { ...query, isDeleted: false};
       return this.amenitiesService.findAll(publicQuery);
     }
   }
@@ -60,8 +60,7 @@ export class AmenitiesController {
       return this.amenitiesService.search(query, req.user._id);
     } else {
       return this.amenitiesService.search(query, undefined, {
-        isDeleted: false,
-        is_active: true,
+        isDeleted: false
       });
     }
   }
@@ -75,7 +74,7 @@ export class AmenitiesController {
       return this.amenitiesService.findOne(id, req.user._id);
     } else {
       const results = await this.amenitiesService.findAll(
-        { _id: id, isDeleted: false, is_active: true },
+        { _id: id, isDeleted: false},
         { limit: 1 },
       );
 
