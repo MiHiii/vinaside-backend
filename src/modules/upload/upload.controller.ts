@@ -77,7 +77,7 @@ export class UploadController {
   }
 
   @Post('user')
-  @Roles('user', 'host', 'admin')
+  @Roles('guest', 'host', 'admin')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Tải lên ảnh người dùng thành công')
   @UseInterceptors(FilesInterceptor('files', 1))
