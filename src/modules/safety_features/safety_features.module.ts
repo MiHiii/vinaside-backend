@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
 import { SafetyFeaturesController } from './safety_features.controller';
+import { SafetyFeaturesRepo } from './safety_features.repo';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   SafetyFeature,
@@ -14,6 +15,6 @@ import {
     ]),
   ],
   controllers: [SafetyFeaturesController],
-  providers: [SafetyFeaturesService],
+  providers: [SafetyFeaturesService, SafetyFeaturesRepo],
 })
 export class SafetyFeaturesModule {}

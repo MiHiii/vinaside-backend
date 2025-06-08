@@ -25,6 +25,12 @@ export class SafetyFeature {
 
   @Prop()
   updatedBy?: Types.ObjectId;
+
+  @Prop()
+  deletedBy?: Types.ObjectId;
+
+  @Prop()
+  deletedAt?: Date;
 }
 
 export const SafetyFeatureSchema = SchemaFactory.createForClass(SafetyFeature);
