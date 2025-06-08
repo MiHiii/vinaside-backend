@@ -8,7 +8,6 @@ import {
   Put,
   Req,
   Query,
-  NotFoundException,
 } from '@nestjs/common';
 import { AmenitiesService } from './amenities.service';
 import { CreateAmenityDto } from './dto/create-amenity.dto';

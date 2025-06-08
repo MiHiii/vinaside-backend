@@ -19,7 +19,9 @@ export class HouseRulesService {
    */
   private validateHost(user: JwtPayload): void {
     if (user.role !== 'host') {
-      throw new UnauthorizedException('Chỉ có chủ nhà mới có thể tạo quy tắc nhà');
+      throw new UnauthorizedException(
+        'Chỉ có chủ nhà mới có thể tạo quy tắc nhà',
+      );
     }
   }
 
@@ -28,24 +30,27 @@ export class HouseRulesService {
    */
   async create(createDto: CreateHouseRuleDto, user: JwtPayload) {
     this.validateHost(user);
-    
+
     const data = {
       ...createDto,
       room_id: new Types.ObjectId(createDto.room_id),
       createdBy: new Types.ObjectId(user._id),
     };
-    
+
     return this.houseRulesRepo.create(data);
   }
 
   /**
    * Lấy tất cả quy tắc nhà với filtering và pagination
    */
-  async findAll(query: Record<string, any> = {}, options: Record<string, any> = {}) {
+  async findAll(
+    query: Record<string, any> = {},
+    options: Record<string, any> = {},
+  ) {
     try {
       const result = await this.houseRulesRepo.findAll(query, options);
       return result.data;
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -53,7 +58,10 @@ export class HouseRulesService {
   /**
    * Lấy tất cả quy tắc nhà với context của user (host hoặc guest)
    */
-  async findAllWithUserContext(query: Record<string, any> = {}, user?: JwtPayload) {
+  async findAllWithUserContext(
+    query: Record<string, any> = {},
+    user?: JwtPayload,
+  ) {
     if (user?.role === 'host') {
       const userQuery = { ...query, createdBy: user._id };
       return this.findAll(userQuery);
@@ -69,7 +77,10 @@ export class HouseRulesService {
   async findOne(id: string, userId?: string) {
     if (userId) {
       // Kiểm tra ownership cho host
-      const houseRule = await this.houseRulesRepo.findByIdAndCreatedBy(id, userId);
+      const houseRule = await this.houseRulesRepo.findByIdAndCreatedBy(
+        id,
+        userId,
+      );
       if (!houseRule) {
         throw new NotFoundException(
           'Không tìm thấy quy tắc nhà hoặc bạn không có quyền truy cập',
@@ -77,7 +88,7 @@ export class HouseRulesService {
       }
       return houseRule;
     }
-    
+
     // Cho guest - chỉ lấy những rule chưa bị xóa
     const houseRule = await this.houseRulesRepo.findById(id);
     if (!houseRule || houseRule.isDeleted) {
@@ -102,7 +113,10 @@ export class HouseRulesService {
    */
   async update(id: string, updateDto: UpdateHouseRuleDto, user: JwtPayload) {
     // Kiểm tra ownership
-    const existingRule = await this.houseRulesRepo.findByIdAndCreatedBy(id, user._id);
+    const existingRule = await this.houseRulesRepo.findByIdAndCreatedBy(
+      id,
+      user._id,
+    );
     if (!existingRule) {
       throw new NotFoundException(
         'Không tìm thấy quy tắc nhà hoặc bạn không có quyền cập nhật',
@@ -122,7 +136,10 @@ export class HouseRulesService {
    */
   async softDelete(id: string, user: JwtPayload) {
     // Kiểm tra ownership
-    const existingRule = await this.houseRulesRepo.findByIdAndCreatedBy(id, user._id);
+    const existingRule = await this.houseRulesRepo.findByIdAndCreatedBy(
+      id,
+      user._id,
+    );
     if (!existingRule) {
       throw new NotFoundException(
         'Không tìm thấy quy tắc nhà hoặc bạn không có quyền xóa',
@@ -158,7 +175,7 @@ export class HouseRulesService {
   async search(query: string, userId?: string) {
     if (!query?.trim()) return [];
 
-    const additionalFilters: FilterQuery<HouseRuleDocument> = userId 
+    const additionalFilters: FilterQuery<HouseRuleDocument> = userId
       ? { createdBy: userId, isDeleted: { $ne: true } }
       : { isDeleted: { $ne: true } };
 
@@ -167,7 +184,7 @@ export class HouseRulesService {
         query,
         ['name', 'description'],
         additionalFilters,
-        { sort: { created_at: -1 } }
+        { sort: { created_at: -1 } },
       );
       return result.data;
     } catch {
@@ -190,7 +207,7 @@ export class HouseRulesService {
         query,
         ['name', 'description'],
         additionalFilters,
-        { sort: { created_at: -1 } }
+        { sort: { created_at: -1 } },
       );
       return result.data;
     } catch {

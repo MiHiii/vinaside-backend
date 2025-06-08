@@ -206,4 +206,4 @@ export class HouseRulesRepo {
   async count(filter: FilterQuery<HouseRule> = {}): Promise<number> {
     return this.houseRuleModel.countDocuments(filter).exec();
   }
-} 
+}

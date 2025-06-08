@@ -206,4 +206,4 @@ export class AmenitiesRepo {
   async count(filter: FilterQuery<Amenity> = {}): Promise<number> {
     return this.amenityModel.countDocuments(filter).exec();
   }
-} 
+}

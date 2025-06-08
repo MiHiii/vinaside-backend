@@ -19,7 +19,9 @@ export class AmenitiesService {
    */
   private validateHost(user: JwtPayload): void {
     if (user.role !== 'host') {
-      throw new UnauthorizedException('Chỉ có chủ nhà mới có thể quản lý tiện ích');
+      throw new UnauthorizedException(
+        'Chỉ có chủ nhà mới có thể quản lý tiện ích',
+      );
     }
   }
 
@@ -28,24 +30,27 @@ export class AmenitiesService {
    */
   async create(createAmenityDto: CreateAmenityDto, user: JwtPayload) {
     this.validateHost(user);
-    
+
     const data = {
       ...createAmenityDto,
       room_id: new Types.ObjectId(createAmenityDto.room_id),
       createdBy: new Types.ObjectId(user._id),
     };
-    
+
     return this.amenitiesRepo.create(data);
   }
 
   /**
    * Lấy tất cả tiện ích với filtering và pagination
    */
-  async findAll(query: Record<string, any> = {}, options: Record<string, any> = {}) {
+  async findAll(
+    query: Record<string, any> = {},
+    options: Record<string, any> = {},
+  ) {
     try {
       const result = await this.amenitiesRepo.findAll(query, options);
       return result.data;
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -53,7 +58,10 @@ export class AmenitiesService {
   /**
    * Lấy tất cả tiện ích với context của user (host hoặc guest)
    */
-  async findAllWithUserContext(query: Record<string, any> = {}, user?: JwtPayload) {
+  async findAllWithUserContext(
+    query: Record<string, any> = {},
+    user?: JwtPayload,
+  ) {
     if (user?.role === 'host') {
       const userQuery = { ...query, createdBy: user._id };
       return this.findAll(userQuery);
@@ -69,7 +77,10 @@ export class AmenitiesService {
   async findOne(id: string, userId?: string) {
     if (userId) {
       // Kiểm tra ownership cho host
-      const amenity = await this.amenitiesRepo.findByIdAndCreatedBy(id, userId);
+      const amenity = await this.amenitiesRepo.findByIdAndCreatedBy(
+        id,
+        userId,
+      );
       if (!amenity) {
         throw new NotFoundException(
           'Không tìm thấy tiện ích hoặc bạn không có quyền truy cập',
@@ -77,7 +88,7 @@ export class AmenitiesService {
       }
       return amenity;
     }
-    
+
     // Cho guest - chỉ lấy những amenity chưa bị xóa
     const amenity = await this.amenitiesRepo.findById(id);
     if (!amenity || amenity.isDeleted) {
@@ -100,9 +111,16 @@ export class AmenitiesService {
   /**
    * Cập nhật tiện ích (với kiểm tra ownership)
    */
-  async update(id: string, updateAmenityDto: UpdateAmenityDto, user: JwtPayload) {
+  async update(
+    id: string,
+    updateAmenityDto: UpdateAmenityDto,
+    user: JwtPayload,
+  ) {
     // Kiểm tra ownership
-    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(id, user._id);
+    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
+      id,
+      user._id,
+    );
     if (!existingAmenity) {
       throw new NotFoundException(
         'Không tìm thấy tiện ích hoặc bạn không có quyền cập nhật',
@@ -122,7 +140,10 @@ export class AmenitiesService {
    */
   async softDelete(id: string, user: JwtPayload) {
     // Kiểm tra ownership
-    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(id, user._id);
+    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
+      id,
+      user._id,
+    );
     if (!existingAmenity) {
       throw new NotFoundException(
         'Không tìm thấy tiện ích hoặc bạn không có quyền xóa',
@@ -157,10 +178,14 @@ export class AmenitiesService {
   /**
    * Tìm kiếm tiện ích (với filter theo user)
    */
-  async search(query: string, userId?: string, additionalFilter: Record<string, any> = {}) {
+  async search(
+    query: string,
+    userId?: string,
+    additionalFilter: Record<string, any> = {},
+  ) {
     if (!query?.trim()) return [];
 
-    const additionalFilters: FilterQuery<AmenityDocument> = userId 
+    const additionalFilters: FilterQuery<AmenityDocument> = userId
       ? { createdBy: userId, isDeleted: { $ne: true }, ...additionalFilter }
       : { isDeleted: { $ne: true }, ...additionalFilter };
 
@@ -169,7 +194,7 @@ export class AmenitiesService {
         query,
         ['name', 'description'],
         additionalFilters,
-        { sort: { created_at: -1 } }
+        { sort: { created_at: -1 } },
       );
       return result.data;
     } catch {

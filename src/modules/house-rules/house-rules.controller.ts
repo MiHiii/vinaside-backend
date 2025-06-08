@@ -9,7 +9,6 @@ import {
   UseGuards,
   Req,
   Query,
-  NotFoundException,
 } from '@nestjs/common';
 
 import { HouseRulesService } from './houserules.service';

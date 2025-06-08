@@ -7,7 +7,6 @@ import {
   Delete,
   Req,
   Query,
-  NotFoundException,
   Put,
 } from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
