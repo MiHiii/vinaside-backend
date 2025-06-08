@@ -7,7 +7,6 @@ import {
   Delete,
   Req,
   Query,
-  NotFoundException,
   Put,
 } from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
@@ -43,46 +42,21 @@ export class SafetyFeaturesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (req.user?.role === 'host') {
-      const userQuery = { ...query, createdBy: req.user._id };
-      return this.safetyFeaturesService.findAll(userQuery);
-    } else {
-      const publicQuery = { ...query, isDeleted: false };
-      return this.safetyFeaturesService.findAll(publicQuery);
-    }
+    return this.safetyFeaturesService.findAllWithUserContext(query, req.user);
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm tiện ích an toàn thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      return this.safetyFeaturesService.search(query, req.user._id);
-    } else {
-      return this.safetyFeaturesService.search(query, undefined, {
-        isDeleted: false,
-      });
-    }
+    return this.safetyFeaturesService.searchWithUserContext(query, req.user);
   }
 
   @Get(':id')
   @Public()
   @ResponseMessage('Lấy tiện ích an toàn thành công')
-  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      return this.safetyFeaturesService.findOne(id, req.user._id);
-    } else {
-      const results = await this.safetyFeaturesService.findAll(
-        { _id: id, isDeleted: false },
-        { limit: 1 },
-      );
-      if (!results || results.length === 0) {
-        throw new NotFoundException(
-          'Safety feature not found or not available',
-        );
-      }
-      return results[0];
-    }
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.safetyFeaturesService.findOneWithUserContext(id, req.user);
   }
 
   @Put(':id')

@@ -25,6 +25,12 @@ export class Amenity {
 
   @Prop()
   updatedBy?: Types.ObjectId;
+
+  @Prop()
+  deletedBy?: Types.ObjectId;
+
+  @Prop()
+  deletedAt?: Date;
 }
 
 export const AmenitySchema = SchemaFactory.createForClass(Amenity);

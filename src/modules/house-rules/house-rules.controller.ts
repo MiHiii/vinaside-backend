@@ -9,7 +9,6 @@ import {
   UseGuards,
   Req,
   Query,
-  NotFoundException,
 } from '@nestjs/common';
 
 import { HouseRulesService } from './houserules.service';
@@ -48,41 +47,20 @@ export class HouseRulesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (req.user?.role === 'host') {
-      const userQuery = { ...query, createdBy: req.user._id };
-      return this.houseRulesService.findAll(userQuery);
-    } else {
-      const publicQuery = { ...query, isDeleted: false };
-      return this.houseRulesService.findAll(publicQuery);
-    }
+    return this.houseRulesService.findAllWithUserContext(query, req.user);
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      return this.houseRulesService.search(query, req.user._id);
-    } else {
-      return this.houseRulesService.searchPublic(query);
-    }
+    return this.houseRulesService.searchWithUserContext(query, req.user);
   }
 
   @Get(':id')
   @ResponseMessage('Lấy quy tắc nhà thành công')
-  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      return this.houseRulesService.findOne(id, req.user._id);
-    } else {
-      const results = await this.houseRulesService.findAll(
-        { _id: id, isDeleted: false },
-        { limit: 1 },
-      );
-      if (!results || results.length === 0) {
-        throw new NotFoundException('House rule not found or not available');
-      }
-      return results[0];
-    }
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.houseRulesService.findOneWithUserContext(id, req.user);
   }
 
   @Put(':id')

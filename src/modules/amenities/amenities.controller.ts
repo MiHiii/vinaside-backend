@@ -8,7 +8,6 @@ import {
   Put,
   Req,
   Query,
-  NotFoundException,
 } from '@nestjs/common';
 import { AmenitiesService } from './amenities.service';
 import { CreateAmenityDto } from './dto/create-amenity.dto';
@@ -43,47 +42,21 @@ export class AmenitiesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (req.user?.role === 'host') {
-      const userQuery = { ...query, createdBy: req.user._id };
-      return this.amenitiesService.findAll(userQuery);
-    } else {
-      const publicQuery = { ...query, isDeleted: false };
-      return this.amenitiesService.findAll(publicQuery);
-    }
+    return this.amenitiesService.findAllWithUserContext(query, req.user);
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm tiện ích thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      return this.amenitiesService.search(query, req.user._id);
-    } else {
-      return this.amenitiesService.search(query, undefined, {
-        isDeleted: false,
-      });
-    }
+    return this.amenitiesService.searchWithUserContext(query, req.user);
   }
 
   @Get(':id')
   @Public()
   @ResponseMessage('Lấy tiện ích thành công')
-  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    if (req.user?.role === 'host') {
-      // Host xem amenity của mình
-      return this.amenitiesService.findOne(id, req.user._id);
-    } else {
-      const results = await this.amenitiesService.findAll(
-        { _id: id, isDeleted: false },
-        { limit: 1 },
-      );
-
-      if (!results || results.length === 0) {
-        throw new NotFoundException('Amenity not found or not available');
-      }
-
-      return results[0];
-    }
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.amenitiesService.findOneWithUserContext(id, req.user);
   }
 
   @Put(':id')
