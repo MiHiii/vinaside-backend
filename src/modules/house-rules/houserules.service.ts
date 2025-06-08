@@ -159,7 +159,7 @@ export class HouseRulesService {
       user._id,
       true, // includeDeleted = true
     );
-    
+
     if (!existingRule || !existingRule.isDeleted) {
       throw new NotFoundException(
         'Không tìm thấy quy tắc nhà, chưa bị xóa hoặc bạn không có quyền khôi phục',
@@ -199,7 +199,7 @@ export class HouseRulesService {
     if (!query?.trim()) return [];
 
     const additionalFilters: FilterQuery<HouseRuleDocument> = {
-      isDeleted: { $ne: true }
+      isDeleted: { $ne: true },
     };
 
     try {

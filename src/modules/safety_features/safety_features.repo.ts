@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, PopulateOptions, UpdateQuery } from 'mongoose';
-import { SafetyFeature, SafetyFeatureDocument } from './schemas/safety_feature.schema';
+import {
+  SafetyFeature,
+  SafetyFeatureDocument,
+} from './schemas/safety_feature.schema';
 
 @Injectable()
 export class SafetyFeaturesRepo {
   constructor(
-    @InjectModel(SafetyFeature.name) private safetyFeatureModel: Model<SafetyFeature>,
+    @InjectModel(SafetyFeature.name)
+    private safetyFeatureModel: Model<SafetyFeature>,
   ) {}
 
   /**
@@ -206,4 +210,4 @@ export class SafetyFeaturesRepo {
   async count(filter: FilterQuery<SafetyFeature> = {}): Promise<number> {
     return this.safetyFeatureModel.countDocuments(filter).exec();
   }
-} 
+}

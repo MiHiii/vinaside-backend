@@ -77,10 +77,7 @@ export class AmenitiesService {
   async findOne(id: string, userId?: string) {
     if (userId) {
       // Kiểm tra ownership cho host
-      const amenity = await this.amenitiesRepo.findByIdAndCreatedBy(
-        id,
-        userId,
-      );
+      const amenity = await this.amenitiesRepo.findByIdAndCreatedBy(id, userId);
       if (!amenity) {
         throw new NotFoundException(
           'Không tìm thấy tiện ích hoặc bạn không có quyền truy cập',
@@ -158,14 +155,14 @@ export class AmenitiesService {
    */
   async restore(id: string, user: JwtPayload) {
     this.validateHost(user);
-    
+
     // Kiểm tra ownership cho deleted record
     const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
       id,
       user._id,
       true, // includeDeleted = true
     );
-    
+
     if (!existingAmenity || !existingAmenity.isDeleted) {
       throw new NotFoundException(
         'Không tìm thấy tiện ích, chưa bị xóa hoặc bạn không có quyền khôi phục',
