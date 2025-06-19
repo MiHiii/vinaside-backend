@@ -26,6 +26,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { ListingModule } from './modules/listing/listing.module';
 import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { SafetyFeaturesModule } from './modules/safety_features/safety_features.module';
+import { LocationModule } from './modules/location/location.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { SafetyFeaturesModule } from './modules/safety_features/safety_features.
     ListingModule,
     AmenitiesModule,
     SafetyFeaturesModule,
+    LocationModule,
   ],
   controllers: [AppController],
   providers: [

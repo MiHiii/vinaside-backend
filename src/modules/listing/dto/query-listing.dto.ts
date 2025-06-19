@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   IsEnum,
   IsNumber,
@@ -10,7 +10,6 @@ import {
   IsMongoId,
   Min,
   Max,
-  ValidateNested,
 } from 'class-validator';
 import {
   PropertyType,
@@ -18,35 +17,15 @@ import {
   CancelPolicy,
 } from '../schemas/listing.schema';
 
-class GeoFilterDto {
-  @IsNumber()
-  lat: number;
-
-  @IsNumber()
-  lng: number;
-
-  @IsNumber()
-  @Min(0)
-  distance: number; // in kilometers
-}
-
-class PriceRangeDto {
-  @IsNumber()
-  @Min(0)
-  min: number;
-
-  @IsNumber()
-  @Min(0)
-  max: number;
-}
-
 export class QueryListingDto {
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   @Max(100)
@@ -62,11 +41,22 @@ export class QueryListingDto {
 
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
   includeDeleted?: boolean = false;
 
   @IsOptional()
   @IsString()
   keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  place_id?: string;
 
   @IsOptional()
   @IsMongoId()
@@ -85,36 +75,55 @@ export class QueryListingDto {
   cancel_policy?: CancelPolicy;
 
   @IsOptional()
-  @Type(() => GeoFilterDto)
-  @ValidateNested()
-  geo?: GeoFilterDto;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  priceFrom?: number;
 
   @IsOptional()
-  @Type(() => PriceRangeDto)
-  @ValidateNested()
-  price?: PriceRangeDto;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  priceTo?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   min_guests?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(1)
   min_beds?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0.5)
   min_bathrooms?: number;
 
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
   allow_pets?: boolean;
 
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
   allow_infants?: boolean;
 
   @IsOptional()
@@ -139,5 +148,35 @@ export class QueryListingDto {
 
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
   is_verified?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  guests?: number;
+
+  // Flat geo parameters for search compatibility
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  lat?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  lng?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  distance?: number;
 }
