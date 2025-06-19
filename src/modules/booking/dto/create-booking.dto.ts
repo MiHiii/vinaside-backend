@@ -1,69 +1,55 @@
+import { Type } from 'class-transformer';
 import {
-  IsNotEmpty,
   IsDateString,
   IsNumber,
   IsOptional,
-  Min,
-  IsMongoId,
-  IsEnum,
   IsString,
-  IsPositive,
+  IsMongoId,
+  IsEmail,
+  Min,
+  IsNotEmpty,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import { BookingStatus, PaymentStatus } from '../schemas/booking.schema';
 
 export class CreateBookingDto {
-  @IsNotEmpty()
   @IsMongoId()
-  guestId: string;
+  listing_id: string;
 
-  @IsNotEmpty()
-  @IsMongoId()
-  hostId: string;
-
-  @IsNotEmpty()
-  @IsMongoId()
-  listingId: string;
-
-  @IsNotEmpty()
   @IsDateString()
-  checkIn: string;
+  check_in_date: string;
 
-  @IsNotEmpty()
   @IsDateString()
-  checkOut: string;
+  check_out_date: string;
 
-  @IsNotEmpty()
   @IsNumber()
-  @IsPositive()
   @Type(() => Number)
-  totalPrice: number;
+  @Min(1)
+  guests: number;
 
-  @IsOptional()
   @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
   @Min(0)
-  @Type(() => Number)
-  commissionRate?: number = 0.1;
+  infants?: number = 0;
 
-  @IsOptional()
-  @IsNumber()
-  @IsPositive()
-  @Type(() => Number)
-  finalPayoutAmount?: number;
-
-  @IsOptional()
   @IsString()
-  guestNote?: string;
-
   @IsOptional()
-  @IsMongoId()
-  paymentId?: string;
+  @IsNotEmpty()
+  guest_name?: string;
 
+  @IsEmail()
   @IsOptional()
-  @IsEnum(PaymentStatus)
-  paymentStatus?: PaymentStatus;
+  guest_email?: string;
 
+  @IsString()
   @IsOptional()
-  @IsEnum(BookingStatus)
-  status?: BookingStatus;
+  @IsNotEmpty()
+  guest_phone?: string;
+
+  @IsString()
+  @IsOptional()
+  special_requests?: string;
+
+  @IsString()
+  @IsOptional()
+  payment_method?: string;
 }

@@ -1,119 +1,68 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export enum BookingStatus {
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
   CANCELLED = 'cancelled',
-  CHECKED_IN = 'checked_in',
-  CHECKED_OUT = 'checked_out',
   COMPLETED = 'completed',
-  NO_SHOW = 'no_show',
+  REJECTED = 'rejected',
 }
 
 export enum PaymentStatus {
   PENDING = 'pending',
   PAID = 'paid',
+  REFUNDED = 'refunded',
   FAILED = 'failed',
 }
 
-export enum PayoutStatus {
-  HOLD = 'hold',
-  PROCESSING = 'processing',
-  PAID = 'paid',
-  REJECTED = 'rejected',
-  MANUAL_REQUESTED = 'manual_requested',
-}
-
-export enum RefundStatus {
-  REQUESTED = 'requested',
-  PROCESSING = 'processing',
-  REFUNDED = 'refunded',
-  REJECTED = 'rejected',
-}
-
-@Schema({ timestamps: true })
+@Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
 export class Booking extends Document {
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  })
-  guestId: MongooseSchema.Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
+  guest_id: Types.ObjectId;
 
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  })
-  hostId: MongooseSchema.Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
+  host_id: Types.ObjectId;
 
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'Room',
-    required: true,
-  })
-  listingId: MongooseSchema.Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Listing', required: true })
+  listing_id: Types.ObjectId;
 
   @Prop({ required: true })
-  checkIn: Date;
+  check_in_date: Date;
 
   @Prop({ required: true })
-  checkOut: Date;
+  check_out_date: Date;
+
+  @Prop({ required: true, min: 1 })
+  guests: number;
+
+  @Prop({ default: 0, min: 0 })
+  infants: number;
+
+  @Prop({ required: true, min: 1 })
+  nights: number;
 
   @Prop({ required: true, min: 0 })
-  totalPrice: number;
+  price_per_night: number;
 
+  @Prop({ required: true, min: 0 })
+  total_price: number;
+
+  @Prop({ default: 0, min: 0 })
+  service_fee: number;
+
+  @Prop({ default: 0, min: 0 })
+  tax_amount: number;
+
+  @Prop({ required: true, min: 0 })
+  final_amount: number;
+
+  // Commission and payout fields
   @Prop({ required: true, default: 0.1 })
   commissionRate: number;
 
   @Prop({ required: true, min: 0 })
   finalPayoutAmount: number;
-
-  @Prop()
-  guestNote: string;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'Transaction',
-  })
-  paymentId: MongooseSchema.Types.ObjectId;
-
-  @Prop({
-    type: String,
-    enum: PaymentStatus,
-    default: PaymentStatus.PENDING,
-  })
-  paymentStatus: PaymentStatus;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'Transaction',
-  })
-  payoutId: MongooseSchema.Types.ObjectId;
-
-  @Prop({
-    type: String,
-    enum: PayoutStatus,
-    default: PayoutStatus.HOLD,
-  })
-  payoutStatus: PayoutStatus;
-
-  @Prop()
-  payoutNote: string;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'Transaction',
-  })
-  refundId: MongooseSchema.Types.ObjectId;
-
-  @Prop({
-    type: String,
-    enum: RefundStatus,
-    default: null,
-  })
-  refundStatus: RefundStatus;
 
   @Prop({
     type: String,
@@ -122,22 +71,70 @@ export class Booking extends Document {
   })
   status: BookingStatus;
 
+  @Prop({
+    type: String,
+    enum: PaymentStatus,
+    default: PaymentStatus.PENDING,
+  })
+  payment_status: PaymentStatus;
+
+  @Prop()
+  payment_method?: string;
+
+  @Prop()
+  payment_id?: string;
+
+  @Prop({ required: true })
+  guest_name: string;
+
+  @Prop({ required: true })
+  guest_email: string;
+
+  @Prop()
+  guest_phone?: string;
+
+  @Prop()
+  special_requests?: string;
+
+  @Prop()
+  cancellation_reason?: string;
+
+  @Prop()
+  cancelled_at?: Date;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  cancelled_by?: Types.ObjectId;
+
   @Prop({ default: false })
   isDeleted: boolean;
 
-  createdAt: Date;
-  updatedAt: Date;
+  @Prop({ type: Date })
+  created_at: Date;
+
+  @Prop({ type: Date })
+  updated_at: Date;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  createdBy?: Types.ObjectId;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  updatedBy?: Types.ObjectId;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  deletedBy?: Types.ObjectId;
+
+  @Prop({ type: Date })
+  deletedAt?: Date;
 }
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 
-// Thêm index để tăng tốc độ truy vấn
-BookingSchema.index({ guestId: 1 });
-BookingSchema.index({ hostId: 1 });
-BookingSchema.index({ listingId: 1 });
-BookingSchema.index({ checkIn: 1, checkOut: 1 });
+// Thêm index cho các trường tìm kiếm phổ biến
+BookingSchema.index({ guest_id: 1 });
+BookingSchema.index({ host_id: 1 });
+BookingSchema.index({ listing_id: 1 });
 BookingSchema.index({ status: 1 });
-BookingSchema.index({ paymentStatus: 1 });
-BookingSchema.index({ payoutStatus: 1 });
+BookingSchema.index({ payment_status: 1 });
+BookingSchema.index({ check_in_date: 1, check_out_date: 1 });
 BookingSchema.index({ isDeleted: 1 });
-BookingSchema.index({ createdAt: 1 });
+BookingSchema.index({ created_at: -1 });

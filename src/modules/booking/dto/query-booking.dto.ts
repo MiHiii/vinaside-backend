@@ -1,49 +1,61 @@
+import { Type, Transform } from 'class-transformer';
 import {
-  IsOptional,
-  IsDateString,
-  IsNumber,
   IsEnum,
-  IsMongoId,
-  IsBoolean,
-  Min,
+  IsNumber,
+  IsOptional,
   IsString,
+  IsBoolean,
+  IsDateString,
+  IsMongoId,
+  Min,
+  Max,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import {
-  BookingStatus,
-  PaymentStatus,
-  PayoutStatus,
-  RefundStatus,
-} from '../schemas/booking.schema';
+import { BookingStatus, PaymentStatus } from '../schemas/booking.schema';
 
 export class QueryBookingDto {
   @IsOptional()
-  @IsMongoId()
-  guestId?: string;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  limit?: number = 10;
+
+  @IsOptional()
+  @IsString()
+  sortBy?: string = 'created_at';
+
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
+  includeDeleted?: boolean = false;
 
   @IsOptional()
   @IsMongoId()
-  hostId?: string;
+  guest_id?: string;
 
   @IsOptional()
   @IsMongoId()
-  listingId?: string;
+  host_id?: string;
 
   @IsOptional()
-  @IsDateString()
-  checkInFrom?: string;
-
-  @IsOptional()
-  @IsDateString()
-  checkInTo?: string;
-
-  @IsOptional()
-  @IsDateString()
-  checkOutFrom?: string;
-
-  @IsOptional()
-  @IsDateString()
-  checkOutTo?: string;
+  @IsMongoId()
+  listing_id?: string;
 
   @IsOptional()
   @IsEnum(BookingStatus)
@@ -51,38 +63,45 @@ export class QueryBookingDto {
 
   @IsOptional()
   @IsEnum(PaymentStatus)
-  paymentStatus?: PaymentStatus;
+  payment_status?: PaymentStatus;
 
   @IsOptional()
-  @IsEnum(PayoutStatus)
-  payoutStatus?: PayoutStatus;
+  @IsDateString()
+  check_in_from?: string;
 
   @IsOptional()
-  @IsEnum(RefundStatus)
-  refundStatus?: RefundStatus;
+  @IsDateString()
+  check_in_to?: string;
 
   @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
-  includeDeleted?: boolean;
+  @IsDateString()
+  check_out_from?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(1)
+  @IsDateString()
+  check_out_to?: string;
+
+  @IsOptional()
   @Type(() => Number)
-  page?: number = 1;
+  @IsNumber()
+  @Min(0)
+  amount_from?: number;
 
   @IsOptional()
-  @IsNumber()
-  @Min(1)
   @Type(() => Number)
-  limit?: number = 10;
+  @IsNumber()
+  @Min(0)
+  amount_to?: number;
 
   @IsOptional()
   @IsString()
-  sortBy?: string = 'createdAt';
+  guest_name?: string;
 
   @IsOptional()
   @IsString()
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  guest_email?: string;
+
+  @IsOptional()
+  @IsString()
+  guest_phone?: string;
 }
