@@ -93,9 +93,10 @@ export class MessagesGateway
         is_read: MessageStatus.SENT,
       });
 
-      const populatedMessage = await this.messagesService.findOne(
-        (message as { _id: { toString: () => string } })._id.toString(),
-      );
+      const messageId = (message && typeof message === 'object' && '_id' in message && typeof message._id === 'object' && typeof message._id!.toString === 'function')
+        ? message._id!.toString()
+        : '';
+      const populatedMessage = await this.messagesService.findOne(messageId);
 
       const formattedMessage = populatedMessage && {
         _id: populatedMessage._id?.toString(),
@@ -124,7 +125,7 @@ export class MessagesGateway
       // Đánh dấu là delivered nếu receiver online
       if (this.isUserOnline(data.receiver_id)) {
         await this.messagesService.update(
-          (message as { _id: { toString: () => string } })._id.toString(),
+          messageId,
           {
             is_read: MessageStatus.DELIVERED,
           },

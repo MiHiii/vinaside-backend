@@ -35,7 +35,8 @@ export class MessagesController {
    */
   @Get()
   async findAll() {
-    return await this.messagesService.findAll();
+    const messages = await this.messagesService.findAll();
+    return Array.isArray(messages) ? messages : [];
   }
 
   /**
