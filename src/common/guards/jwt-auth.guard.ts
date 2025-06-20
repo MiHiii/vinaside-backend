@@ -18,6 +18,19 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getHandler(),
       context.getClass(),
     ]);
+
+    // Check if the request is for WebSocket
+    const request: unknown = context.switchToHttp().getRequest();
+    if (
+      typeof request === 'object' &&
+      request !== null &&
+      'url' in request &&
+      typeof (request as { url?: unknown }).url === 'string' &&
+      (request as { url: string }).url.includes('/socket.io/')
+    ) {
+      return true;
+    }
+
     if (isPublic) {
       return true;
     }

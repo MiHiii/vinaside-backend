@@ -26,8 +26,8 @@ import { UploadModule } from './modules/upload/upload.module';
 import { ListingModule } from './modules/listing/listing.module';
 import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { SafetyFeaturesModule } from './modules/safety_features/safety_features.module';
+import { MessagesModule } from './modules/messages/messages.module';
 import { LocationModule } from './modules/location/location.module';
-
 @Module({
   imports: [
     MongooseConfigModule,
@@ -59,6 +59,7 @@ import { LocationModule } from './modules/location/location.module';
     ListingModule,
     AmenitiesModule,
     SafetyFeaturesModule,
+    MessagesModule,
     LocationModule,
   ],
   controllers: [AppController],
