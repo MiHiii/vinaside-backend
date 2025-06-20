@@ -97,23 +97,22 @@ export class MessagesGateway
         (message as { _id: { toString: () => string } })._id.toString(),
       );
 
-      const formattedMessage =
-        populatedMessage && {
-          _id: populatedMessage._id?.toString(),
-          content: populatedMessage.content,
-          senderId:
-            typeof populatedMessage.sender_id === 'object'
-              ? populatedMessage.sender_id._id?.toString()
-              : populatedMessage.sender_id,
-          receiverId:
-            typeof populatedMessage.receiver_id === 'object'
-              ? populatedMessage.receiver_id._id?.toString()
-              : populatedMessage.receiver_id,
-          sent_at: populatedMessage.sent_at
-            ? new Date(populatedMessage.sent_at).toISOString()
-            : null,
-          is_read: populatedMessage.is_read,
-        };
+      const formattedMessage = populatedMessage && {
+        _id: populatedMessage._id?.toString(),
+        content: populatedMessage.content,
+        senderId:
+          typeof populatedMessage.sender_id === 'object'
+            ? populatedMessage.sender_id._id?.toString()
+            : populatedMessage.sender_id,
+        receiverId:
+          typeof populatedMessage.receiver_id === 'object'
+            ? populatedMessage.receiver_id._id?.toString()
+            : populatedMessage.receiver_id,
+        sent_at: populatedMessage.sent_at
+          ? new Date(populatedMessage.sent_at).toISOString()
+          : null,
+        is_read: populatedMessage.is_read,
+      };
 
       // Gửi lại cho người gửi
       client.emit('message_sent', formattedMessage);

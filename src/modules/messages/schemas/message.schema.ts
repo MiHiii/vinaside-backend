@@ -4,7 +4,7 @@ import { Document, Types } from 'mongoose';
 export enum MessageStatus {
   SENT = 'sent',
   DELIVERED = 'delivered',
-  READ = 'read'
+  READ = 'read',
 }
 
 @Schema({ timestamps: true })

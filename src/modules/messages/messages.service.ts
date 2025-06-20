@@ -16,7 +16,9 @@ export class MessagesService {
       ...createMessageDto,
       sent_at: new Date(),
     });
-    const savedMessage = await createdMessage.save() as Message & { _id: Types.ObjectId };
+    const savedMessage = (await createdMessage.save()) as Message & {
+      _id: Types.ObjectId;
+    };
     return savedMessage;
   }
 
@@ -43,8 +45,8 @@ export class MessagesService {
       .find({
         $or: [
           { sender_id: userId1, receiver_id: userId2 },
-          { sender_id: userId2, receiver_id: userId1 }
-        ]
+          { sender_id: userId2, receiver_id: userId1 },
+        ],
       })
       .populate('sender_id', 'username email')
       .populate('receiver_id', 'username email')
@@ -58,12 +60,12 @@ export class MessagesService {
         $match: {
           $or: [
             { sender_id: new Types.ObjectId(userId) },
-            { receiver_id: new Types.ObjectId(userId) }
-          ]
-        }
+            { receiver_id: new Types.ObjectId(userId) },
+          ],
+        },
       },
       {
-        $sort: { sent_at: -1 }
+        $sort: { sent_at: -1 },
       },
       {
         $group: {
@@ -71,8 +73,8 @@ export class MessagesService {
             $cond: [
               { $eq: ['$sender_id', new Types.ObjectId(userId)] },
               '$receiver_id',
-              '$sender_id'
-            ]
+              '$sender_id',
+            ],
           },
           lastMessage: { $first: '$$ROOT' },
           unreadCount: {
@@ -81,43 +83,46 @@ export class MessagesService {
                 {
                   $and: [
                     { $eq: ['$receiver_id', new Types.ObjectId(userId)] },
-                    { $ne: ['$is_read', MessageStatus.READ] }
-                  ]
+                    { $ne: ['$is_read', MessageStatus.READ] },
+                  ],
                 },
                 1,
-                0
-              ]
-            }
-          }
-        }
+                0,
+              ],
+            },
+          },
+        },
       },
       {
         $lookup: {
           from: 'users',
           localField: '_id',
           foreignField: '_id',
-          as: 'user'
-        }
+          as: 'user',
+        },
       },
       {
-        $unwind: '$user'
+        $unwind: '$user',
       },
       {
         $project: {
           user: { username: 1, email: 1, avatar: 1 },
           lastMessage: 1,
-          unreadCount: 1
-        }
+          unreadCount: 1,
+        },
       },
       {
-        $sort: { 'lastMessage.sent_at': -1 }
-      }
+        $sort: { 'lastMessage.sent_at': -1 },
+      },
     ]);
 
     return conversations;
   }
 
-  async update(id: string, updateMessageDto: UpdateMessageDto): Promise<Message | null> {
+  async update(
+    id: string,
+    updateMessageDto: UpdateMessageDto,
+  ): Promise<Message | null> {
     return await this.messageModel
       .findByIdAndUpdate(id, updateMessageDto, { new: true })
       .populate('sender_id', 'username email')
@@ -130,20 +135,23 @@ export class MessagesService {
       .findByIdAndUpdate(
         messageId,
         { is_read: MessageStatus.READ },
-        { new: true }
+        { new: true },
       )
       .exec();
   }
 
-  async markConversationAsRead(userId: string, otherUserId: string): Promise<void> {
+  async markConversationAsRead(
+    userId: string,
+    otherUserId: string,
+  ): Promise<void> {
     await this.messageModel
       .updateMany(
         {
           sender_id: otherUserId,
           receiver_id: userId,
-          is_read: { $ne: MessageStatus.READ }
+          is_read: { $ne: MessageStatus.READ },
         },
-        { is_read: MessageStatus.READ }
+        { is_read: MessageStatus.READ },
       )
       .exec();
   }
@@ -156,7 +164,7 @@ export class MessagesService {
     return await this.messageModel
       .countDocuments({
         receiver_id: userId,
-        is_read: { $ne: MessageStatus.READ }
+        is_read: { $ne: MessageStatus.READ },
       })
       .exec();
   }

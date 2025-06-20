@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  BadRequestException,
+  UseGuards,
+} from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
@@ -86,7 +97,10 @@ export class MessagesController {
    * @body updateMessageDto Dữ liệu cập nhật
    */
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() updateMessageDto: UpdateMessageDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateMessageDto: UpdateMessageDto,
+  ) {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid message ID');
     }
@@ -115,7 +129,10 @@ export class MessagesController {
     @Query('userId') userId: string,
     @Query('otherUserId') otherUserId: string,
   ) {
-    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(otherUserId)) {
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(otherUserId)
+    ) {
       throw new BadRequestException('Invalid user ID');
     }
     await this.messagesService.markConversationAsRead(userId, otherUserId);

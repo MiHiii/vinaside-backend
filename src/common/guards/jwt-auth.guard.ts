@@ -20,8 +20,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
 
     // Check if the request is for WebSocket
-    const request = context.switchToHttp().getRequest();
-    if (request?.url?.includes('/socket.io/')) {
+    const request: unknown = context.switchToHttp().getRequest();
+    if (
+      typeof request === 'object' &&
+      request !== null &&
+      'url' in request &&
+      typeof (request as { url?: unknown }).url === 'string' &&
+      (request as { url: string }).url.includes('/socket.io/')
+    ) {
       return true;
     }
 

@@ -30,4 +30,4 @@ export class ConversationDto {
   };
   lastMessage: MessageResponseDto;
   unreadCount: number;
-} 
+}
