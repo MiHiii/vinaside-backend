@@ -15,6 +15,18 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { MessageStatus } from './schemas/message.schema';
+
+interface SafeMessage {
+  _id: string;
+  sender_id: Types.ObjectId;
+  receiver_id: Types.ObjectId;
+  content: string;
+  sent_at: Date;
+  is_read: MessageStatus;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard)
@@ -34,9 +46,9 @@ export class MessagesController {
    * Lấy tất cả tin nhắn (chỉ dùng cho mục đích quản trị hoặc debug)
    */
   @Get()
-  async findAll(): Promise<unknown[]> {
+  async findAll(): Promise<SafeMessage[]> {
     const messages = await this.messagesService.findAll();
-    return Array.isArray(messages) ? (messages as unknown[]) : [];
+    return Array.isArray(messages) ? (messages as unknown as SafeMessage[]) : [];
   }
 
   /**
