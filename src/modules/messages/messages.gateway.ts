@@ -43,8 +43,9 @@ export class MessagesGateway
   handleConnection(client: Socket): void {
     this.logger.log(`Client connected: ${client.id}`);
     // ✅ Nếu frontend gửi token, ta có thể decode và join luôn room
-    const { userId } = client.handshake.auth;
-    if (userId) {
+    const auth = client.handshake.auth;
+    if (auth && typeof auth === 'object' && 'userId' in auth && typeof auth.userId === 'string') {
+      const userId = auth.userId;
       this.connectedUsers.set(userId, {
         userId,
         socketId: client.id,
@@ -93,9 +94,15 @@ export class MessagesGateway
         is_read: MessageStatus.SENT,
       });
 
-      const messageId = (message && typeof message === 'object' && '_id' in message && typeof message._id === 'object' && typeof message._id!.toString === 'function')
-        ? message._id!.toString()
-        : '';
+      const messageId =
+        message &&
+        typeof message === 'object' &&
+        '_id' in message &&
+        typeof message._id === 'object' &&
+        message._id &&
+        typeof (message._id as any).toString === 'function'
+          ? (message._id as any).toString()
+          : '';
       const populatedMessage = await this.messagesService.findOne(messageId);
 
       const formattedMessage = populatedMessage && {
@@ -124,21 +131,20 @@ export class MessagesGateway
 
       // Đánh dấu là delivered nếu receiver online
       if (this.isUserOnline(data.receiver_id)) {
-        await this.messagesService.update(
-          messageId,
-          {
-            is_read: MessageStatus.DELIVERED,
-          },
-        );
+        await this.messagesService.update(messageId, {
+          is_read: MessageStatus.DELIVERED,
+        });
       }
 
       this.logger.log(
         `Message sent from ${data.sender_id} to ${data.receiver_id}`,
       );
       return { success: true, message: formattedMessage };
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Error sending message:', error);
-      return { success: false, error: error.message };
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: errorMessage };
     }
   }
 

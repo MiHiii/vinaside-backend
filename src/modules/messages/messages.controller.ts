@@ -34,7 +34,7 @@ export class MessagesController {
    * Lấy tất cả tin nhắn (chỉ dùng cho mục đích quản trị hoặc debug)
    */
   @Get()
-  async findAll() {
+  async findAll(): Promise<unknown[]> {
     const messages = await this.messagesService.findAll();
     return Array.isArray(messages) ? messages : [];
   }
