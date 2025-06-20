@@ -111,7 +111,8 @@ export const updateNestedObjectParser = (
   for (const k of Object.keys(obj)) {
     const value = obj[k];
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      const response = updateNestedObjectParser(value);
+      const valueAsRecord = value as Record<string, any>;
+      const response = updateNestedObjectParser(valueAsRecord);
       for (const a of Object.keys(response)) {
         final[`${k}.${a}`] = response[a];
       }
@@ -122,6 +123,13 @@ export const updateNestedObjectParser = (
 
   return final;
 };
+
+/**
+ * Interface cho object có method toString
+ */
+interface ToStringable {
+  toString(): string;
+}
 
 /**
  * Chuyển đổi ID thành chuỗi an toàn
@@ -139,13 +147,31 @@ export function toSafeString(id: unknown): string {
     return id;
   }
 
-  // Nếu có method toString
-  if (typeof id === 'object' && id !== null && 'toString' in id && typeof (id as any).toString === 'function') {
-    return (id as any).toString();
+  // Nếu là số
+  if (typeof id === 'number') {
+    return id.toString();
   }
 
-  // Trường hợp khác
-  return String(id);
+  // Nếu có method toString
+  if (
+    typeof id === 'object' &&
+    id !== null &&
+    'toString' in id &&
+    typeof (id as ToStringable).toString === 'function'
+  ) {
+    try {
+      return (id as ToStringable).toString();
+    } catch {
+      return '';
+    }
+  }
+
+  // Trường hợp khác - chỉ convert primitive types
+  if (typeof id === 'boolean') {
+    return String(id);
+  }
+
+  return '';
 }
 
 /**
