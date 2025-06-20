@@ -1,17 +1,21 @@
-import { IsString, IsNotEmpty, IsMongoId, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { MessageStatus } from '../schemas/message.schema';
+import { Transform } from 'class-transformer';
 
 export class CreateMessageDto {
-  @IsMongoId()
-  @IsNotEmpty()
+  @IsString()
+  @Transform(({ value, obj }) => {
+    return value || obj.senderId;
+  })
   sender_id: string;
 
-  @IsMongoId()
-  @IsNotEmpty()
+  @IsString()
+  @Transform(({ value, obj }) => {
+    return value || obj.receiverId;
+  })
   receiver_id: string;
 
   @IsString()
-  @IsNotEmpty()
   content: string;
 
   @IsOptional()

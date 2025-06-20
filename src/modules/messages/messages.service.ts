@@ -8,7 +8,7 @@ import { Message, MessageStatus } from './schemas/message.schema';
 @Injectable()
 export class MessagesService {
   constructor(
-    @InjectModel(Message.name) private messageModel: Model<Message>
+    @InjectModel(Message.name) private messageModel: Model<Message>,
   ) {}
 
   async create(createMessageDto: CreateMessageDto): Promise<Message> {
@@ -16,9 +16,11 @@ export class MessagesService {
       ...createMessageDto,
       sent_at: new Date(),
     });
-    return await createdMessage.save();
+    const savedMessage = await createdMessage.save() as Message & { _id: Types.ObjectId };
+    return savedMessage;
   }
 
+  // Các phương thức khác giữ nguyên
   async findAll(): Promise<Message[]> {
     return await this.messageModel
       .find()
