@@ -32,4 +32,15 @@ export class LocationController {
     const location = await this.googlePlacesService.getPlaceDetails(placeId);
     return { location };
   }
+
+  @Public()
+  @Get('cities')
+  @ResponseMessage('Lấy danh sách thành phố thành công')
+  async getCities(@Query('input') input: string) {
+    const suggestions = await this.googlePlacesService.autocomplete(
+      input?.trim() || '',
+      'cities',
+    );
+    return { suggestions };
+  }
 }
