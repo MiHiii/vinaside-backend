@@ -58,7 +58,9 @@ export class MessagesController {
    * @param userId ID của người dùng
    */
   @Get('conversations/:userId')
-  async getUserConversations(@Param('userId') userId: string): Promise<unknown> {
+  async getUserConversations(
+    @Param('userId') userId: string,
+  ): Promise<unknown> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }

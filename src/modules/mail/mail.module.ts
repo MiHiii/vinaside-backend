@@ -14,6 +14,7 @@ import {
 
 @Module({
   imports: [
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

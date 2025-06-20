@@ -126,7 +126,7 @@ export const updateNestedObjectParser = (
 /**
  * Chuyển đổi ID thành chuỗi an toàn
  */
-export function toSafeString(id: any): string {
+export function toSafeString(id: unknown): string {
   if (!id) return '';
 
   // Nếu là ObjectId
@@ -137,6 +137,11 @@ export function toSafeString(id: any): string {
   // Nếu là chuỗi
   if (typeof id === 'string') {
     return id;
+  }
+
+  // Nếu có method toString
+  if (typeof id === 'object' && id !== null && 'toString' in id && typeof (id as any).toString === 'function') {
+    return (id as any).toString();
   }
 
   // Trường hợp khác
