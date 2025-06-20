@@ -51,8 +51,15 @@ export class GooglePlacesService {
    */
   async autocomplete(
     input: string,
+    searchType: 'all' | 'cities' = 'all',
   ): Promise<Array<{ place_id: string; description: string }>> {
     try {
+      // Validate API key
+      if (!this.apiKey) {
+        this.logger.error('GOOGLE_PLACES_API_KEY is not configured');
+        return [];
+      }
+
       // Kiểm tra cache trong DB trước
       const cached = await this.locationModel
         .find({
@@ -70,18 +77,111 @@ export class GooglePlacesService {
       }
 
       // Nếu chưa có → gọi Google Places API
-      this.logger.log(`Calling Google Places API for: ${input}`);
+      this.logger.log(
+        `Calling Google Places API for: ${input} (type: ${searchType})`,
+      );
+
+      // Build params based on search type
+      const baseParams = {
+        input,
+        key: this.apiKey,
+        language: 'vi',
+        components: 'country:vn',
+      };
+
+      const params =
+        searchType === 'cities'
+          ? { ...baseParams, types: '(cities)' } // Chỉ tìm cities
+          : { ...baseParams, types: 'geocode' }; // Tìm tất cả địa điểm
+
       const response = await axios.get<GooglePlacesResponse>(this.baseUrl, {
-        params: {
-          input,
-          key: this.apiKey,
-          types: '(cities)',
-          language: 'vi',
-          components: 'country:vn',
-        },
+        params,
       });
 
+      this.logger.log(
+        `Google Places API response status: ${response.data.status}`,
+      );
+      this.logger.log(
+        `Google Places API predictions count: ${response.data.predictions?.length || 0}`,
+      );
+
+      // Log raw response để debug
+      if (response.data.status !== 'OK') {
+        this.logger.warn(`Google Places API Status: ${response.data.status}`);
+        this.logger.warn(
+          `Google Places API Error: ${JSON.stringify(response.data)}`,
+        );
+      }
+
       const predictions = response.data.predictions || [];
+
+      // Nếu không có kết quả với search strict, thử search rộng hơn
+      if (predictions.length === 0) {
+        this.logger.log(
+          `No results with strict search, trying broader search for: ${input}`,
+        );
+        const broadResponse = await axios.get<GooglePlacesResponse>(
+          this.baseUrl,
+          {
+            params: {
+              input,
+              key: this.apiKey,
+              // Bỏ types và components để search rộng hơn
+              language: 'vi',
+            },
+          },
+        );
+
+        this.logger.log(
+          `Broad search response status: ${broadResponse.data.status}`,
+        );
+        this.logger.log(
+          `Broad search predictions count: ${broadResponse.data.predictions?.length || 0}`,
+        );
+
+        // Log broad search response để debug
+        if (broadResponse.data.status !== 'OK') {
+          this.logger.warn(
+            `Broad search API Status: ${broadResponse.data.status}`,
+          );
+          this.logger.warn(
+            `Broad search API Error: ${JSON.stringify(broadResponse.data)}`,
+          );
+        }
+
+        const broadPredictions = broadResponse.data.predictions || [];
+
+        if (broadPredictions.length === 0) {
+          this.logger.warn(`No results found for input: ${input}`);
+          return [];
+        }
+
+        // Chuẩn bị data từ broad search
+        const broadLocationsToSave = broadPredictions.map(
+          (p: GooglePlacePrediction) => ({
+            place_id: p.place_id,
+            description: p.description,
+            raw: p,
+          }),
+        );
+
+        // Lưu vào DB
+        await this.locationModel
+          .insertMany(broadLocationsToSave, { ordered: false })
+          .catch((error: Error & { code?: number }) => {
+            if (error.code !== 11000) {
+              this.logger.error(
+                'Error saving broad search locations to DB:',
+                error,
+              );
+            }
+          });
+
+        return broadLocationsToSave.map(({ place_id, description }) => ({
+          place_id,
+          description,
+        }));
+      }
 
       if (predictions.length === 0) {
         return [];

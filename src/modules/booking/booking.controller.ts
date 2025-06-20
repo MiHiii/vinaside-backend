@@ -17,6 +17,7 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { BookingStatus } from './schemas/booking.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
+import { Public } from 'src/decorators/public.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -105,8 +106,9 @@ export class BookingController {
     return this.bookingService.checkAvailability(listingId, checkIn, checkOut);
   }
 
+  @Public()
   @Get('booked-dates/:listingId')
-  @Roles('guest', 'host', 'admin')
+  // @Roles('guest', 'host', 'admin')
   @ResponseMessage('Lấy ngày đã đặt thành công')
   getBookedDates(@Param('listingId') listingId: string) {
     return this.bookingService.getBookedDates(listingId);
