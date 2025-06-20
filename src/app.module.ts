@@ -26,12 +26,8 @@ import { UploadModule } from './modules/upload/upload.module';
 import { ListingModule } from './modules/listing/listing.module';
 import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { SafetyFeaturesModule } from './modules/safety_features/safety_features.module';
-<<<<<<< HEAD
 import { MessagesModule } from './modules/messages/messages.module';
-=======
 import { LocationModule } from './modules/location/location.module';
->>>>>>> bc19ce1ab0dcc095087e9cc4bf40cbab3784f531
-
 @Module({
   imports: [
     MongooseConfigModule,
@@ -63,11 +59,8 @@ import { LocationModule } from './modules/location/location.module';
     ListingModule,
     AmenitiesModule,
     SafetyFeaturesModule,
-<<<<<<< HEAD
     MessagesModule,
-=======
     LocationModule,
->>>>>>> bc19ce1ab0dcc095087e9cc4bf40cbab3784f531
   ],
   controllers: [AppController],
   providers: [

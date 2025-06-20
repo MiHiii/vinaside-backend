@@ -25,23 +25,23 @@ interface ConnectedUser {
     credentials: true,
   },
   namespace: '/ws/messages',
-  path: '/socket.io'   // ✅ thêm dòng này để khớp với client
+  path: '/socket.io', // ✅ thêm dòng này để khớp với client
 })
-
-export class MessagesGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class MessagesGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer() server: Server;
   private logger: Logger = new Logger('MessagesGateway');
   private connectedUsers: Map<string, ConnectedUser> = new Map();
 
   constructor(private readonly messagesService: MessagesService) {}
 
-  afterInit(server: Server) {
+  afterInit(): void {
     this.logger.log('WebSocket Gateway initialized');
   }
 
-  handleConnection(client: Socket, ...args: any[]) {
+  handleConnection(client: Socket): void {
     this.logger.log(`Client connected: ${client.id}`);
-
     // ✅ Nếu frontend gửi token, ta có thể decode và join luôn room
     const { userId } = client.handshake.auth;
     if (userId) {
@@ -49,13 +49,13 @@ export class MessagesGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         userId,
         socketId: client.id,
       });
-      client.join(`user_${userId}`);
+      void client.join(`user_${userId}`);
       this.server.emit('user_online', { userId });
       this.logger.log(`Auto joined user_${userId} from handshake`);
     }
   }
 
-  handleDisconnect(client: Socket) {
+  handleDisconnect(client: Socket): void {
     this.logger.log(`Client disconnected: ${client.id}`);
     for (const [userId, user] of this.connectedUsers.entries()) {
       if (user.socketId === client.id) {
@@ -67,7 +67,10 @@ export class MessagesGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage('join_room')
-  async handleJoinRoom(@MessageBody() data: { userId: string }, @ConnectedSocket() client: Socket) {
+  async handleJoinRoom(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ success: boolean; message: string }> {
     const { userId } = data;
     this.connectedUsers.set(userId, {
       userId,
@@ -80,23 +83,37 @@ export class MessagesGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @SubscribeMessage('send_message')
-  async handleSendMessage(@MessageBody() data: CreateMessageDto, @ConnectedSocket() client: Socket) {
+  async handleSendMessage(
+    @MessageBody() data: CreateMessageDto,
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ success: boolean; message?: unknown; error?: string }> {
     try {
       const message = await this.messagesService.create({
         ...data,
         is_read: MessageStatus.SENT,
       });
 
-      const populatedMessage = await this.messagesService.findOne((message as any)._id.toString());
+      const populatedMessage = await this.messagesService.findOne(
+        (message as { _id: { toString: () => string } })._id.toString(),
+      );
 
-      const formattedMessage = populatedMessage && {
-        _id: populatedMessage._id?.toString(),
-        content: populatedMessage.content,
-        senderId: typeof populatedMessage.sender_id === 'object' ? populatedMessage.sender_id._id?.toString() : populatedMessage.sender_id,
-        receiverId: typeof populatedMessage.receiver_id === 'object' ? populatedMessage.receiver_id._id?.toString() : populatedMessage.receiver_id,
-        sent_at: populatedMessage.sent_at ? new Date(populatedMessage.sent_at).toISOString() : null,
-        is_read: populatedMessage.is_read,
-      };
+      const formattedMessage =
+        populatedMessage && {
+          _id: populatedMessage._id?.toString(),
+          content: populatedMessage.content,
+          senderId:
+            typeof populatedMessage.sender_id === 'object'
+              ? populatedMessage.sender_id._id?.toString()
+              : populatedMessage.sender_id,
+          receiverId:
+            typeof populatedMessage.receiver_id === 'object'
+              ? populatedMessage.receiver_id._id?.toString()
+              : populatedMessage.receiver_id,
+          sent_at: populatedMessage.sent_at
+            ? new Date(populatedMessage.sent_at).toISOString()
+            : null,
+          is_read: populatedMessage.is_read,
+        };
 
       // Gửi lại cho người gửi
       client.emit('message_sent', formattedMessage);
@@ -107,14 +124,19 @@ export class MessagesGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       // Đánh dấu là delivered nếu receiver online
       if (this.isUserOnline(data.receiver_id)) {
-        await this.messagesService.update((message as any)._id.toString(), {
-          is_read: MessageStatus.DELIVERED,
-        });
+        await this.messagesService.update(
+          (message as { _id: { toString: () => string } })._id.toString(),
+          {
+            is_read: MessageStatus.DELIVERED,
+          },
+        );
       }
 
-      this.logger.log(`Message sent from ${data.sender_id} to ${data.receiver_id}`);
+      this.logger.log(
+        `Message sent from ${data.sender_id} to ${data.receiver_id}`,
+      );
       return { success: true, message: formattedMessage };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Error sending message:', error);
       return { success: false, error: error.message };
     }
