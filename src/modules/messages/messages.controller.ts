@@ -48,7 +48,9 @@ export class MessagesController {
   @Get()
   async findAll(): Promise<SafeMessage[]> {
     const messages = await this.messagesService.findAll();
-    return Array.isArray(messages) ? (messages as unknown as SafeMessage[]) : [];
+    return Array.isArray(messages)
+      ? (messages as unknown as SafeMessage[])
+      : [];
   }
 
   /**
@@ -56,7 +58,7 @@ export class MessagesController {
    * @param userId ID của người dùng
    */
   @Get('conversations/:userId')
-  async getUserConversations(@Param('userId') userId: string) {
+  async getUserConversations(@Param('userId') userId: string): Promise<unknown> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
