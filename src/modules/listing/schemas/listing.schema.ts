@@ -15,10 +15,12 @@ export enum CancelPolicy {
 }
 
 export enum ListingStatus {
-  ACTIVE = 'active',
-  INACTIVE = 'inactive',
-  BOOKED = 'booked',
-  MAINTENANCE = 'maintenance',
+  ACTIVE = 'active', // Phòng đang hoạt động và hiển thị
+  INACTIVE = 'inactive', // Tạm ngưng hiển thị
+  DRAFT = 'draft', // Đang tạo nhưng chưa public
+  PENDING_APPROVAL = 'pending_approval', // Chờ admin duyệt
+  VERIFIED = 'verified', // Đã kiểm duyệt
+  DELETED = 'deleted', // Đã xóa (soft delete)
 }
 
 export type Point = {

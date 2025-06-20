@@ -43,6 +43,23 @@ export const removeUndefinedObject = <T extends Record<string, any>>(
 };
 
 /**
+ * Loại bỏ các trường được chỉ định khỏi object
+ * @param obj Object cần xử lý
+ * @param fields Danh sách các trường cần loại bỏ
+ * @returns Object mới đã loại bỏ các trường được chỉ định
+ */
+export const removeFields = <T extends Record<string, any>>(
+  obj: T,
+  fields: string[],
+): Omit<T, any> => {
+  const result = { ...obj };
+  fields.forEach((field) => {
+    delete result[field];
+  });
+  return result;
+};
+
+/**
  * Chuyển đổi mảng string ids thành array ObjectId của MongoDB
  * @param arr Mảng chuỗi id
  * @returns Mảng ObjectId

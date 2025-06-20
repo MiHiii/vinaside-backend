@@ -11,8 +11,6 @@ import {
   Min,
   ArrayMinSize,
   IsNotEmpty,
-  IsLatitude,
-  IsLongitude,
 } from 'class-validator';
 import { PropertyType, CancelPolicy } from '../schemas/listing.schema';
 
@@ -23,13 +21,12 @@ class LocationDto {
 
   @IsArray()
   @ArrayMinSize(2)
-  @IsLongitude({ message: 'First coordinate must be a valid longitude' })
-  @IsLatitude({ message: 'Second coordinate must be a valid latitude' })
   coordinates: [number, number];
 }
 
 export class CreateListingDto {
   @IsMongoId()
+  @IsOptional()
   host_id: string;
 
   @IsString()

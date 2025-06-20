@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
   FilterQuery,
@@ -7,7 +11,7 @@ import {
   SortOrder,
   Types,
 } from 'mongoose';
-import { Listing } from './schemas/listing.schema';
+import { Listing, ListingStatus } from './schemas/listing.schema';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 
@@ -52,7 +56,14 @@ export class ListingRepo {
     userId?: string,
   ): Promise<Listing> {
     const createdBy = userId ? new Types.ObjectId(userId) : undefined;
-    const data = { ...createListingDto, createdBy };
+
+    // Đảm bảo host_id được gán bằng userId (người đăng nhập)
+    const data = {
+      ...createListingDto,
+      host_id: new Types.ObjectId(userId),
+      createdBy,
+    };
+
     const listing = new this.listingModel(data);
     return await listing.save();
   }
@@ -131,6 +142,42 @@ export class ListingRepo {
   }
 
   /**
+   * Tìm tất cả listings có status active
+   */
+  async findActive(
+    options: {
+      sort?: Record<string, SortOrder>;
+      limit?: number;
+      skip?: number;
+      populate?: PopulateOptions | Array<PopulateOptions>;
+    } = {},
+  ): Promise<{ data: Listing[]; total: number }> {
+    const filter: FilterQuery<Listing> = {
+      status: ListingStatus.ACTIVE,
+      isDeleted: false,
+      is_verified: true,
+    };
+
+    return await this.findAll(filter, options);
+  }
+
+  /**
+   * Tìm tất cả listings đã xóa mềm (chỉ admin)
+   */
+  async findDeleted(
+    options: {
+      sort?: Record<string, SortOrder>;
+      limit?: number;
+      skip?: number;
+      populate?: PopulateOptions | Array<PopulateOptions>;
+    } = {},
+  ): Promise<{ data: Listing[]; total: number }> {
+    const filter: FilterQuery<Listing> = { isDeleted: true };
+
+    return await this.findAll(filter, options);
+  }
+
+  /**
    * Cập nhật listing
    */
   async updateById(
@@ -166,6 +213,14 @@ export class ListingRepo {
   }
 
   /**
+   * Xóa cứng listing khỏi database (chỉ admin)
+   */
+  async forceDelete(id: string): Promise<boolean> {
+    const result = await this.listingModel.deleteOne({ _id: id }).exec();
+    return result.deletedCount > 0;
+  }
+
+  /**
    * Khôi phục listing đã xóa mềm
    */
   async restore(id: string): Promise<Listing | null> {
@@ -186,7 +241,7 @@ export class ListingRepo {
   async findByGeoLocation(
     longitude: number,
     latitude: number,
-    maxDistance: number,
+    maxDistance: number = 5000, // Mặc định 5km
     filter: FilterQuery<Listing> = {},
     options: {
       sort?: Record<string, SortOrder>;
@@ -195,20 +250,77 @@ export class ListingRepo {
       populate?: PopulateOptions | Array<PopulateOptions>;
     } = {},
   ): Promise<{ data: Listing[]; total: number }> {
-    const geoFilter: FilterQuery<Listing> = {
-      ...filter,
-      location: {
-        $near: {
-          $geometry: {
+    const { sort, limit, skip, populate } = options;
+
+    // Tạo aggregation pipeline với $geoNear
+    const pipeline: any[] = [
+      {
+        $geoNear: {
+          near: {
             type: 'Point',
             coordinates: [longitude, latitude],
           },
-          $maxDistance: maxDistance, // đơn vị: mét
+          distanceField: 'distance', // Thêm field distance vào kết quả
+          maxDistance: maxDistance, // đơn vị: mét
+          spherical: true,
+          query: filter, // Thêm filter conditions
         },
       },
-    };
+    ];
 
-    return await this.findAll(geoFilter, options);
+    // Thêm sort nếu có (sau khi đã có distance)
+    if (sort) {
+      pipeline.push({ $sort: sort });
+    } else {
+      // Mặc định sort theo distance tăng dần
+      pipeline.push({ $sort: { distance: 1 } });
+    }
+
+    // Thêm skip nếu có
+    if (skip !== undefined) {
+      pipeline.push({ $skip: skip });
+    }
+
+    // Thêm limit nếu có
+    if (limit !== undefined) {
+      pipeline.push({ $limit: limit });
+    }
+
+    // Thực hiện aggregation
+    const [data, totalResult] = await Promise.all([
+      this.listingModel.aggregate(pipeline).exec(),
+      this.listingModel
+        .aggregate([
+          {
+            $geoNear: {
+              near: {
+                type: 'Point',
+                coordinates: [longitude, latitude],
+              },
+              distanceField: 'distance',
+              maxDistance: maxDistance,
+              spherical: true,
+              query: filter,
+            },
+          },
+          { $count: 'total' },
+        ])
+        .exec(),
+    ]);
+
+    const total =
+      totalResult.length > 0 ? (totalResult[0] as { total: number }).total : 0;
+
+    // Populate nếu cần
+    let populatedData: Listing[] = data as Listing[];
+    if (populate) {
+      populatedData = (await this.listingModel.populate(
+        data,
+        populate,
+      )) as Listing[];
+    }
+
+    return { data: populatedData, total };
   }
 
   /**
@@ -237,6 +349,97 @@ export class ListingRepo {
     };
 
     return await this.findAll(searchFilter, options);
+  }
+
+  /**
+   * Tìm kiếm nâng cao với nhiều tiêu chí
+   */
+  async advancedSearch(
+    searchParams: {
+      keyword?: string;
+      priceFrom?: number;
+      priceTo?: number;
+      property_type?: string;
+      guests?: number;
+      amenities?: string[];
+      location?: { lng: number; lat: number; radius?: number };
+      [key: string]: unknown;
+    },
+    options: {
+      sort?: Record<string, SortOrder>;
+      limit?: number;
+      skip?: number;
+      populate?: PopulateOptions | Array<PopulateOptions>;
+    } = {},
+  ): Promise<{ data: Listing[]; total: number }> {
+    const { keyword, priceFrom, priceTo, location, ...otherParams } =
+      searchParams;
+
+    // Tạo filter cơ bản
+    const filter: FilterQuery<Listing> = {
+      isDeleted: false,
+      status: ListingStatus.ACTIVE,
+    };
+
+    // Thêm điều kiện lọc theo giá
+    if (priceFrom !== undefined || priceTo !== undefined) {
+      const priceFilter: Record<string, number> = {};
+
+      if (priceFrom !== undefined) {
+        priceFilter.$gte = priceFrom;
+      }
+
+      if (priceTo !== undefined) {
+        priceFilter.$lte = priceTo;
+      }
+
+      filter.price_per_night = priceFilter;
+    }
+
+    // Thêm các tiêu chí khác
+    Object.keys(otherParams).forEach((key) => {
+      const value = otherParams[key];
+      if (value !== undefined) {
+        if (key === 'guests') {
+          filter.max_guests = { $gte: Number(value) };
+        } else if (
+          key === 'amenities' &&
+          Array.isArray(value) &&
+          value.length > 0
+        ) {
+          filter.amenities = {
+            $all: value.map((id) => new Types.ObjectId(String(id))),
+          };
+        } else if (value !== null && value !== '') {
+          // Sử dụng assertion cụ thể để TypeScript hiểu
+          (filter as Record<string, unknown>)[key] = value;
+        }
+      }
+    });
+
+    // Xử lý tìm kiếm theo vị trí địa lý nếu có
+    if (location && location.lng !== undefined && location.lat !== undefined) {
+      return await this.findByGeoLocation(
+        location.lng,
+        location.lat,
+        location.radius ? location.radius * 1000 : 5000, // Mặc định 5km
+        filter,
+        options,
+      );
+    }
+
+    // Xử lý tìm kiếm theo từ khóa nếu có
+    if (keyword) {
+      return await this.search(
+        keyword,
+        ['title', 'description', 'address', 'building_name'],
+        filter,
+        options,
+      );
+    }
+
+    // Tìm kiếm thông thường
+    return await this.findAll(filter, options);
   }
 
   /**
@@ -357,5 +560,42 @@ export class ListingRepo {
     }
 
     return query;
+  }
+
+  /**
+   * Kiểm tra quyền truy cập vào listing
+   * @param listingId ID của listing cần kiểm tra
+   * @param userId ID của người dùng
+   * @param role Vai trò của người dùng
+   * @returns Đối tượng listing nếu có quyền, hoặc throw Exception nếu không có quyền
+   */
+  async checkPermission(
+    listingId: string,
+    userId: string,
+    role: string,
+  ): Promise<Listing> {
+    const listing = await this.findById(listingId);
+
+    if (!listing) {
+      throw new NotFoundException(`Không tìm thấy listing với ID ${listingId}`);
+    }
+
+    // Nếu là admin thì luôn có quyền
+    if (role === 'admin') {
+      return listing;
+    }
+
+    // Nếu là host, kiểm tra xem có phải chủ sở hữu không
+    if (role === 'host') {
+      if (listing.host_id.toString() !== userId) {
+        throw new BadRequestException(
+          'Bạn không có quyền thao tác với listing này',
+        );
+      }
+      return listing;
+    }
+
+    // Nếu không thuộc các role trên
+    throw new BadRequestException('Bạn không có quyền thực hiện thao tác này');
   }
 }
