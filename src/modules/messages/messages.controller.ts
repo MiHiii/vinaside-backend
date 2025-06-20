@@ -36,7 +36,7 @@ export class MessagesController {
   @Get()
   async findAll(): Promise<unknown[]> {
     const messages = await this.messagesService.findAll();
-    return Array.isArray(messages) ? messages : [];
+    return Array.isArray(messages) ? (messages as unknown[]) : [];
   }
 
   /**

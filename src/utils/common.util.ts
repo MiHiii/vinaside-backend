@@ -18,7 +18,11 @@ export const getInfoData = <
   const result = {} as Pick<T, K>;
 
   fields.forEach((field) => {
-    if (field in object && object[field] !== null && object[field] !== undefined) {
+    if (
+      field in object &&
+      object[field] !== null &&
+      object[field] !== undefined
+    ) {
       result[field] = object[field];
     }
   });

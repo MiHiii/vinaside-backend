@@ -13,6 +13,7 @@ import { Logger } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { MessageStatus } from './schemas/message.schema';
+import { extractUserId, extractMessageId, getErrorMessage } from '../../utils';
 
 interface ConnectedUser {
   userId: string;
@@ -43,9 +44,8 @@ export class MessagesGateway
   handleConnection(client: Socket): void {
     this.logger.log(`Client connected: ${client.id}`);
     // ✅ Nếu frontend gửi token, ta có thể decode và join luôn room
-    const auth = client.handshake.auth;
-    if (auth && typeof auth === 'object' && 'userId' in auth && typeof auth.userId === 'string') {
-      const userId = auth.userId;
+    const userId = extractUserId(client.handshake.auth);
+    if (userId) {
       this.connectedUsers.set(userId, {
         userId,
         socketId: client.id,
@@ -94,15 +94,7 @@ export class MessagesGateway
         is_read: MessageStatus.SENT,
       });
 
-      const messageId =
-        message &&
-        typeof message === 'object' &&
-        '_id' in message &&
-        typeof message._id === 'object' &&
-        message._id &&
-        typeof (message._id as any).toString === 'function'
-          ? (message._id as any).toString()
-          : '';
+      const messageId = extractMessageId(message);
       const populatedMessage = await this.messagesService.findOne(messageId);
 
       const formattedMessage = populatedMessage && {
@@ -142,9 +134,7 @@ export class MessagesGateway
       return { success: true, message: formattedMessage };
     } catch (error: unknown) {
       this.logger.error('Error sending message:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: errorMessage };
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 
