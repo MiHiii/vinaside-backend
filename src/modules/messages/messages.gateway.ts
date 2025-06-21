@@ -10,15 +10,17 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
-import { MessagesService } from './messages.service';
-import { CreateMessageDto } from './dto/create-message.dto';
-import { MessageStatus } from './schemas/message.schema';
-import { extractUserId, extractMessageId, getErrorMessage } from '../../utils';
-
-interface ConnectedUser {
-  userId: string;
-  socketId: string;
-}
+import { SocketMessageDto } from './dto/socket-message.dto';
+import { MessageStatus, Message } from './schemas/message.schema';
+import {
+  ConnectedUser,
+  FormattedMessage,
+} from './interfaces/message.interface';
+import {
+  extractUserIdFromAuth,
+  handleSocketError,
+  buildUserRoom,
+} from './utils/message.util';
 
 @WebSocketGateway({
   cors: {
@@ -26,7 +28,7 @@ interface ConnectedUser {
     credentials: true,
   },
   namespace: '/ws/messages',
-  path: '/socket.io', // ✅ thêm dòng này để khớp với client
+  path: '/socket.io',
 })
 export class MessagesGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -35,24 +37,22 @@ export class MessagesGateway
   private logger: Logger = new Logger('MessagesGateway');
   private connectedUsers: Map<string, ConnectedUser> = new Map();
 
-  constructor(private readonly messagesService: MessagesService) {}
-
   afterInit(): void {
     this.logger.log('WebSocket Gateway initialized');
   }
 
   handleConnection(client: Socket): void {
     this.logger.log(`Client connected: ${client.id}`);
-    // ✅ Nếu frontend gửi token, ta có thể decode và join luôn room
-    const userId = extractUserId(client.handshake.auth);
+    const userId = extractUserIdFromAuth(client.handshake.auth);
+
     if (userId) {
       this.connectedUsers.set(userId, {
         userId,
         socketId: client.id,
       });
-      void client.join(`user_${userId}`);
+      void client.join(buildUserRoom(userId));
       this.server.emit('user_online', { userId });
-      this.logger.log(`Auto joined user_${userId} from handshake`);
+      this.logger.log(`Auto joined ${buildUserRoom(userId)} from handshake`);
     }
   }
 
@@ -77,68 +77,73 @@ export class MessagesGateway
       userId,
       socketId: client.id,
     });
-    await client.join(`user_${userId}`);
+    await client.join(buildUserRoom(userId));
     this.logger.log(`User ${userId} joined room with socket ${client.id}`);
     this.server.emit('user_online', { userId });
     return { success: true, message: 'Joined room successfully' };
   }
 
   @SubscribeMessage('send_message')
-  async handleSendMessage(
-    @MessageBody() data: CreateMessageDto,
+  handleSendMessage(
+    @MessageBody() data: SocketMessageDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<{ success: boolean; message?: unknown; error?: string }> {
+  ): { success: boolean; message?: string; error?: string } {
     try {
-      const message = await this.messagesService.create({
-        ...data,
+      // Gateway chỉ handle socket events, logic tạo tin nhắn sẽ được handle ở HTTP API
+      this.logger.log(
+        `Socket message received from ${data.sender_id} to ${data.receiver_id}`,
+      );
+
+      // Gửi lại cho người gửi
+      client.emit('message_sent', {
+        content: data.content,
+        senderId: data.sender_id,
+        receiverId: data.receiver_id,
+        sent_at: new Date().toISOString(),
         is_read: MessageStatus.SENT,
       });
 
-      const messageId = extractMessageId(message);
-      const populatedMessage = await this.messagesService.findOne(messageId);
+      // Emit tin nhắn tới receiver room
+      const receiverRoom = buildUserRoom(data.receiver_id);
+      this.server.to(receiverRoom).emit('new_message', {
+        content: data.content,
+        senderId: data.sender_id,
+        receiverId: data.receiver_id,
+        sent_at: new Date().toISOString(),
+        is_read: MessageStatus.SENT,
+      });
 
-      const formattedMessage = populatedMessage && {
-        _id: populatedMessage._id?.toString(),
-        content: populatedMessage.content,
-        senderId:
-          typeof populatedMessage.sender_id === 'object'
-            ? populatedMessage.sender_id._id?.toString()
-            : populatedMessage.sender_id,
-        receiverId:
-          typeof populatedMessage.receiver_id === 'object'
-            ? populatedMessage.receiver_id._id?.toString()
-            : populatedMessage.receiver_id,
-        sent_at: populatedMessage.sent_at
-          ? new Date(populatedMessage.sent_at).toISOString()
-          : null,
-        is_read: populatedMessage.is_read,
-      };
-
-      // Gửi lại cho người gửi
-      client.emit('message_sent', formattedMessage);
-
-      // Gửi tới người nhận nếu họ đang online
-      const receiverRoom = `user_${data.receiver_id}`;
-      this.server.to(receiverRoom).emit('new_message', formattedMessage);
-
-      // Đánh dấu là delivered nếu receiver online
-      if (this.isUserOnline(data.receiver_id)) {
-        await this.messagesService.update(messageId, {
-          is_read: MessageStatus.DELIVERED,
-        });
-      }
-
-      this.logger.log(
-        `Message sent from ${data.sender_id} to ${data.receiver_id}`,
-      );
-      return { success: true, message: formattedMessage };
+      return { success: true, message: 'Message broadcasted via socket' };
     } catch (error: unknown) {
-      this.logger.error('Error sending message:', error);
-      return { success: false, error: getErrorMessage(error) };
+      this.logger.error('Error in socket message:', error);
+      return { success: false, error: handleSocketError(error) };
     }
   }
 
   isUserOnline(userId: string): boolean {
     return this.connectedUsers.has(userId);
+  }
+
+  // Method public để emit message từ controller
+  emitNewMessage(formattedMessage: FormattedMessage, receiverId: string): void {
+    const receiverRoom = buildUserRoom(receiverId);
+    this.server.to(receiverRoom).emit('new_message', formattedMessage);
+    this.logger.log(`Emitted new_message to ${receiverRoom}`);
+  }
+
+  // Method public để emit reaction update
+  emitReactionUpdate(message: Message, receiverId: string): void {
+    const receiverRoom = buildUserRoom(receiverId);
+    this.server.to(receiverRoom).emit('reaction_update', {
+      messageId: message._id?.toString(),
+      reactions: message.reactions || [],
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.log(`Emitted reaction_update to ${receiverRoom}`);
+  }
+
+  // Getter để có thể access server từ controller nếu cần
+  get socketServer(): Server {
+    return this.server;
   }
 }

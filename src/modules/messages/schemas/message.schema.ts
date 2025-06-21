@@ -7,6 +7,27 @@ export enum MessageStatus {
   READ = 'read',
 }
 
+export enum ReactionType {
+  LIKE = 'like',
+  LOVE = 'love',
+  LAUGH = 'laugh',
+  WOW = 'wow',
+  SAD = 'sad',
+  ANGRY = 'angry',
+}
+
+@Schema()
+export class Reaction {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  user_id: Types.ObjectId;
+
+  @Prop({ type: String, enum: ReactionType, required: true })
+  type: ReactionType;
+
+  @Prop({ type: Date, default: Date.now })
+  created_at: Date;
+}
+
 @Schema({ timestamps: true })
 export class Message extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
@@ -23,6 +44,9 @@ export class Message extends Document {
 
   @Prop({ type: String, enum: MessageStatus, default: MessageStatus.SENT })
   is_read: MessageStatus;
+
+  @Prop({ type: [Reaction], default: [] })
+  reactions: Reaction[];
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

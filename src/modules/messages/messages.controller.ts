@@ -7,164 +7,162 @@ import {
   Param,
   Delete,
   Query,
-  BadRequestException,
-  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
-import { Types } from 'mongoose';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { MessageStatus } from './schemas/message.schema';
+import { AddReactionDto, RemoveReactionDto } from './dto/reaction.dto';
+import { ReactionType } from './schemas/message.schema';
+import { Roles } from '../../decorators/roles.decorator';
+import { ResponseMessage } from '../../decorators/response-message.decorator';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
-interface SafeMessage {
-  _id: string;
-  sender_id: Types.ObjectId;
-  receiver_id: Types.ObjectId;
-  content: string;
-  sent_at: Date;
-  is_read: MessageStatus;
-  createdAt?: Date;
-  updatedAt?: Date;
+interface RequestWithUser extends Request {
+  user: JwtPayload;
 }
 
 @Controller('messages')
-@UseGuards(JwtAuthGuard)
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
-  /**
-   * Tạo một tin nhắn mới
-   * @body createMessageDto Thông tin tin nhắn cần tạo
-   */
   @Post()
-  async create(@Body() createMessageDto: CreateMessageDto) {
-    return await this.messagesService.create(createMessageDto);
-  }
-
-  /**
-   * Lấy tất cả tin nhắn (chỉ dùng cho mục đích quản trị hoặc debug)
-   */
-  @Get()
-  async findAll(): Promise<SafeMessage[]> {
-    const messages = await this.messagesService.findAll();
-    return Array.isArray(messages)
-      ? (messages as unknown as SafeMessage[])
-      : [];
-  }
-
-  /**
-   * Lấy danh sách các cuộc hội thoại của một người dùng
-   * @param userId ID của người dùng
-   */
-  @Get('conversations/:userId')
-  async getUserConversations(
-    @Param('userId') userId: string,
-  ): Promise<unknown> {
-    if (!Types.ObjectId.isValid(userId)) {
-      throw new BadRequestException('Invalid user ID');
-    }
-    return await this.messagesService.findUserConversations(userId);
-  }
-
-  /**
-   * Lấy cuộc hội thoại giữa hai người dùng
-   * @query user1 ID người dùng 1
-   * @query user2 ID người dùng 2
-   */
-  @Get('conversation')
-  async getConversation(
-    @Query('user1') user1: string,
-    @Query('user2') user2: string,
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Tạo tin nhắn thành công')
+  create(
+    @Body() createMessageDto: CreateMessageDto,
+    @Request() req: RequestWithUser,
   ) {
-    if (!Types.ObjectId.isValid(user1) || !Types.ObjectId.isValid(user2)) {
-      throw new BadRequestException('Invalid user ID');
-    }
-    return await this.messagesService.findConversation(user1, user2);
+    return this.messagesService.create(createMessageDto, req.user);
   }
 
-  /**
-   * Lấy số lượng tin nhắn chưa đọc của một người dùng
-   * @param userId ID của người dùng
-   */
-  @Get('unread-count/:userId')
-  async getUnreadCount(@Param('userId') userId: string) {
-    if (!Types.ObjectId.isValid(userId)) {
-      throw new BadRequestException('Invalid user ID');
-    }
-    const count = await this.messagesService.getUnreadCount(userId);
-    return { count };
+  @Get()
+  @Roles('admin')
+  @ResponseMessage('Lấy danh sách tin nhắn thành công')
+  findAll() {
+    return this.messagesService.findAll();
   }
 
-  /**
-   * Lấy thông tin một tin nhắn theo ID
-   * @param id ID của tin nhắn
-   */
+  @Get('conversations')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy danh sách cuộc hội thoại thành công')
+  getUserConversations(@Request() req: RequestWithUser) {
+    return this.messagesService.findUserConversations(req.user._id);
+  }
+
+  @Get('available-users')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy danh sách người dùng có thể nhắn tin thành công')
+  getAvailableUsers(@Request() req: RequestWithUser) {
+    return this.messagesService.getAvailableUsers(req.user._id);
+  }
+
+  @Get('conversation')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy cuộc hội thoại thành công')
+  getConversation(
+    @Query('otherUserId') otherUserId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.messagesService.findConversation(req.user._id, otherUserId);
+  }
+
+  @Get('unread-count')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy số tin nhắn chưa đọc thành công')
+  getUnreadCount(@Request() req: RequestWithUser) {
+    return this.messagesService.getUnreadCount(req.user._id);
+  }
+
+  @Get('all-users')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
+  getAllUsers(@Request() req: RequestWithUser) {
+    return this.messagesService.getAllUsers(req.user._id);
+  }
+
+  // ==================== REACTION ENDPOINTS ====================
+
+  @Post('reactions/add')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Thêm reaction thành công')
+  addReaction(
+    @Body() addReactionDto: AddReactionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.messagesService.addReaction(addReactionDto, req.user);
+  }
+
+  @Post('reactions/remove')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Xóa reaction thành công')
+  removeReaction(
+    @Body() removeReactionDto: RemoveReactionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.messagesService.removeReaction(removeReactionDto, req.user);
+  }
+
+  @Post(':messageId/reactions/toggle/:reactionType')
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Toggle reaction thành công')
+  toggleReaction(
+    @Param('messageId') messageId: string,
+    @Param('reactionType') reactionType: ReactionType,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.messagesService.toggleReaction(
+      messageId,
+      reactionType,
+      req.user,
+    );
+  }
+
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid message ID');
-    }
-    return await this.messagesService.findOne(id);
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Lấy thông tin tin nhắn thành công')
+  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.findOne(id, req.user);
   }
 
-  /**
-   * Cập nhật nội dung một tin nhắn
-   * @param id ID của tin nhắn
-   * @body updateMessageDto Dữ liệu cập nhật
-   */
   @Patch(':id')
-  async update(
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Cập nhật tin nhắn thành công')
+  update(
     @Param('id') id: string,
     @Body() updateMessageDto: UpdateMessageDto,
+    @Request() req: RequestWithUser,
   ) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid message ID');
-    }
-    return await this.messagesService.update(id, updateMessageDto);
+    return this.messagesService.update(id, updateMessageDto, req.user);
   }
 
-  /**
-   * Đánh dấu một tin nhắn là đã đọc
-   * @param id ID của tin nhắn
-   */
   @Patch(':id/read')
-  async markAsRead(@Param('id') id: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid message ID');
-    }
-    return await this.messagesService.markAsRead(id);
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Đánh dấu tin nhắn đã đọc thành công')
+  markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.markAsRead(id, req.user);
   }
 
-  /**
-   * Đánh dấu tất cả tin nhắn trong cuộc hội thoại giữa hai người dùng là đã đọc
-   * @query userId ID người dùng hiện tại
-   * @query otherUserId ID người dùng còn lại
-   */
   @Patch('conversation/read')
-  async markConversationAsRead(
-    @Query('userId') userId: string,
+  @Roles('guest', 'host', 'admin')
+  @ResponseMessage('Đánh dấu cuộc hội thoại đã đọc thành công')
+  markConversationAsRead(
     @Query('otherUserId') otherUserId: string,
+    @Request() req: RequestWithUser,
   ) {
-    if (
-      !Types.ObjectId.isValid(userId) ||
-      !Types.ObjectId.isValid(otherUserId)
-    ) {
-      throw new BadRequestException('Invalid user ID');
-    }
-    await this.messagesService.markConversationAsRead(userId, otherUserId);
-    return { success: true };
+    return this.messagesService.markConversationAsRead(
+      req.user._id,
+      otherUserId,
+    );
   }
 
-  /**
-   * Xóa một tin nhắn theo ID
-   * @param id ID của tin nhắn
-   */
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid message ID');
-    }
-    return await this.messagesService.remove(id);
+  @Roles('guest', 'host', 'admin')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ResponseMessage('Xóa tin nhắn thành công')
+  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.remove(id, req.user);
   }
 }
