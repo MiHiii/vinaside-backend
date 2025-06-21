@@ -224,15 +224,18 @@ export class UsersService {
     }
 
     // Lọc theo trạng thái xóa
-    if (isDeleted !== undefined) {
+
+    // ======= FILTER CHUẨN cho isDeleted =======
+    if (
+      typeof isDeleted === 'string' &&
+      isDeleted !== '' &&
+      isDeleted !== 'all'
+    ) {
+      filters.isDeleted = isDeleted === 'true';
+    } else if (typeof isDeleted === 'boolean') {
       filters.isDeleted = isDeleted;
     }
-
-    // Mặc định chỉ lấy người dùng chưa bị xóa
-    if (isDeleted === undefined) {
-      filters.isDeleted = { $ne: true };
-    }
-
+    // Nếu không truyền, hoặc truyền "all"/"" thì KHÔNG filter isDeleted => trả về tất cả
     // Chuyển đổi chuỗi sort thành object
     const sortOptions = parseSortString(sort);
 

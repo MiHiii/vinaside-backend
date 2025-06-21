@@ -76,16 +76,11 @@ export class UserRepo {
     const { page = 1, limit = 10, sort, select, populate } = options;
     const skip = (page - 1) * limit;
 
-    // Thêm filter loại bỏ các tài khoản bị xóa
-    const finalQuery = {
-      ...query,
-      isDeleted: { $ne: true },
-    };
+    // KHÔNG tự động thêm filter isDeleted nữa!
+    const finalQuery = { ...query };
 
-    // Đếm tổng số bản ghi
     const total = await this.userModel.countDocuments(finalQuery);
 
-    // Thực thi query
     const data = await this.userModel
       .find(finalQuery)
       .limit(limit)
