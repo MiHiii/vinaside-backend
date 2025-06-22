@@ -68,8 +68,8 @@ export class WishlistController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Xóa khỏi danh sách yêu thích thành công')
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.wishlistService.remove(id, req.user);
+  remove(@Param('id') id: string) {
+    return this.wishlistService.remove(id);
   }
 
   /**

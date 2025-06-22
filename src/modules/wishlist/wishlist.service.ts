@@ -44,7 +44,7 @@ export class WishlistService {
   /**
    * Xóa wishlist (xóa mềm) - bất kỳ user nào cũng có thể xóa
    */
-  async remove(id: string, _user: JwtPayload) {
+  async remove(id: string) {
     try {
       await this.wishlistRepo.softDelete(id);
 
