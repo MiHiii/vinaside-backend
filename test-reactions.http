@@ -1,0 +1,47 @@
+### Test Reactions API Endpoints
+### Make sure to replace the Bearer token and message IDs with real values
+
+### 1. Test Toggle Reaction - Add Like
+POST http://localhost:3000/api/v1/messages/6856ba4e99cbf3c07b16848d/reactions/toggle/like
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+### 2. Test Toggle Reaction - Add Love  
+POST http://localhost:3000/api/v1/messages/6856ba4e99cbf3c07b16848d/reactions/toggle/love
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+### 3. Test Toggle Reaction - Remove (click same reaction)
+POST http://localhost:3000/api/v1/messages/6856ba4e99cbf3c07b16848d/reactions/toggle/love
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+### 4. Test Add Reaction (Alternative method)
+POST http://localhost:3000/api/v1/messages/reactions/add
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "message_id": "6856ba4e99cbf3c07b16848d",
+  "type": "laugh"
+}
+
+### 5. Test Remove Reaction
+POST http://localhost:3000/api/v1/messages/reactions/remove
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "message_id": "6856ba4e99cbf3c07b16848d"
+}
+
+### 6. Get Message with Reactions
+GET http://localhost:3000/api/v1/messages/6856ba4e99cbf3c07b16848d
+Authorization: Bearer YOUR_JWT_TOKEN
+
+### 7. Get Conversation to see reactions
+GET http://localhost:3000/api/v1/messages/conversation?otherUserId=685028e161971f02747b4d9e
+Authorization: Bearer YOUR_JWT_TOKEN
+
+### Available Reaction Types:
+# like, love, laugh, wow, sad, angry 
