@@ -83,13 +83,14 @@ export class WishlistRepo {
 
     // Lọc theo ngày
     if (from_date || to_date) {
-      filter.created_at = {};
+      const dateFilter: { $gte?: Date; $lte?: Date } = {};
       if (from_date) {
-        filter.created_at.$gte = new Date(from_date);
+        dateFilter.$gte = new Date(from_date);
       }
       if (to_date) {
-        filter.created_at.$lte = new Date(to_date);
+        dateFilter.$lte = new Date(to_date);
       }
+      filter.created_at = dateFilter;
     }
 
     const skip = (page - 1) * limit;
@@ -146,13 +147,14 @@ export class WishlistRepo {
 
     // Lọc theo ngày
     if (from_date || to_date) {
-      filter.created_at = {};
+      const dateFilter: { $gte?: Date; $lte?: Date } = {};
       if (from_date) {
-        filter.created_at.$gte = new Date(from_date);
+        dateFilter.$gte = new Date(from_date);
       }
       if (to_date) {
-        filter.created_at.$lte = new Date(to_date);
+        dateFilter.$lte = new Date(to_date);
       }
+      filter.created_at = dateFilter;
     }
 
     const skip = (page - 1) * limit;
@@ -353,8 +355,12 @@ export class WishlistRepo {
     ];
 
     const [topRooms, topUsers, last7DaysCount] = await Promise.all([
-      this.wishlistModel.aggregate(topRoomsQuery),
-      this.wishlistModel.aggregate(topUsersQuery),
+      this.wishlistModel.aggregate(topRoomsQuery) as Promise<
+        Array<{ _id: string; count: number; roomInfo?: any }>
+      >,
+      this.wishlistModel.aggregate(topUsersQuery) as Promise<
+        Array<{ _id: string; count: number; userInfo?: any }>
+      >,
       this.wishlistModel.countDocuments({
         isDelete: false,
         created_at: { $gte: sevenDaysAgo },

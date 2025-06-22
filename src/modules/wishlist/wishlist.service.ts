@@ -6,7 +6,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 
-import { Wishlist } from './schemas/wishlist.schema';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -45,7 +44,7 @@ export class WishlistService {
   /**
    * Xóa wishlist (xóa mềm) - bất kỳ user nào cũng có thể xóa
    */
-  async remove(id: string, user: JwtPayload) {
+  async remove(id: string, _user: JwtPayload) {
     try {
       await this.wishlistRepo.softDelete(id);
 
@@ -191,7 +190,10 @@ export class WishlistService {
    * Xử lý lỗi chung
    */
   private handleError(error: any, operation: string): never {
-    this.logger.error(`Lỗi khi ${operation}: ${error.message}`, error.stack);
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    this.logger.error(`Lỗi khi ${operation}: ${errorMessage}`, errorStack);
 
     if (
       error instanceof NotFoundException ||
