@@ -10,7 +10,7 @@ import {
   IsDateString,
 } from 'class-validator';
 
-export class QueryWishlistDto {
+export class AdminQueryWishlistDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
@@ -51,9 +51,4 @@ export class QueryWishlistDto {
   @IsBoolean()
   @Type(() => Boolean)
   isDelete?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
-  includeDeleted?: boolean = false;
 }

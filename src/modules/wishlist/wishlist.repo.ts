@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
   FilterQuery,
@@ -10,62 +6,27 @@ import {
   PopulateOptions,
   SortOrder,
   Types,
+  PipelineStage,
 } from 'mongoose';
-import { WishlistList } from './schemas/wishlist-list.schema';
-import { WishlistItem } from './schemas/wishlist-item.schema';
-import { CreateWishlistListDto } from './dto/create-wishlist-list.dto';
-import { UpdateWishlistListDto } from './dto/update-wishlist-list.dto';
-import { CreateWishlistItemDto } from './dto/create-wishlist-item.dto';
-
-interface UpdateFields {
-  updatedBy?: Types.ObjectId;
-  [key: string]: any;
-}
-
-interface DeleteFields {
-  isDeleted: boolean;
-  deletedAt: Date | undefined;
-  deletedBy: Types.ObjectId | undefined;
-}
+import { Wishlist } from './schemas/wishlist.schema';
+import { QueryWishlistDto } from './dto/query-wishlist.dto';
+import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
 
 @Injectable()
 export class WishlistRepo {
   constructor(
-    @InjectModel(WishlistList.name)
-    private readonly wishlistListModel: Model<WishlistList>,
-    @InjectModel(WishlistItem.name)
-    private readonly wishlistItemModel: Model<WishlistItem>,
+    @InjectModel(Wishlist.name)
+    private readonly wishlistModel: Model<Wishlist>,
   ) {}
 
-  // ========================= WISHLIST LIST METHODS =========================
-
   /**
-   * Tạo wishlist list mới
+   * Tìm wishlist theo ID
    */
-  async createList(
-    createWishlistListDto: CreateWishlistListDto,
-    userId?: string,
-  ): Promise<WishlistList> {
-    const createdBy = userId ? new Types.ObjectId(userId) : undefined;
-
-    const data = {
-      ...createWishlistListDto,
-      user_id: new Types.ObjectId(userId),
-      createdBy,
-    };
-
-    const wishlistList = new this.wishlistListModel(data);
-    return await wishlistList.save();
-  }
-
-  /**
-   * Tìm wishlist list theo ID
-   */
-  async findListById(
+  async findById(
     id: string,
     populate?: PopulateOptions | Array<PopulateOptions>,
-  ): Promise<WishlistList | null> {
-    const query = this.wishlistListModel.findById(id);
+  ): Promise<Wishlist | null> {
+    const query = this.wishlistModel.findById(id);
 
     if (populate) {
       if (Array.isArray(populate)) {
@@ -81,285 +42,329 @@ export class WishlistRepo {
   }
 
   /**
-   * Tìm tất cả wishlist lists theo điều kiện
+   * Tìm tất cả wishlist theo điều kiện (cho user)
    */
-  async findAllLists(
-    filter: FilterQuery<WishlistList> = {},
-    options: {
-      sort?: Record<string, SortOrder>;
-      limit?: number;
-      skip?: number;
-      populate?: PopulateOptions | Array<PopulateOptions>;
-    } = {},
-  ): Promise<{ data: WishlistList[]; total: number }> {
-    const { sort, limit, skip, populate } = options;
+  async findAll(
+    queryDto: QueryWishlistDto,
+    userId?: string,
+  ): Promise<{ data: Wishlist[]; total: number; page: number; limit: number }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      user_id,
+      room_id,
+      from_date,
+      to_date,
+      isDelete,
+      includeDeleted = false,
+    } = queryDto;
 
-    const query = this.wishlistListModel.find(filter);
+    // Tạo filter
+    const filter: FilterQuery<Wishlist> = {};
 
-    if (sort) {
-      query.sort(sort);
+    // Nếu có userId từ auth, ưu tiên userId đó
+    if (userId) {
+      filter.user_id = new Types.ObjectId(userId);
+    } else if (user_id) {
+      filter.user_id = new Types.ObjectId(user_id);
     }
 
-    if (skip !== undefined) {
-      query.skip(skip);
+    if (room_id) {
+      filter.room_id = new Types.ObjectId(room_id);
     }
 
-    if (limit !== undefined) {
-      query.limit(limit);
+    if (!includeDeleted) {
+      filter.isDelete = false;
+    } else if (isDelete !== undefined) {
+      filter.isDelete = isDelete;
     }
 
-    if (populate) {
-      if (Array.isArray(populate)) {
-        for (const p of populate) {
-          query.populate(p);
-        }
-      } else {
-        query.populate(populate);
+    // Lọc theo ngày
+    if (from_date || to_date) {
+      filter.created_at = {};
+      if (from_date) {
+        filter.created_at.$gte = new Date(from_date);
+      }
+      if (to_date) {
+        filter.created_at.$lte = new Date(to_date);
       }
     }
 
+    const skip = (page - 1) * limit;
+    const sort: Record<string, SortOrder> = { [sortBy]: sortOrder };
+
+    const query = this.wishlistModel
+      .find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'room_id', select: 'title images price location' });
+
     const [data, total] = await Promise.all([
       query.exec(),
-      this.wishlistListModel.countDocuments(filter),
+      this.wishlistModel.countDocuments(filter),
     ]);
 
-    return { data, total };
+    return { data, total, page, limit };
   }
 
   /**
-   * Tìm wishlist lists của user
+   * Tìm tất cả wishlist theo điều kiện (cho admin)
    */
-  async findListsByUser(
-    userId: string,
-    options: {
-      sort?: Record<string, SortOrder>;
-      limit?: number;
-      skip?: number;
-      populate?: PopulateOptions | Array<PopulateOptions>;
-    } = {},
-  ): Promise<{ data: WishlistList[]; total: number }> {
-    const filter: FilterQuery<WishlistList> = {
-      user_id: new Types.ObjectId(userId),
-      isDeleted: false,
-    };
+  async findAllForAdmin(
+    queryDto: AdminQueryWishlistDto,
+  ): Promise<{ data: Wishlist[]; total: number; page: number; limit: number }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      user_id,
+      room_id,
+      from_date,
+      to_date,
+      isDelete,
+    } = queryDto;
 
-    return await this.findAllLists(filter, options);
-  }
+    // Tạo filter
+    const filter: FilterQuery<Wishlist> = {};
 
-  /**
-   * Cập nhật wishlist list
-   */
-  async updateListById(
-    id: string,
-    updateData: Partial<UpdateWishlistListDto>,
-    userId?: string,
-  ): Promise<WishlistList | null> {
-    const dataToUpdate: UpdateFields = { ...updateData };
-    if (userId) {
-      dataToUpdate.updatedBy = new Types.ObjectId(userId);
+    if (user_id) {
+      filter.user_id = new Types.ObjectId(user_id);
     }
 
-    return await this.wishlistListModel
-      .findByIdAndUpdate(id, dataToUpdate, { new: true })
-      .populate({ path: 'user_id', select: 'name avatar email' })
+    if (room_id) {
+      filter.room_id = new Types.ObjectId(room_id);
+    }
+
+    if (isDelete !== undefined) {
+      filter.isDelete = isDelete;
+    }
+
+    // Lọc theo ngày
+    if (from_date || to_date) {
+      filter.created_at = {};
+      if (from_date) {
+        filter.created_at.$gte = new Date(from_date);
+      }
+      if (to_date) {
+        filter.created_at.$lte = new Date(to_date);
+      }
+    }
+
+    const skip = (page - 1) * limit;
+    const sort: Record<string, SortOrder> = { [sortBy]: sortOrder };
+
+    const query = this.wishlistModel
+      .find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit)
+      .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'room_id', select: 'title images price location' });
+
+    const [data, total] = await Promise.all([
+      query.exec(),
+      this.wishlistModel.countDocuments(filter),
+    ]);
+
+    return { data, total, page, limit };
+  }
+
+  /**
+   * Xóa mềm wishlist (bất kỳ user nào cũng có thể xóa)
+   */
+  async softDelete(id: string): Promise<Wishlist | null> {
+    // Kiểm tra wishlist có tồn tại và chưa bị xóa
+    const wishlist = await this.wishlistModel.findOne({
+      _id: new Types.ObjectId(id),
+      isDelete: false,
+    });
+
+    if (!wishlist) {
+      throw new NotFoundException('Không tìm thấy wishlist hoặc đã bị xóa');
+    }
+
+    return await this.wishlistModel
+      .findByIdAndUpdate(id, { isDelete: true }, { new: true })
       .exec();
   }
 
   /**
-   * Xóa mềm wishlist list
+   * Xóa cứng wishlist (chỉ admin)
    */
-  async softDeleteList(
-    id: string,
-    userId?: string,
-  ): Promise<WishlistList | null> {
-    const deleteData: DeleteFields = {
-      isDeleted: true,
-      deletedAt: new Date(),
-      deletedBy: userId ? new Types.ObjectId(userId) : undefined,
-    };
-
-    return await this.wishlistListModel
-      .findByIdAndUpdate(id, deleteData, { new: true })
-      .exec();
-  }
-
-  /**
-   * Xóa cứng wishlist list
-   */
-  async forceDeleteList(id: string): Promise<boolean> {
-    const result = await this.wishlistListModel.findByIdAndDelete(id).exec();
+  async forceDelete(id: string): Promise<boolean> {
+    const result = await this.wishlistModel.findByIdAndDelete(id).exec();
     return !!result;
   }
 
-  // ========================= WISHLIST ITEM METHODS =========================
-
   /**
-   * Thêm item vào wishlist
+   * Khôi phục wishlist đã xóa mềm (admin)
    */
-  async addItem(
-    createWishlistItemDto: CreateWishlistItemDto,
-    userId?: string,
-  ): Promise<WishlistItem> {
-    const createdBy = userId ? new Types.ObjectId(userId) : undefined;
-
-    const data = {
-      ...createWishlistItemDto,
-      wishlist_id: new Types.ObjectId(createWishlistItemDto.wishlist_id),
-      room_id: new Types.ObjectId(createWishlistItemDto.room_id),
-      createdBy,
-    };
-
-    const wishlistItem = new this.wishlistItemModel(data);
-    return await wishlistItem.save();
-  }
-
-  /**
-   * Tìm tất cả items trong một wishlist
-   */
-  async findItemsByWishlistId(
-    wishlistId: string,
-    options: {
-      sort?: Record<string, SortOrder>;
-      limit?: number;
-      skip?: number;
-      populate?: PopulateOptions | Array<PopulateOptions>;
-    } = {},
-  ): Promise<{ data: WishlistItem[]; total: number }> {
-    const filter: FilterQuery<WishlistItem> = {
-      wishlist_id: new Types.ObjectId(wishlistId),
-      isDeleted: false,
-    };
-
-    const { sort, limit, skip, populate } = options;
-
-    const query = this.wishlistItemModel.find(filter);
-
-    if (sort) {
-      query.sort(sort);
-    }
-
-    if (skip !== undefined) {
-      query.skip(skip);
-    }
-
-    if (limit !== undefined) {
-      query.limit(limit);
-    }
-
-    if (populate) {
-      if (Array.isArray(populate)) {
-        for (const p of populate) {
-          query.populate(p);
-        }
-      } else {
-        query.populate(populate);
-      }
-    }
-
-    const [data, total] = await Promise.all([
-      query.exec(),
-      this.wishlistItemModel.countDocuments(filter),
-    ]);
-
-    return { data, total };
-  }
-
-  /**
-   * Kiểm tra xem item đã tồn tại trong wishlist chưa
-   */
-  async findItemByWishlistAndRoom(
-    wishlistId: string,
-    roomId: string,
-  ): Promise<WishlistItem | null> {
-    return await this.wishlistItemModel
-      .findOne({
-        wishlist_id: new Types.ObjectId(wishlistId),
-        room_id: new Types.ObjectId(roomId),
-        isDeleted: false,
-      })
+  async restore(id: string): Promise<Wishlist | null> {
+    return await this.wishlistModel
+      .findByIdAndUpdate(id, { isDelete: false }, { new: true })
+      .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'room_id', select: 'title images price location' })
       .exec();
   }
 
   /**
-   * Xóa item khỏi wishlist
+   * Kiểm tra xem phòng đã được yêu thích chưa (chỉ kiểm tra những record chưa bị xóa mềm)
    */
-  async removeItem(
-    wishlistId: string,
-    roomId: string,
-    userId?: string,
-  ): Promise<WishlistItem | null> {
-    const deleteData: DeleteFields = {
-      isDeleted: true,
-      deletedAt: new Date(),
-      deletedBy: userId ? new Types.ObjectId(userId) : undefined,
-    };
+  async checkExisting(userId: string, roomId: string): Promise<boolean> {
+    const existing = await this.wishlistModel.findOne({
+      user_id: new Types.ObjectId(userId),
+      room_id: new Types.ObjectId(roomId),
+      isDelete: false,
+    });
+    return !!existing;
+  }
 
-    return await this.wishlistItemModel
+  /**
+   * Tìm wishlist record (bao gồm cả đã soft delete) để update
+   */
+  async findWishlistRecord(
+    userId: string,
+    roomId: string,
+  ): Promise<Wishlist | null> {
+    return await this.wishlistModel.findOne({
+      user_id: new Types.ObjectId(userId),
+      room_id: new Types.ObjectId(roomId),
+    });
+  }
+
+  /**
+   * Xóa wishlist theo user_id và room_id (soft delete)
+   */
+  async removeByUserAndRoom(
+    userId: string,
+    roomId: string,
+  ): Promise<Wishlist | null> {
+    return await this.wishlistModel
       .findOneAndUpdate(
         {
-          wishlist_id: new Types.ObjectId(wishlistId),
+          user_id: new Types.ObjectId(userId),
           room_id: new Types.ObjectId(roomId),
-          isDeleted: false,
+          isDelete: false,
         },
-        deleteData,
+        { isDelete: true },
         { new: true },
       )
       .exec();
   }
 
   /**
-   * Xóa cứng item khỏi wishlist
+   * Toggle trạng thái yêu thích (update isDelete thay vì tạo/xóa record)
+   * Cách này tránh lỗi duplicate key và giữ được lịch sử
    */
-  async forceDeleteItem(wishlistId: string, roomId: string): Promise<boolean> {
-    const result = await this.wishlistItemModel
-      .findOneAndDelete({
-        wishlist_id: new Types.ObjectId(wishlistId),
-        room_id: new Types.ObjectId(roomId),
-      })
-      .exec();
-    return !!result;
-  }
-
-  /**
-   * Đếm số lượng items trong wishlist
-   */
-  async countItemsInWishlist(wishlistId: string): Promise<number> {
-    return await this.wishlistItemModel.countDocuments({
-      wishlist_id: new Types.ObjectId(wishlistId),
-      isDeleted: false,
-    });
-  }
-
-  /**
-   * Kiểm tra quyền truy cập wishlist list
-   */
-  async checkListPermission(
-    listId: string,
+  async toggleWishlist(
     userId: string,
-    role: string,
-  ): Promise<WishlistList> {
-    const wishlistList = await this.findListById(listId);
+    roomId: string,
+  ): Promise<{ action: 'added' | 'removed'; data: Wishlist }> {
+    // Tìm record hiện có (kể cả đã soft delete)
+    const existingRecord = await this.findWishlistRecord(userId, roomId);
 
-    if (!wishlistList) {
-      throw new NotFoundException('Không tìm thấy danh sách yêu thích');
+    if (existingRecord) {
+      // Nếu đã có record, toggle isDelete
+      const newIsDelete = !existingRecord.isDelete;
+      const updatedRecord = await this.wishlistModel
+        .findByIdAndUpdate(
+          existingRecord._id,
+          { isDelete: newIsDelete },
+          { new: true },
+        )
+        .populate({ path: 'room_id', select: 'title images price location' });
+
+      return {
+        action: newIsDelete ? 'removed' : 'added',
+        data: updatedRecord as Wishlist,
+      };
+    } else {
+      // Nếu chưa có record, tạo mới
+      const newWishlist = new this.wishlistModel({
+        user_id: new Types.ObjectId(userId),
+        room_id: new Types.ObjectId(roomId),
+        isDelete: false,
+      });
+
+      const savedWishlist = await newWishlist.save();
+      const populatedWishlist = await this.wishlistModel
+        .findById(savedWishlist._id)
+        .populate({ path: 'room_id', select: 'title images price location' });
+
+      return {
+        action: 'added',
+        data: populatedWishlist as Wishlist,
+      };
     }
+  }
 
-    if (wishlistList.isDeleted) {
-      throw new BadRequestException('Danh sách yêu thích đã bị xóa');
-    }
+  /**
+   * Thống kê cho admin
+   */
+  async getStatistics(): Promise<{
+    topRooms: Array<{ _id: string; count: number; roomInfo?: any }>;
+    topUsers: Array<{ _id: string; count: number; userInfo?: any }>;
+    last7Days: number;
+  }> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Admin có thể truy cập tất cả
-    if (role === 'admin') {
-      return wishlistList;
-    }
+    // Top 10 phòng được yêu thích nhiều nhất
+    const topRoomsQuery: PipelineStage[] = [
+      { $match: { isDelete: false } },
+      { $group: { _id: '$room_id', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'roomInfo',
+          pipeline: [
+            { $project: { title: 1, images: 1, price: 1, location: 1 } },
+          ],
+        },
+      },
+      { $unwind: { path: '$roomInfo', preserveNullAndEmptyArrays: true } },
+    ];
 
-    // User chỉ có thể truy cập wishlist của mình
-    if (wishlistList.user_id.toString() !== userId) {
-      throw new BadRequestException(
-        'Bạn không có quyền truy cập danh sách này',
-      );
-    }
+    // Top người dùng có nhiều phòng yêu thích nhất
+    const topUsersQuery: PipelineStage[] = [
+      { $match: { isDelete: false } },
+      { $group: { _id: '$user_id', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userInfo',
+          pipeline: [{ $project: { name: 1, email: 1, avatar: 1 } }],
+        },
+      },
+      { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
+    ];
 
-    return wishlistList;
+    const [topRooms, topUsers, last7DaysCount] = await Promise.all([
+      this.wishlistModel.aggregate(topRoomsQuery),
+      this.wishlistModel.aggregate(topUsersQuery),
+      this.wishlistModel.countDocuments({
+        isDelete: false,
+        created_at: { $gte: sevenDaysAgo },
+      }),
+    ]);
+
+    return {
+      topRooms,
+      topUsers,
+      last7Days: last7DaysCount,
+    };
   }
 }

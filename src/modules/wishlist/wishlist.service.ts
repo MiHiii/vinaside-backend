@@ -6,12 +6,9 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 
-import { WishlistList } from './schemas/wishlist-list.schema';
-import { WishlistItem } from './schemas/wishlist-item.schema';
-import { CreateWishlistListDto } from './dto/create-wishlist-list.dto';
-import { UpdateWishlistListDto } from './dto/update-wishlist-list.dto';
-import { CreateWishlistItemDto } from './dto/create-wishlist-item.dto';
+import { Wishlist } from './schemas/wishlist.schema';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
+import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { WishlistRepo } from './wishlist.repo';
 
@@ -21,417 +18,180 @@ export class WishlistService {
 
   constructor(private readonly wishlistRepo: WishlistRepo) {}
 
-  // =========================== WISHLIST LIST API METHODS ===========================
+  // =========================== USER API METHODS ===========================
 
   /**
-   * Tạo một wishlist list mới
+   * Lấy danh sách yêu thích của user
    */
-  async createList(
-    createWishlistListDto: CreateWishlistListDto,
-    user: JwtPayload,
-  ) {
-    const wishlistList = await this.createWishlistList(
-      createWishlistListDto,
-      user,
-    );
-    return { wishlistList };
+  async getMyWishlists(user: JwtPayload, queryDto: QueryWishlistDto) {
+    try {
+      const result = await this.wishlistRepo.findAll(queryDto, user._id);
+
+      return {
+        success: true,
+        data: result.data,
+        meta: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: Math.ceil(result.total / result.limit) || 1,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'lấy danh sách yêu thích');
+    }
   }
 
   /**
-   * Lấy danh sách wishlist lists của user
+   * Xóa wishlist (xóa mềm) - bất kỳ user nào cũng có thể xóa
    */
-  async getMyLists(user: JwtPayload, queryDto: QueryWishlistDto) {
-    const result = await this.findListsByUser(user._id, queryDto);
-    const { page = 1, limit = 10 } = queryDto;
+  async remove(id: string, user: JwtPayload) {
+    try {
+      await this.wishlistRepo.softDelete(id);
 
-    return {
-      wishlistLists: result.data,
-      meta: {
-        total: result.total,
-        page,
-        limit,
-        totalPages: Math.ceil(result.total / limit) || 1,
-      },
-    };
+      return {
+        success: true,
+        message: 'Đã xóa khỏi danh sách yêu thích',
+      };
+    } catch (error) {
+      this.handleError(error, 'xóa wishlist');
+    }
   }
 
   /**
-   * Lấy một wishlist list theo ID
+   * Kiểm tra phòng đã được yêu thích chưa
    */
-  async getListById(id: string, user: JwtPayload) {
-    const wishlistList = await this.findWishlistListById(id, user);
-    return { wishlistList };
+  async checkFavorite(roomId: string, user: JwtPayload) {
+    try {
+      const exists = await this.wishlistRepo.checkExisting(user._id, roomId);
+
+      return {
+        success: true,
+        isFavorite: exists,
+      };
+    } catch (error) {
+      this.handleError(error, 'kiểm tra yêu thích');
+    }
   }
 
   /**
-   * Cập nhật wishlist list
+   * Toggle yêu thích (update isDelete thay vì tạo/xóa record để tránh duplicate key)
    */
-  async updateList(
-    id: string,
-    updateWishlistListDto: UpdateWishlistListDto,
-    user: JwtPayload,
-  ) {
-    const wishlistList = await this.updateWishlistList(
-      id,
-      updateWishlistListDto,
-      user,
-    );
-    return { wishlistList };
+  async toggleFavorite(roomId: string, user: JwtPayload) {
+    try {
+      const result = await this.wishlistRepo.toggleWishlist(user._id, roomId);
+
+      return {
+        success: true,
+        action: result.action,
+        message:
+          result.action === 'added'
+            ? 'Đã thêm vào danh sách yêu thích'
+            : 'Đã xóa khỏi danh sách yêu thích',
+        data: result.data,
+      };
+    } catch (error) {
+      this.handleError(error, 'toggle yêu thích');
+    }
+  }
+
+  // =========================== ADMIN API METHODS ===========================
+
+  /**
+   * Admin lấy tất cả wishlist
+   */
+  async getAllForAdmin(queryDto: AdminQueryWishlistDto) {
+    try {
+      const result = await this.wishlistRepo.findAllForAdmin(queryDto);
+
+      return {
+        success: true,
+        data: result.data,
+        meta: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: Math.ceil(result.total / result.limit) || 1,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'lấy danh sách wishlist (admin)');
+    }
   }
 
   /**
-   * Xóa mềm wishlist list
+   * Admin lấy thống kê wishlist
    */
-  async deleteList(id: string, user: JwtPayload) {
-    await this.softDeleteWishlistList(id, user);
-    return { success: true };
-  }
+  async getStatistics() {
+    try {
+      const stats = await this.wishlistRepo.getStatistics();
 
-  // =========================== WISHLIST ITEM API METHODS ===========================
-
-  /**
-   * Thêm phòng vào wishlist
-   */
-  async addItemToList(
-    createWishlistItemDto: CreateWishlistItemDto,
-    user: JwtPayload,
-  ) {
-    const wishlistItem = await this.addWishlistItem(
-      createWishlistItemDto,
-      user,
-    );
-    return { wishlistItem };
-  }
-
-  /**
-   * Lấy danh sách phòng trong wishlist
-   */
-  async getItemsInList(
-    wishlistId: string,
-    user: JwtPayload,
-    queryDto: QueryWishlistDto,
-  ) {
-    const result = await this.findItemsInWishlist(wishlistId, user, queryDto);
-    const { page = 1, limit = 10 } = queryDto;
-
-    return {
-      wishlistItems: result.data,
-      meta: {
-        total: result.total,
-        page,
-        limit,
-        totalPages: Math.ceil(result.total / limit) || 1,
-      },
-    };
+      return {
+        success: true,
+        data: {
+          topRooms: stats.topRooms,
+          topUsers: stats.topUsers,
+          last7Days: stats.last7Days,
+          summary: {
+            totalTopRooms: stats.topRooms.length,
+            totalTopUsers: stats.topUsers.length,
+            recentActivity: stats.last7Days,
+          },
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'lấy thống kê wishlist');
+    }
   }
 
   /**
-   * Xóa phòng khỏi wishlist
+   * Admin xóa cứng wishlist
    */
-  async removeItemFromList(
-    wishlistId: string,
-    roomId: string,
-    user: JwtPayload,
-  ) {
-    await this.removeWishlistItem(wishlistId, roomId, user);
-    return { success: true };
+  async forceDelete(id: string) {
+    try {
+      const result = await this.wishlistRepo.forceDelete(id);
+
+      if (!result) {
+        throw new NotFoundException('Không tìm thấy wishlist để xóa');
+      }
+
+      return {
+        success: true,
+        message: 'Đã xóa cứng wishlist',
+      };
+    } catch (error) {
+      this.handleError(error, 'xóa cứng wishlist');
+    }
   }
 
   /**
-   * Kiểm tra phòng có trong wishlist không
+   * Admin khôi phục wishlist đã xóa mềm
    */
-  async checkItemInList(wishlistId: string, roomId: string, user: JwtPayload) {
-    const exists = await this.isItemInWishlist(wishlistId, roomId, user);
-    return { exists };
+  async restore(id: string) {
+    try {
+      const wishlist = await this.wishlistRepo.restore(id);
+
+      if (!wishlist) {
+        throw new NotFoundException('Không tìm thấy wishlist để khôi phục');
+      }
+
+      return {
+        success: true,
+        message: 'Đã khôi phục wishlist',
+        data: wishlist,
+      };
+    } catch (error) {
+      this.handleError(error, 'khôi phục wishlist');
+    }
   }
 
   // =========================== PRIVATE METHODS ===========================
 
   /**
-   * Tạo wishlist list mới
-   */
-  private async createWishlistList(
-    createWishlistListDto: CreateWishlistListDto,
-    user: JwtPayload,
-  ): Promise<WishlistList> {
-    try {
-      const listData = {
-        ...createWishlistListDto,
-        user_id: user._id,
-      };
-
-      return await this.wishlistRepo.createList(listData, user._id);
-    } catch (error) {
-      this.handleError(error, 'tạo danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Tìm danh sách wishlist lists của user
-   */
-  private async findListsByUser(userId: string, queryDto: QueryWishlistDto) {
-    try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'created_at',
-        sortOrder = 'desc',
-      } = queryDto;
-      const skip = (page - 1) * limit;
-
-      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 } as Record<
-        string,
-        1 | -1
-      >;
-
-      const options = {
-        sort,
-        limit,
-        skip,
-        populate: [{ path: 'user_id', select: 'name avatar email' }],
-      };
-
-      return await this.wishlistRepo.findListsByUser(userId, options);
-    } catch (error) {
-      this.handleError(error, 'lấy danh sách wishlist');
-    }
-  }
-
-  /**
-   * Tìm wishlist list theo ID
-   */
-  private async findWishlistListById(
-    id: string,
-    user: JwtPayload,
-  ): Promise<WishlistList> {
-    try {
-      await this.wishlistRepo.checkListPermission(
-        id,
-        user._id,
-        user.role || 'user',
-      );
-
-      const wishlistList = await this.wishlistRepo.findListById(id, [
-        { path: 'user_id', select: 'name avatar email' },
-      ]);
-
-      if (!wishlistList) {
-        throw new NotFoundException('Không tìm thấy danh sách yêu thích');
-      }
-
-      return wishlistList;
-    } catch (error) {
-      this.handleError(error, 'lấy thông tin danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Cập nhật wishlist list
-   */
-  private async updateWishlistList(
-    id: string,
-    updateWishlistListDto: UpdateWishlistListDto,
-    user: JwtPayload,
-  ): Promise<WishlistList> {
-    try {
-      await this.wishlistRepo.checkListPermission(
-        id,
-        user._id,
-        user.role || 'user',
-      );
-
-      const updatedList = await this.wishlistRepo.updateListById(
-        id,
-        updateWishlistListDto,
-        user._id,
-      );
-
-      if (!updatedList) {
-        throw new NotFoundException(
-          'Không tìm thấy danh sách yêu thích để cập nhật',
-        );
-      }
-
-      return updatedList;
-    } catch (error) {
-      this.handleError(error, 'cập nhật danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Xóa mềm wishlist list
-   */
-  private async softDeleteWishlistList(
-    id: string,
-    user: JwtPayload,
-  ): Promise<void> {
-    try {
-      await this.wishlistRepo.checkListPermission(
-        id,
-        user._id,
-        user.role || 'user',
-      );
-
-      const deletedList = await this.wishlistRepo.softDeleteList(id, user._id);
-
-      if (!deletedList) {
-        throw new NotFoundException(
-          'Không tìm thấy danh sách yêu thích để xóa',
-        );
-      }
-    } catch (error) {
-      this.handleError(error, 'xóa danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Thêm item vào wishlist
-   */
-  private async addWishlistItem(
-    createWishlistItemDto: CreateWishlistItemDto,
-    user: JwtPayload,
-  ): Promise<WishlistItem> {
-    try {
-      // Kiểm tra quyền truy cập wishlist
-      await this.wishlistRepo.checkListPermission(
-        createWishlistItemDto.wishlist_id,
-        user._id,
-        user.role || 'user',
-      );
-
-      // Kiểm tra xem item đã tồn tại chưa
-      const existingItem = await this.wishlistRepo.findItemByWishlistAndRoom(
-        createWishlistItemDto.wishlist_id,
-        createWishlistItemDto.room_id,
-      );
-
-      if (existingItem) {
-        throw new BadRequestException(
-          'Phòng này đã có trong danh sách yêu thích',
-        );
-      }
-
-      return await this.wishlistRepo.addItem(createWishlistItemDto, user._id);
-    } catch (error) {
-      this.handleError(error, 'thêm phòng vào danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Lấy danh sách items trong wishlist
-   */
-  private async findItemsInWishlist(
-    wishlistId: string,
-    user: JwtPayload,
-    queryDto: QueryWishlistDto,
-  ) {
-    try {
-      // Kiểm tra quyền truy cập wishlist
-      await this.wishlistRepo.checkListPermission(
-        wishlistId,
-        user._id,
-        user.role || 'user',
-      );
-
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'created_at',
-        sortOrder = 'desc',
-      } = queryDto;
-      const skip = (page - 1) * limit;
-
-      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 } as Record<
-        string,
-        1 | -1
-      >;
-
-      const options = {
-        sort,
-        limit,
-        skip,
-        populate: [
-          {
-            path: 'room_id',
-            select:
-              'title description images address price_per_night property_type',
-          },
-          {
-            path: 'wishlist_id',
-            select: 'name',
-          },
-        ],
-      };
-
-      return await this.wishlistRepo.findItemsByWishlistId(wishlistId, options);
-    } catch (error) {
-      this.handleError(error, 'lấy danh sách phòng yêu thích');
-    }
-  }
-
-  /**
-   * Xóa item khỏi wishlist
-   */
-  private async removeWishlistItem(
-    wishlistId: string,
-    roomId: string,
-    user: JwtPayload,
-  ): Promise<void> {
-    try {
-      // Kiểm tra quyền truy cập wishlist
-      await this.wishlistRepo.checkListPermission(
-        wishlistId,
-        user._id,
-        user.role || 'user',
-      );
-
-      const removedItem = await this.wishlistRepo.removeItem(
-        wishlistId,
-        roomId,
-        user._id,
-      );
-
-      if (!removedItem) {
-        throw new NotFoundException(
-          'Không tìm thấy phòng trong danh sách yêu thích',
-        );
-      }
-    } catch (error) {
-      this.handleError(error, 'xóa phòng khỏi danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Kiểm tra item có trong wishlist không
-   */
-  private async isItemInWishlist(
-    wishlistId: string,
-    roomId: string,
-    user: JwtPayload,
-  ): Promise<boolean> {
-    try {
-      // Kiểm tra quyền truy cập wishlist
-      await this.wishlistRepo.checkListPermission(
-        wishlistId,
-        user._id,
-        user.role || 'user',
-      );
-
-      const item = await this.wishlistRepo.findItemByWishlistAndRoom(
-        wishlistId,
-        roomId,
-      );
-      return !!item;
-    } catch (error) {
-      this.handleError(error, 'kiểm tra phòng trong danh sách yêu thích');
-    }
-  }
-
-  /**
-   * Xử lý lỗi
+   * Xử lý lỗi chung
    */
   private handleError(error: any, operation: string): never {
-    this.logger.error(`Lỗi khi ${operation}:`, error.stack);
+    this.logger.error(`Lỗi khi ${operation}: ${error.message}`, error.stack);
 
     if (
       error instanceof NotFoundException ||
@@ -441,8 +201,6 @@ export class WishlistService {
       throw error;
     }
 
-    throw new BadRequestException(
-      `Không thể ${operation}. Vui lòng thử lại sau.`,
-    );
+    throw new BadRequestException(`Có lỗi xảy ra khi ${operation}`);
   }
 }

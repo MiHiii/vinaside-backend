@@ -1,19 +1,20 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { WishlistController } from './wishlist.controller';
+import {
+  WishlistController,
+  AdminWishlistController,
+} from './wishlist.controller';
 import { WishlistService } from './wishlist.service';
 import { WishlistRepo } from './wishlist.repo';
-import { WishlistList, WishlistListSchema } from './schemas/wishlist-list.schema';
-import { WishlistItem, WishlistItemSchema } from './schemas/wishlist-item.schema';
+import { Wishlist, WishlistSchema } from './schemas/wishlist.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: WishlistList.name, schema: WishlistListSchema },
-      { name: WishlistItem.name, schema: WishlistItemSchema },
+      { name: Wishlist.name, schema: WishlistSchema },
     ]),
   ],
-  controllers: [WishlistController],
+  controllers: [WishlistController, AdminWishlistController],
   providers: [WishlistService, WishlistRepo],
   exports: [WishlistService, WishlistRepo],
 })
