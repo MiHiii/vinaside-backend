@@ -30,8 +30,8 @@ export class CreateUserDto {
   avatar_url?: string;
 
   @IsOptional()
-  @IsEnum(['guest', 'host', 'admin'], {
-    message: 'Vai trò phải là một trong các giá trị: guest, host, admin',
+  @IsEnum(['guest', 'staff', 'admin'], {
+    message: 'Vai trò phải là một trong các giá trị: guest, staff, admin',
   })
   role?: string = 'guest';
 

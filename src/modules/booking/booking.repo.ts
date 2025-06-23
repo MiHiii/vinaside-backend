@@ -394,16 +394,16 @@ export class BookingRepo {
       return booking;
     }
 
-    if (role === 'host') {
+    if (role === 'staff') {
+      // Staff có thể xem bookings của listings mà họ sở hữu
       if (booking.host_id.toString() !== userId) {
         throw new BadRequestException(
           'Bạn không có quyền thao tác với booking này',
         );
       }
       return booking;
-    }
-
-    if (role === 'guest') {
+    } else if (role === 'guest') {
+      // Guest chỉ xem được booking của chính họ
       if (booking.guest_id.toString() !== userId) {
         throw new BadRequestException(
           'Bạn không có quyền thao tác với booking này',

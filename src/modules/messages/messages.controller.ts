@@ -14,8 +14,9 @@ import {
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
-import { AddReactionDto, RemoveReactionDto } from './dto/reaction.dto';
-import { ReactionType } from './schemas/message.schema';
+import { AddReactionDto } from './dto/reaction.dto';
+import { QueryMessageDto } from './dto/query-message.dto';
+import { SearchMessageDto } from './dto/search-message.dto';
 import { Roles } from '../../decorators/roles.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -29,8 +30,8 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Tạo tin nhắn thành công')
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Gửi tin nhắn thành công')
   create(
     @Body() createMessageDto: CreateMessageDto,
     @Request() req: RequestWithUser,
@@ -39,45 +40,39 @@ export class MessagesController {
   }
 
   @Get()
-  @Roles('admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy danh sách tin nhắn thành công')
-  findAll() {
-    return this.messagesService.findAll();
+  findAll(@Query() query: QueryMessageDto, @Request() req: RequestWithUser) {
+    return this.messagesService.findAll(query, req.user);
   }
 
   @Get('conversations')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Lấy danh sách cuộc hội thoại thành công')
-  getUserConversations(@Request() req: RequestWithUser) {
-    return this.messagesService.findUserConversations(req.user._id);
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Lấy danh sách cuộc trò chuyện thành công')
+  getConversations(@Request() req: RequestWithUser) {
+    return this.messagesService.getConversations(req.user._id);
   }
 
-  @Get('available-users')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Lấy danh sách người dùng có thể nhắn tin thành công')
-  getAvailableUsers(@Request() req: RequestWithUser) {
-    return this.messagesService.getAvailableUsers(req.user._id);
-  }
-
-  @Get('conversation')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Lấy cuộc hội thoại thành công')
+  @Get('conversation/:userId')
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
   getConversation(
-    @Query('otherUserId') otherUserId: string,
+    @Param('userId') userId: string,
+    @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.messagesService.findConversation(req.user._id, otherUserId);
+    return this.messagesService.getConversation(req.user._id, userId, query);
   }
 
   @Get('unread-count')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy số tin nhắn chưa đọc thành công')
   getUnreadCount(@Request() req: RequestWithUser) {
     return this.messagesService.getUnreadCount(req.user._id);
   }
 
   @Get('all-users')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
   getAllUsers(@Request() req: RequestWithUser) {
     return this.messagesService.getAllUsers(req.user._id);
@@ -85,50 +80,57 @@ export class MessagesController {
 
   // ==================== REACTION ENDPOINTS ====================
 
-  @Post('reactions/add')
-  @Roles('guest', 'host', 'admin')
+  @Post(':id/reactions')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Thêm reaction thành công')
   addReaction(
+    @Param('id') id: string,
     @Body() addReactionDto: AddReactionDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.messagesService.addReaction(addReactionDto, req.user);
+    return this.messagesService.addReaction(id, addReactionDto, req.user);
   }
 
-  @Post('reactions/remove')
-  @Roles('guest', 'host', 'admin')
+  @Delete(':id/reactions')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Xóa reaction thành công')
-  removeReaction(
-    @Body() removeReactionDto: RemoveReactionDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.messagesService.removeReaction(removeReactionDto, req.user);
+  removeReaction(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.removeReaction(id, req.user);
   }
 
-  @Post(':messageId/reactions/toggle/:reactionType')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Toggle reaction thành công')
-  toggleReaction(
-    @Param('messageId') messageId: string,
-    @Param('reactionType') reactionType: ReactionType,
+  @Patch(':id/pin')
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Ghim tin nhắn thành công')
+  pinMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.pinMessage(id, req.user);
+  }
+
+  @Patch(':id/unpin')
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Bỏ ghim tin nhắn thành công')
+  unpinMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.unpinMessage(id, req.user);
+  }
+
+  @Post('search')
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Tìm kiếm tin nhắn thành công')
+  search(
+    @Body() searchMessageDto: SearchMessageDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.messagesService.toggleReaction(
-      messageId,
-      reactionType,
-      req.user,
-    );
+    return this.messagesService.search(searchMessageDto, req.user);
   }
 
   @Get(':id')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy thông tin tin nhắn thành công')
   findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.messagesService.findOne(id, req.user);
   }
 
   @Patch(':id')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Cập nhật tin nhắn thành công')
   update(
     @Param('id') id: string,
@@ -139,14 +141,14 @@ export class MessagesController {
   }
 
   @Patch(':id/read')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Đánh dấu tin nhắn đã đọc thành công')
   markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.markAsRead(id, req.user);
+    return this.messagesService.markAsRead(id, req.user._id);
   }
 
   @Patch('conversation/read')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Đánh dấu cuộc hội thoại đã đọc thành công')
   markConversationAsRead(
     @Query('otherUserId') otherUserId: string,
@@ -159,7 +161,7 @@ export class MessagesController {
   }
 
   @Delete(':id')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ResponseMessage('Xóa tin nhắn thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {

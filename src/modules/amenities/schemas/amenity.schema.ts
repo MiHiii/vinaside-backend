@@ -17,6 +17,9 @@ export class Amenity {
   @Prop({ required: true })
   room_id: Types.ObjectId;
 
+  @Prop({ default: true })
+  is_active: boolean;
+
   @Prop({ default: false })
   isDeleted: boolean;
 

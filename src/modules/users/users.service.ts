@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { FilterQuery, PopulateOptions } from 'mongoose';
 import { UserDocument } from './schemas/user.schema';
 import { compare } from 'bcryptjs';
@@ -298,5 +302,73 @@ export class UsersService {
     }
 
     return updatedUser;
+  }
+
+  /**
+   * Cập nhật avatar của người dùng
+   */
+  async updateAvatar(
+    userId: string,
+    avatarUrl: string,
+  ): Promise<{ success: boolean; user: UserDocument }> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    if (user.isDeleted) {
+      throw new BadRequestException(
+        'Không thể cập nhật avatar cho tài khoản đã bị khóa',
+      );
+    }
+
+    const updatedUser = await this.userRepo.updateById(userId, {
+      avatar_url: avatarUrl,
+    });
+
+    if (!updatedUser) {
+      throw new BadRequestException('Không thể cập nhật avatar');
+    }
+
+    return {
+      success: true,
+      user: updatedUser,
+    };
+  }
+
+  /**
+   * Lấy thông tin avatar của người dùng
+   */
+  async getUserAvatar(userId: string): Promise<{ avatar_url: string | null }> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    return {
+      avatar_url: user.avatar_url || null,
+    };
+  }
+
+  /**
+   * Xóa avatar của người dùng
+   */
+  async removeAvatar(userId: string): Promise<{ success: boolean }> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    if (user.isDeleted) {
+      throw new BadRequestException(
+        'Không thể thao tác với tài khoản đã bị khóa',
+      );
+    }
+
+    await this.userRepo.updateById(userId, {
+      avatar_url: null,
+    });
+
+    return { success: true };
   }
 }

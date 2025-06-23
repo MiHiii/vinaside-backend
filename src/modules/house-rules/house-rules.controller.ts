@@ -2,13 +2,13 @@ import {
   Controller,
   Post,
   Get,
-  Put,
   Delete,
   Param,
   Body,
   UseGuards,
   Req,
   Query,
+  Patch,
 } from '@nestjs/common';
 
 import { HouseRulesService } from './houserules.service';
@@ -31,13 +31,13 @@ export class HouseRulesController {
   constructor(private readonly houseRulesService: HouseRulesService) {}
 
   @Post()
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Tạo quy tắc nhà thành công')
   create(
-    @Body() createDto: CreateHouseRuleDto,
+    @Body() createHouseRuleDto: CreateHouseRuleDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.houseRulesService.create(createDto, req.user!);
+    return this.houseRulesService.create(createHouseRuleDto, req.user!);
   }
 
   @Get()
@@ -47,44 +47,44 @@ export class HouseRulesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.houseRulesService.findAllWithUserContext(query, req.user);
+    return this.houseRulesService.findAll(query, req.user);
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    return this.houseRulesService.searchWithUserContext(query, req.user);
+    return this.houseRulesService.search(query, req.user);
   }
 
   @Get(':id')
   @ResponseMessage('Lấy quy tắc nhà thành công')
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.houseRulesService.findOneWithUserContext(id, req.user);
+    return this.houseRulesService.findOne(id, req.user);
   }
 
-  @Put(':id')
-  @Roles('host')
+  @Patch(':id')
+  @Roles('staff')
   @ResponseMessage('Cập nhật quy tắc nhà thành công')
   update(
     @Param('id') id: string,
-    @Body() updateDto: UpdateHouseRuleDto,
+    @Body() updateHouseRuleDto: UpdateHouseRuleDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.houseRulesService.update(id, updateDto, req.user!);
+    return this.houseRulesService.update(id, updateHouseRuleDto, req.user!);
   }
 
   @Delete(':id')
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Xóa quy tắc nhà thành công')
-  softDelete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.houseRulesService.softDelete(id, req.user!);
   }
 
-  @Put('restore/:id')
-  @Roles('host')
-  @ResponseMessage('Khôi phục quy tắc nhà thành công')
-  restore(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.houseRulesService.restore(id, req.user!);
+  @Patch(':id/toggle-status')
+  @Roles('staff')
+  @ResponseMessage('Cập nhật trạng thái quy tắc nhà thành công')
+  toggleStatus(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.houseRulesService.toggleStatus(id, req.user!);
   }
 }
