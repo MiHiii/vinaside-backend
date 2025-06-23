@@ -1,0 +1,109 @@
+### Variables
+@baseUrl = http://localhost:8080/api/v1
+@token = YOUR_ACCESS_TOKEN_HERE
+@adminToken = YOUR_ADMIN_TOKEN_HERE
+@roomId = 685419669aac1eb003078bf8
+@reviewId = REVIEW_ID_HERE
+
+### DEBUG - Test payload format
+POST {{baseUrl}}/reviews/debug
+Content-Type: application/json
+
+{
+  "room_id": "685419669aac1eb003078bf8",
+  "rating": 5,
+  "comment": "Test debug"
+}
+
+### TEST SIMPLE - Test simple endpoint
+POST {{baseUrl}}/reviews/test-simple
+Content-Type: application/json
+
+{
+  "room_id": "685419669aac1eb003078bf8",
+  "rating": 5,
+  "comment": "Test simple"
+}
+
+### 1. Create Review
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "room_id": "{{roomId}}",
+  "rating": 5,
+  "comment": "Phòng rất đẹp và sạch sẽ. Host rất thân thiện và nhiệt tình. Tôi sẽ quay lại!"
+}
+
+### 2. Get My Reviews
+GET {{baseUrl}}/reviews?page=1&limit=10&sortBy=created_at&sortOrder=desc
+Authorization: Bearer {{token}}
+
+### 3. Get Room Reviews (Public)
+GET {{baseUrl}}/reviews/rooms/{{roomId}}?page=1&limit=10
+Content-Type: application/json
+
+### 4. Get Review Detail
+GET {{baseUrl}}/reviews/{{reviewId}}
+Authorization: Bearer {{token}}
+
+### 5. Admin - Get All Reviews
+GET {{baseUrl}}/reviews/admin/all?page=1&limit=20&rating=5
+Authorization: Bearer {{adminToken}}
+
+### 6. Admin - Search Reviews
+GET {{baseUrl}}/reviews/admin/search?keyword=đẹp&page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 7. Admin - Get Statistics
+GET {{baseUrl}}/reviews/admin/statistics
+Authorization: Bearer {{adminToken}}
+
+### 8. Admin - Delete Review
+DELETE {{baseUrl}}/reviews/admin/{{reviewId}}
+Authorization: Bearer {{adminToken}}
+
+### Test with different ratings
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "room_id": "685419669aac1eb003078bf8",
+  "rating": 4,
+  "comment": "Phòng ổn, sạch sẽ nhưng hơi nhỏ"
+}
+
+### Test validation error - invalid rating
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "room_id": "685419669aac1eb003078bf8",
+  "rating": 6,
+  "comment": "Test invalid rating"
+}
+
+### Test validation error - empty comment
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "room_id": "685419669aac1eb003078bf8",
+  "rating": 5,
+  "comment": ""
+}
+
+### Test validation error - invalid ObjectId
+POST {{baseUrl}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "room_id": "invalid-objectid",
+  "rating": 5,
+  "comment": "Test invalid ObjectId"
+} 

@@ -29,6 +29,7 @@ import { SafetyFeaturesModule } from './modules/safety_features/safety_features.
 import { MessagesModule } from './modules/messages/messages.module';
 import { LocationModule } from './modules/location/location.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 @Module({
   imports: [
     MongooseConfigModule,
@@ -63,6 +64,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module';
     MessagesModule,
     LocationModule,
     WishlistModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [
