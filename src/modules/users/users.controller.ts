@@ -9,6 +9,7 @@ import {
   Put,
   Patch,
   HttpCode,
+  Request,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { Roles } from 'src/decorators/roles.decorator';
@@ -16,10 +17,16 @@ import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { QueryUserDto } from './dto/query-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateAvatarDto } from './dto/update-avatar.dto';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 interface ApiResponse<T> {
   data?: T;
   success?: boolean;
+}
+
+interface RequestWithUser extends Request {
+  user: JwtPayload;
 }
 
 @Controller('users')
@@ -87,5 +94,58 @@ export class UsersController {
   @ResponseMessage('Xóa người dùng thành công.')
   delete(@Param('id') id: string): Promise<ApiResponse<any>> {
     return this.usersService.delete(id);
+  }
+
+  // =============== AVATAR ENDPOINTS ===============
+
+  @Roles('guest', 'staff', 'admin')
+  @Patch(':id/avatar')
+  @ResponseMessage('Cập nhật avatar thành công.')
+  updateAvatar(
+    @Param('id') id: string,
+    @Body() updateAvatarDto: UpdateAvatarDto,
+  ) {
+    return this.usersService.updateAvatar(id, updateAvatarDto.avatar_url);
+  }
+
+  @Roles('guest', 'staff', 'admin')
+  @Get(':id/avatar')
+  @ResponseMessage('Lấy thông tin avatar thành công.')
+  getAvatar(@Param('id') id: string) {
+    return this.usersService.getUserAvatar(id);
+  }
+
+  @Roles('guest', 'staff', 'admin')
+  @Delete(':id/avatar')
+  @ResponseMessage('Xóa avatar thành công.')
+  removeAvatar(@Param('id') id: string) {
+    return this.usersService.removeAvatar(id);
+  }
+
+  @Roles('guest', 'staff', 'admin')
+  @Patch('profile/avatar')
+  @ResponseMessage('Cập nhật avatar cá nhân thành công.')
+  updateMyAvatar(
+    @Request() req: RequestWithUser,
+    @Body() updateAvatarDto: UpdateAvatarDto,
+  ) {
+    return this.usersService.updateAvatar(
+      req.user._id,
+      updateAvatarDto.avatar_url,
+    );
+  }
+
+  @Roles('guest', 'staff', 'admin')
+  @Get('profile/avatar')
+  @ResponseMessage('Lấy avatar cá nhân thành công.')
+  getMyAvatar(@Request() req: RequestWithUser) {
+    return this.usersService.getUserAvatar(req.user._id);
+  }
+
+  @Roles('guest', 'staff', 'admin')
+  @Delete('profile/avatar')
+  @ResponseMessage('Xóa avatar cá nhân thành công.')
+  removeMyAvatar(@Request() req: RequestWithUser) {
+    return this.usersService.removeAvatar(req.user._id);
   }
 }

@@ -179,4 +179,15 @@ export class QueryListingDto {
   @IsNumber()
   @Min(0)
   distance?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return Boolean(value);
+  })
+  isDeleted?: boolean;
 }

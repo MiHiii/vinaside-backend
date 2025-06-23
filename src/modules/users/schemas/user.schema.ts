@@ -20,7 +20,7 @@ export class User {
   @Prop()
   avatar_url: string;
 
-  @Prop({ enum: ['guest', 'host', 'admin'], default: 'guest' })
+  @Prop({ enum: ['guest', 'staff', 'admin'], default: 'guest' })
   role: string;
 
   @Prop({ default: 'vi' })

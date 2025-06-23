@@ -5,9 +5,10 @@ import {
   Body,
   Param,
   Delete,
-  Put,
   Req,
   Query,
+  Patch,
+  Request,
 } from '@nestjs/common';
 import { AmenitiesService } from './amenities.service';
 import { CreateAmenityDto } from './dto/create-amenity.dto';
@@ -21,16 +22,20 @@ interface AuthenticatedRequest extends Request {
   user?: JwtPayload;
 }
 
+interface RequestWithUser extends Request {
+  user?: JwtPayload;
+}
+
 @Controller('amenities')
 export class AmenitiesController {
   constructor(private readonly amenitiesService: AmenitiesService) {}
 
   @Post()
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Tạo tiện ích thành công')
   create(
     @Body() createAmenityDto: CreateAmenityDto,
-    @Req() req: AuthenticatedRequest,
+    @Request() req: RequestWithUser,
   ) {
     return this.amenitiesService.create(createAmenityDto, req.user!);
   }
@@ -38,49 +43,46 @@ export class AmenitiesController {
   @Get()
   @Public()
   @ResponseMessage('Lấy danh sách tiện ích thành công')
-  findAll(
-    @Query() query: Record<string, any>,
-    @Req() req: AuthenticatedRequest,
-  ) {
-    return this.amenitiesService.findAllWithUserContext(query, req.user);
+  findAll() {
+    return this.amenitiesService.findAll();
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm tiện ích thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    return this.amenitiesService.searchWithUserContext(query, req.user);
+    return this.amenitiesService.search(query, req.user);
   }
 
   @Get(':id')
   @Public()
   @ResponseMessage('Lấy tiện ích thành công')
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.amenitiesService.findOneWithUserContext(id, req.user);
+    return this.amenitiesService.findOne(id, req.user);
   }
 
-  @Put(':id')
-  @Roles('host')
+  @Patch(':id')
+  @Roles('staff')
   @ResponseMessage('Cập nhật tiện ích thành công')
   update(
     @Param('id') id: string,
     @Body() updateAmenityDto: UpdateAmenityDto,
-    @Req() req: AuthenticatedRequest,
+    @Request() req: RequestWithUser,
   ) {
     return this.amenitiesService.update(id, updateAmenityDto, req.user!);
   }
 
   @Delete(':id')
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Xóa tiện ích thành công')
-  softDelete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.amenitiesService.softDelete(id, req.user!);
   }
 
-  @Put('restore/:id')
-  @Roles('host')
-  @ResponseMessage('Khôi phục tiện ích thành công')
-  restore(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.amenitiesService.restore(id, req.user!);
+  @Patch(':id/toggle-status')
+  @Roles('staff')
+  @ResponseMessage('Cập nhật trạng thái tiện ích thành công')
+  toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.amenitiesService.toggleStatus(id, req.user!);
   }
 }

@@ -5,7 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { FilterQuery, Types } from 'mongoose';
+import { FilterQuery, Types, SortOrder } from 'mongoose';
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
@@ -156,21 +156,11 @@ export class ListingService {
   }
 
   /**
-   * Tìm danh sách của một host và trả về dữ liệu định dạng
+   * Tìm danh sách của một staff và trả về dữ liệu định dạng
    */
-  async findByHost(hostId: string, queryDto: QueryListingDto) {
-    const result = await this.findListingsByHost(hostId, queryDto);
-    const { page = 1, limit = 10 } = queryDto;
-
-    return {
-      listings: result.data,
-      meta: {
-        total: result.total,
-        page,
-        limit,
-        totalPages: Math.ceil(result.total / limit) || 1,
-      },
-    };
+  async findByStaff(staffId: string, queryDto: QueryListingDto) {
+    const result = await this.findListingsByStaff(staffId, queryDto);
+    return { data: result };
   }
 
   /**
@@ -270,6 +260,46 @@ export class ListingService {
         totalPages: Math.ceil(result.total / queryLimit) || 1,
       },
     };
+  }
+
+  /**
+   * Chuyển đổi trạng thái listing (active/inactive)
+   */
+  async toggleStatus(id: string, user: JwtPayload): Promise<Listing> {
+    try {
+      // Kiểm tra quyền
+      if (!user._id || !user.role) {
+        throw new BadRequestException('Thông tin người dùng không hợp lệ');
+      }
+
+      const listing = await this.listingRepo.checkPermission(
+        id,
+        user._id,
+        user.role,
+      );
+
+      // Chuyển đổi trạng thái
+      const newStatus =
+        listing.status === ListingStatus.ACTIVE
+          ? ListingStatus.INACTIVE
+          : ListingStatus.ACTIVE;
+
+      const updatedListing = await this.listingRepo.updateStatus(
+        id,
+        newStatus,
+        user._id,
+      );
+
+      if (!updatedListing) {
+        throw new NotFoundException(
+          `Không thể cập nhật trạng thái cho listing với ID ${id}`,
+        );
+      }
+
+      return updatedListing;
+    } catch (error) {
+      this.handleError(error, 'Chuyển đổi trạng thái listing');
+    }
   }
 
   // ====================== INTERNAL METHODS ======================
@@ -658,47 +688,46 @@ export class ListingService {
   }
 
   /**
-   * Tìm các phòng của một host
+   * Tìm các phòng của một staff
    */
-  private async findListingsByHost(hostId: string, queryDto: QueryListingDto) {
+  private async findListingsByStaff(
+    staffId: string,
+    queryDto: QueryListingDto,
+  ) {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'created_at',
-        sortOrder = 'desc',
-        includeDeleted = false,
-        ...filters
-      } = queryDto;
+      // Log debug
+      this.logger.debug(
+        `Finding listings for staff ${staffId} with query: ${JSON.stringify(queryDto)}`,
+      );
 
-      // Xây dựng query với host_id
-      const hostObjectId = new Types.ObjectId(hostId);
-      const query: FilterQuery<Listing> = { host_id: hostObjectId };
+      // Validate staffId
+      if (!staffId || !Types.ObjectId.isValid(staffId)) {
+        throw new BadRequestException('Staff ID không hợp lệ');
+      }
 
-      // Thêm các bộ lọc khác
-      const fullQuery = {
-        ...this.listingRepo.buildFilterQuery(
-          filters as ListingFilters,
-          includeDeleted,
-        ),
-        ...query,
-      };
+      // Xây dựng query với staff_id (host_id field trong database)
+      const staffObjectId = new Types.ObjectId(staffId);
+      const query: FilterQuery<Listing> = { host_id: staffObjectId };
 
-      // Tính toán skip cho phân trang
-      const skip = (page - 1) * limit;
+      // Thêm các filter từ queryDto nếu có
+      if (queryDto.isDeleted !== undefined) {
+        query.isDeleted = queryDto.isDeleted;
+      }
 
-      // Xây dựng sort
-      const sort = parseSortString(`${sortBy}:${sortOrder}`);
+      if (queryDto.status) {
+        query.status = queryDto.status;
+      }
 
-      // Thực hiện query
-      return await this.listingRepo.findAll(fullQuery, {
-        sort,
-        skip,
-        limit,
+      // Sử dụng repository để thực hiện query
+      return await this.listingRepo.findWithPagination({
+        query,
+        page: queryDto.page || 1,
+        limit: queryDto.limit || 10,
+        sort: this.buildSortQuery(queryDto.sortBy, queryDto.sortOrder),
         populate: { path: 'host_id', select: 'name avatar email phone' },
       });
-    } catch (error) {
-      this.handleError(error, 'Tìm listings theo host');
+    } catch (error: unknown) {
+      this.handleError(error, 'Tìm listings theo staff');
     }
   }
 
@@ -810,5 +839,25 @@ export class ListingService {
       error instanceof Error ? error.stack : undefined,
     );
     throw error;
+  }
+
+  /**
+   * Xây dựng query sắp xếp
+   */
+  private buildSortQuery(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Record<string, SortOrder> {
+    const sort: Record<string, SortOrder> = {};
+
+    if (sortBy) {
+      const order = sortOrder?.toLowerCase() === 'asc' ? 1 : -1;
+      sort[sortBy] = order;
+    } else {
+      // Mặc định sắp xếp theo created_at giảm dần
+      sort.created_at = -1;
+    }
+
+    return sort;
   }
 }

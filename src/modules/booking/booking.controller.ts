@@ -45,13 +45,13 @@ export class BookingController {
   }
 
   @Get('my-bookings')
-  @Roles('host', 'admin')
-  @ResponseMessage('Lấy danh sách bookings của tôi thành công')
-  findMyBookings(
-    @Query() queryDto: QueryBookingDto,
+  @Roles('guest')
+  @ResponseMessage('Lấy danh sách booking của tôi thành công')
+  getMyBookings(
+    @Query() query: QueryBookingDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.findMyBookingsAsHost(req.user, queryDto);
+    return this.bookingService.findByGuest(req.user._id, query);
   }
 
   @Get('my-history')
@@ -74,18 +74,18 @@ export class BookingController {
     return this.bookingService.findByGuest(guestId, queryDto);
   }
 
-  @Get('host/:hostId')
-  @Roles('host', 'admin')
-  @ResponseMessage('Lấy danh sách bookings của host thành công')
-  findByHost(
-    @Param('hostId') hostId: string,
+  @Get('staff/:staffId')
+  @Roles('staff', 'admin')
+  @ResponseMessage('Lấy danh sách bookings của staff thành công')
+  findByStaff(
+    @Param('staffId') staffId: string,
     @Query() queryDto: QueryBookingDto,
   ) {
-    return this.bookingService.findByHost(hostId, queryDto);
+    return this.bookingService.findByHost(staffId, queryDto);
   }
 
   @Get('listing/:listingId')
-  @Roles('host', 'admin')
+  @Roles('staff', 'admin')
   @ResponseMessage('Lấy danh sách bookings của listing thành công')
   findByListing(
     @Param('listingId') listingId: string,
@@ -96,7 +96,7 @@ export class BookingController {
   }
 
   @Get('check-availability/:listingId')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Kiểm tra tính khả dụng thành công')
   checkAvailability(
     @Param('listingId') listingId: string,
@@ -108,21 +108,20 @@ export class BookingController {
 
   @Public()
   @Get('booked-dates/:listingId')
-  // @Roles('guest', 'host', 'admin')
   @ResponseMessage('Lấy ngày đã đặt thành công')
   getBookedDates(@Param('listingId') listingId: string) {
     return this.bookingService.getBookedDates(listingId);
   }
 
   @Get(':id')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy thông tin booking thành công')
   findOne(@Param('id') id: string) {
     return this.bookingService.findOne(id);
   }
 
   @Patch(':id')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Cập nhật booking thành công')
   update(
     @Param('id') id: string,
@@ -133,27 +132,20 @@ export class BookingController {
   }
 
   @Delete(':id')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Xóa booking thành công')
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
+  @Roles('guest', 'staff', 'admin')
+  @ResponseMessage('Hủy booking thành công')
+  cancel(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.bookingService.remove(id, req.user);
   }
 
-  @Patch(':id/restore')
-  @Roles('guest', 'host', 'admin')
-  @ResponseMessage('Khôi phục booking thành công')
-  restore(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.bookingService.restore(id, req.user);
-  }
-
-  @Patch(':id/status')
-  @Roles('host', 'admin')
-  @ResponseMessage('Cập nhật trạng thái booking thành công')
-  updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: BookingStatus,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.bookingService.updateStatus(id, status, req.user);
+  @Patch(':id/confirm')
+  @Roles('staff', 'admin')
+  @ResponseMessage('Xác nhận booking thành công')
+  confirm(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.bookingService.update(
+      id,
+      { status: BookingStatus.CONFIRMED },
+      req.user,
+    );
   }
 }

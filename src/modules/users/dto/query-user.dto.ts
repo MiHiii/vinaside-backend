@@ -43,8 +43,8 @@ export class QueryUserDto {
 
   @ApiProperty({ required: false, description: 'Lọc theo vai trò' })
   @IsOptional()
-  @IsEnum(['guest', 'host', 'admin'], { each: true })
-  role?: string[];
+  @IsEnum(['guest', 'staff', 'admin'], { each: true })
+  role?: string | string[];
 
   @ApiProperty({ required: false, description: 'Trạng thái xác minh email' })
   @IsOptional()

@@ -8,6 +8,8 @@ import {
   Req,
   Query,
   Put,
+  Patch,
+  Request,
 } from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
@@ -21,16 +23,20 @@ interface AuthenticatedRequest extends Request {
   user?: JwtPayload;
 }
 
+interface RequestWithUser extends Request {
+  user?: JwtPayload;
+}
+
 @Controller('safety-features')
 export class SafetyFeaturesController {
   constructor(private readonly safetyFeaturesService: SafetyFeaturesService) {}
 
   @Post()
-  @Roles('host')
-  @ResponseMessage('Tạo tiện ích an toàn thành công')
+  @Roles('staff')
+  @ResponseMessage('Tạo tính năng an toàn thành công')
   create(
     @Body() createSafetyFeatureDto: CreateSafetyFeatureDto,
-    @Req() req: AuthenticatedRequest,
+    @Request() req: RequestWithUser,
   ) {
     return this.safetyFeaturesService.create(createSafetyFeatureDto, req.user!);
   }
@@ -42,30 +48,30 @@ export class SafetyFeaturesController {
     @Query() query: Record<string, any>,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.safetyFeaturesService.findAllWithUserContext(query, req.user);
+    return this.safetyFeaturesService.findAll(query, req.user);
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm tiện ích an toàn thành công')
   search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    return this.safetyFeaturesService.searchWithUserContext(query, req.user);
+    return this.safetyFeaturesService.search(query, req.user);
   }
 
   @Get(':id')
   @Public()
   @ResponseMessage('Lấy tiện ích an toàn thành công')
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.safetyFeaturesService.findOneWithUserContext(id, req.user);
+    return this.safetyFeaturesService.findOne(id, req.user);
   }
 
-  @Put(':id')
-  @Roles('host')
-  @ResponseMessage('Cập nhật tiện ích an toàn thành công')
+  @Patch(':id')
+  @Roles('staff')
+  @ResponseMessage('Cập nhật tính năng an toàn thành công')
   update(
     @Param('id') id: string,
     @Body() updateSafetyFeatureDto: UpdateSafetyFeatureDto,
-    @Req() req: AuthenticatedRequest,
+    @Request() req: RequestWithUser,
   ) {
     return this.safetyFeaturesService.update(
       id,
@@ -75,16 +81,23 @@ export class SafetyFeaturesController {
   }
 
   @Delete(':id')
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Xóa tiện ích an toàn thành công')
   softDelete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.safetyFeaturesService.softDelete(id, req.user!);
   }
 
   @Put('restore/:id')
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Khôi phục tiện ích an toàn thành công')
   restore(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.safetyFeaturesService.restore(id, req.user!);
+  }
+
+  @Patch(':id/toggle-status')
+  @Roles('staff')
+  @ResponseMessage('Cập nhật trạng thái tính năng an toàn thành công')
+  toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.safetyFeaturesService.toggleStatus(id, req.user!);
   }
 }

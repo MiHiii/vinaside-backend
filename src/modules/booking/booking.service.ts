@@ -271,9 +271,9 @@ export class BookingService {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
     }
 
-    // Host chỉ xem được bookings của listings mình sở hữu
-    if (user.role !== 'admin' && user.role !== 'host') {
-      throw new ForbiddenException('Chỉ host và admin mới có quyền này');
+    // Staff chỉ xem được bookings của listings mình sở hữu
+    if (user.role !== 'admin' && user.role !== 'staff') {
+      throw new ForbiddenException('Chỉ staff và admin mới có quyền này');
     }
 
     const result = await this.findBookingsByHost(user._id, queryDto);

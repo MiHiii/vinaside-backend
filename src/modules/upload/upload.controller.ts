@@ -52,7 +52,7 @@ export class UploadController {
   }
 
   @Post('room')
-  @Roles('host')
+  @Roles('staff')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Tải lên ảnh phòng thành công')
   @UseInterceptors(FilesInterceptor('files', 50))
@@ -77,7 +77,7 @@ export class UploadController {
   }
 
   @Post('user')
-  @Roles('guest', 'host', 'admin')
+  @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Tải lên ảnh người dùng thành công')
   @UseInterceptors(FilesInterceptor('files', 1))

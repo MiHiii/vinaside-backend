@@ -8,7 +8,6 @@ import {
   Delete,
   Query,
   HttpCode,
-  HttpStatus,
   Request,
 } from '@nestjs/common';
 import { ListingService } from './listing.service';
@@ -45,7 +44,7 @@ export class ListingController {
   constructor(private readonly listingService: ListingService) {}
 
   @Post()
-  @Roles('host')
+  @Roles('staff')
   @ResponseMessage('Tạo listing thành công')
   create(
     @Body() createListingDto: CreateListingDto,
@@ -106,7 +105,7 @@ export class ListingController {
   }
 
   @Patch(':id')
-  @Roles('host', 'admin')
+  @Roles('staff', 'admin')
   @ResponseMessage('Cập nhật listing thành công')
   update(
     @Param('id') id: string,
@@ -116,17 +115,24 @@ export class ListingController {
     return this.listingService.update(id, updateListingDto, req.user);
   }
 
+  @Patch(':id/toggle-status')
+  @Roles('staff', 'admin')
+  @ResponseMessage('Cập nhật trạng thái listing thành công')
+  toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.listingService.toggleStatus(id, req.user);
+  }
+
   @Delete(':id')
-  @Roles('host', 'admin')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('staff', 'admin')
+  @HttpCode(204)
   @ResponseMessage('Xóa listing thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.listingService.remove(id, req.user);
   }
 
   @Delete(':id/force')
-  @Roles('admin')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('staff', 'admin')
+  @HttpCode(204)
   @ResponseMessage('Xóa vĩnh viễn listing thành công')
   forceRemove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.listingService.forceRemove(id, req.user);
@@ -161,12 +167,12 @@ export class ListingController {
     return this.listingService.updateStatus(id, status, req.user);
   }
 
-  @Get('host/:hostId')
-  @ResponseMessage('Lấy danh sách listings của host thành công')
-  findByHost(
-    @Param('hostId') hostId: string,
+  @Get('staff/:staffId')
+  @ResponseMessage('Lấy danh sách listings của staff thành công')
+  findByStaff(
+    @Param('staffId') staffId: string,
     @Query() queryDto: QueryListingDto,
   ) {
-    return this.listingService.findByHost(hostId, queryDto);
+    return this.listingService.findByStaff(staffId, queryDto);
   }
 }

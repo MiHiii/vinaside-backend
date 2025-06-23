@@ -1,7 +1,7 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
@@ -564,10 +564,6 @@ export class ListingRepo {
 
   /**
    * Kiểm tra quyền truy cập vào listing
-   * @param listingId ID của listing cần kiểm tra
-   * @param userId ID của người dùng
-   * @param role Vai trò của người dùng
-   * @returns Đối tượng listing nếu có quyền, hoặc throw Exception nếu không có quyền
    */
   async checkPermission(
     listingId: string,
@@ -577,25 +573,54 @@ export class ListingRepo {
     const listing = await this.findById(listingId);
 
     if (!listing) {
-      throw new NotFoundException(`Không tìm thấy listing với ID ${listingId}`);
+      throw new NotFoundException(`Listing với ID ${listingId} không tồn tại`);
     }
 
-    // Nếu là admin thì luôn có quyền
+    // Admin có thể truy cập tất cả listings
     if (role === 'admin') {
       return listing;
     }
 
-    // Nếu là host, kiểm tra xem có phải chủ sở hữu không
-    if (role === 'host') {
-      if (listing.host_id.toString() !== userId) {
-        throw new BadRequestException(
-          'Bạn không có quyền thao tác với listing này',
-        );
-      }
-      return listing;
+    // Staff chỉ có thể truy cập listings của mình
+    if (role === 'staff' && listing.host_id.toString() !== userId) {
+      throw new ForbiddenException('Bạn chỉ có thể truy cập listings của mình');
     }
 
-    // Nếu không thuộc các role trên
-    throw new BadRequestException('Bạn không có quyền thực hiện thao tác này');
+    return listing;
+  }
+
+  /**
+   * Tìm kiếm với phân trang
+   */
+  async findWithPagination(options: {
+    query: FilterQuery<Listing>;
+    page: number;
+    limit: number;
+    sort?: Record<string, SortOrder>;
+    populate?: PopulateOptions | Array<PopulateOptions>;
+  }): Promise<{
+    data: Listing[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const { query, page, limit, sort, populate } = options;
+    const skip = (page - 1) * limit;
+
+    const result = await this.findAll(query, {
+      sort,
+      limit,
+      skip,
+      populate,
+    });
+
+    const totalPages = Math.ceil(result.total / limit);
+
+    return {
+      data: result.data,
+      total: result.total,
+      page,
+      totalPages,
+    };
   }
 }

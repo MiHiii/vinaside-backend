@@ -1,35 +1,35 @@
 import {
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CreateAmenityDto } from './dto/create-amenity.dto';
 import { UpdateAmenityDto } from './dto/update-amenity.dto';
-import { AmenityDocument } from './schemas/amenity.schema';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { AmenitiesRepo } from './amenities.repo';
-import { FilterQuery, Types } from 'mongoose';
+import { Types } from 'mongoose';
+import { Amenity } from './schemas/amenity.schema';
 
 @Injectable()
 export class AmenitiesService {
   constructor(private readonly amenitiesRepo: AmenitiesRepo) {}
 
   /**
-   * Kiểm tra user có phải host không
+   * Kiểm tra user có phải staff không
    */
-  private validateHost(user: JwtPayload): void {
-    if (user.role !== 'host') {
-      throw new UnauthorizedException(
-        'Chỉ có chủ nhà mới có thể quản lý tiện ích',
+  private validateStaff(user: JwtPayload): void {
+    if (user.role !== 'staff') {
+      throw new ForbiddenException(
+        'Chỉ staff mới có thể thực hiện hành động này',
       );
     }
   }
 
   /**
-   * Tạo tiện ích mới (chỉ host)
+   * Tạo tiện ích mới (chỉ staff)
    */
   async create(createAmenityDto: CreateAmenityDto, user: JwtPayload) {
-    this.validateHost(user);
+    this.validateStaff(user);
 
     const data = {
       ...createAmenityDto,
@@ -41,68 +41,22 @@ export class AmenitiesService {
   }
 
   /**
-   * Lấy tất cả tiện ích với filtering và pagination
+   * Lấy tất cả tiện ích với context của user (staff hoặc guest)
    */
-  async findAll(
-    query: Record<string, any> = {},
-    options: Record<string, any> = {},
-  ) {
-    try {
-      const result = await this.amenitiesRepo.findAll(query, options);
-      return result.data;
-    } catch {
-      return [];
-    }
+  async findAll(): Promise<any> {
+    return await this.amenitiesRepo.findAll({});
   }
 
   /**
-   * Lấy tất cả tiện ích với context của user (host hoặc guest)
+   * Lấy tiện ích theo ID với context của user (staff hoặc guest)
    */
-  async findAllWithUserContext(
-    query: Record<string, any> = {},
-    user?: JwtPayload,
-  ) {
-    if (user?.role === 'host') {
-      const userQuery = { ...query, createdBy: user._id };
-      return this.findAll(userQuery);
-    } else {
-      const publicQuery = { ...query, isDeleted: false };
-      return this.findAll(publicQuery);
-    }
-  }
-
-  /**
-   * Lấy tiện ích theo ID (với kiểm tra ownership nếu có userId)
-   */
-  async findOne(id: string, userId?: string) {
-    if (userId) {
-      // Kiểm tra ownership cho host
-      const amenity = await this.amenitiesRepo.findByIdAndCreatedBy(id, userId);
-      if (!amenity) {
-        throw new NotFoundException(
-          'Không tìm thấy tiện ích hoặc bạn không có quyền truy cập',
-        );
-      }
-      return amenity;
-    }
-
-    // Cho guest - chỉ lấy những amenity chưa bị xóa
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async findOne(id: string, _user?: JwtPayload): Promise<Amenity> {
     const amenity = await this.amenitiesRepo.findById(id);
-    if (!amenity || amenity.isDeleted) {
+    if (!amenity) {
       throw new NotFoundException('Không tìm thấy tiện ích');
     }
     return amenity;
-  }
-
-  /**
-   * Lấy tiện ích theo ID với context của user (host hoặc guest)
-   */
-  async findOneWithUserContext(id: string, user?: JwtPayload) {
-    if (user?.role === 'host') {
-      return this.findOne(id, user._id);
-    } else {
-      return this.findOne(id);
-    }
   }
 
   /**
@@ -113,100 +67,72 @@ export class AmenitiesService {
     updateAmenityDto: UpdateAmenityDto,
     user: JwtPayload,
   ) {
-    // Kiểm tra ownership
-    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
-      id,
-      user._id,
-    );
-    if (!existingAmenity) {
-      throw new NotFoundException(
-        'Không tìm thấy tiện ích hoặc bạn không có quyền cập nhật',
-      );
-    }
+    this.validateStaff(user);
 
     const updateData = {
       ...updateAmenityDto,
       updatedBy: new Types.ObjectId(user._id),
     };
 
-    return this.amenitiesRepo.updateById(id, updateData);
+    const updated = await this.amenitiesRepo.updateById(id, updateData);
+    if (!updated) {
+      throw new NotFoundException('Không tìm thấy tiện ích để cập nhật');
+    }
+    return updated;
   }
 
   /**
    * Soft delete tiện ích (với kiểm tra ownership)
    */
   async softDelete(id: string, user: JwtPayload) {
-    // Kiểm tra ownership
-    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
-      id,
-      user._id,
-    );
-    if (!existingAmenity) {
-      throw new NotFoundException(
-        'Không tìm thấy tiện ích hoặc bạn không có quyền xóa',
-      );
-    }
+    this.validateStaff(user);
 
-    return this.amenitiesRepo.softDelete(id, user._id);
+    const deleted = await this.amenitiesRepo.softDelete(id, user._id);
+    if (!deleted) {
+      throw new NotFoundException('Không tìm thấy tiện ích để xóa');
+    }
+    return deleted;
   }
 
   /**
    * Khôi phục tiện ích (với kiểm tra ownership)
    */
   async restore(id: string, user: JwtPayload) {
-    this.validateHost(user);
+    this.validateStaff(user);
 
-    // Kiểm tra ownership cho deleted record
-    const existingAmenity = await this.amenitiesRepo.findByIdAndCreatedBy(
-      id,
-      user._id,
-      true, // includeDeleted = true
-    );
-
-    if (!existingAmenity || !existingAmenity.isDeleted) {
-      throw new NotFoundException(
-        'Không tìm thấy tiện ích, chưa bị xóa hoặc bạn không có quyền khôi phục',
-      );
+    const restored = await this.amenitiesRepo.restore(id, user._id);
+    if (!restored) {
+      throw new NotFoundException('Không thể khôi phục tiện ích');
     }
-
-    return this.amenitiesRepo.restore(id, user._id);
+    return restored;
   }
 
   /**
-   * Tìm kiếm tiện ích (với filter theo user)
+   * Tìm kiếm tiện ích với context của user (staff hoặc guest)
    */
-  async search(
-    query: string,
-    userId?: string,
-    additionalFilter: Record<string, any> = {},
-  ) {
-    if (!query?.trim()) return [];
-
-    const additionalFilters: FilterQuery<AmenityDocument> = userId
-      ? { createdBy: userId, isDeleted: { $ne: true }, ...additionalFilter }
-      : { isDeleted: { $ne: true }, ...additionalFilter };
-
-    try {
-      const result = await this.amenitiesRepo.search(
-        query,
-        ['name', 'description'],
-        additionalFilters,
-        { sort: { created_at: -1 } },
-      );
-      return result.data;
-    } catch {
-      return [];
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async search(query: string, _user?: JwtPayload): Promise<any> {
+    // Simple search implementation
+    return await this.amenitiesRepo.search(query);
   }
 
   /**
-   * Tìm kiếm tiện ích với context của user (host hoặc guest)
+   * Toggle trạng thái active/inactive của tiện ích
    */
-  async searchWithUserContext(query: string, user?: JwtPayload) {
-    if (user?.role === 'host') {
-      return this.search(query, user._id);
-    } else {
-      return this.search(query, undefined, { isDeleted: false });
+  async toggleStatus(id: string, user: JwtPayload) {
+    this.validateStaff(user);
+
+    const existingAmenity = await this.amenitiesRepo.findById(id);
+    if (!existingAmenity) {
+      throw new NotFoundException('Không tìm thấy tiện ích');
     }
+
+    const newStatus = !existingAmenity.is_active;
+    const updateData = {
+      is_active: newStatus,
+      updatedBy: user._id,
+    };
+
+    return this.amenitiesRepo.updateById(id, updateData);
   }
 }

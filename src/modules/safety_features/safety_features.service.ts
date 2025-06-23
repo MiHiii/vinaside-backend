@@ -1,38 +1,37 @@
 import {
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
 import { UpdateSafetyFeatureDto } from './dto/update-safety_feature.dto';
-import { SafetyFeatureDocument } from './schemas/safety_feature.schema';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { SafetyFeaturesRepo } from './safety_features.repo';
-import { FilterQuery, Types } from 'mongoose';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class SafetyFeaturesService {
   constructor(private readonly safetyFeaturesRepo: SafetyFeaturesRepo) {}
 
   /**
-   * Kiểm tra user có phải host không
+   * Kiểm tra user có phải staff không
    */
-  private validateHost(user: JwtPayload): void {
-    if (user.role !== 'host') {
-      throw new UnauthorizedException(
-        'Chỉ có chủ nhà mới có thể quản lý tính năng an toàn',
+  private validateStaff(user: JwtPayload): void {
+    if (user.role !== 'staff') {
+      throw new ForbiddenException(
+        'Chỉ staff mới có thể thực hiện hành động này',
       );
     }
   }
 
   /**
-   * Tạo tính năng an toàn mới (chỉ host)
+   * Tạo tính năng an toàn mới (chỉ staff)
    */
   async create(
     createSafetyFeatureDto: CreateSafetyFeatureDto,
     user: JwtPayload,
   ) {
-    this.validateHost(user);
+    this.validateStaff(user);
 
     const data = {
       ...createSafetyFeatureDto,
@@ -44,71 +43,24 @@ export class SafetyFeaturesService {
   }
 
   /**
-   * Lấy tất cả tính năng an toàn với filtering và pagination
+   * Lấy tất cả tính năng an toàn với context của user (staff hoặc guest)
    */
-  async findAll(
-    query: Record<string, any> = {},
-    options: Record<string, any> = {},
-  ) {
-    try {
-      const result = await this.safetyFeaturesRepo.findAll(query, options);
-      return result.data;
-    } catch {
-      return [];
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async findAll(_query: Record<string, any>, _user?: JwtPayload): Promise<any> {
+    // Simple implementation - get all safety features
+    return await this.safetyFeaturesRepo.findAll({});
   }
 
   /**
-   * Lấy tất cả tính năng an toàn với context của user (host hoặc guest)
+   * Lấy tính năng an toàn theo ID với context của user (staff hoặc guest)
    */
-  async findAllWithUserContext(
-    query: Record<string, any> = {},
-    user?: JwtPayload,
-  ) {
-    if (user?.role === 'host') {
-      const userQuery = { ...query, createdBy: user._id };
-      return this.findAll(userQuery);
-    } else {
-      const publicQuery = { ...query, isDeleted: false };
-      return this.findAll(publicQuery);
-    }
-  }
-
-  /**
-   * Lấy tính năng an toàn theo ID (với kiểm tra ownership nếu có userId)
-   */
-  async findOne(id: string, userId?: string) {
-    if (userId) {
-      // Kiểm tra ownership cho host
-      const safetyFeature = await this.safetyFeaturesRepo.findByIdAndCreatedBy(
-        id,
-        userId,
-      );
-      if (!safetyFeature) {
-        throw new NotFoundException(
-          'Không tìm thấy tính năng an toàn hoặc bạn không có quyền truy cập',
-        );
-      }
-      return safetyFeature;
-    }
-
-    // Cho guest - chỉ lấy những safety feature chưa bị xóa
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async findOne(id: string, _user?: JwtPayload) {
     const safetyFeature = await this.safetyFeaturesRepo.findById(id);
-    if (!safetyFeature || safetyFeature.isDeleted) {
+    if (!safetyFeature) {
       throw new NotFoundException('Không tìm thấy tính năng an toàn');
     }
     return safetyFeature;
-  }
-
-  /**
-   * Lấy tính năng an toàn theo ID với context của user (host hoặc guest)
-   */
-  async findOneWithUserContext(id: string, user?: JwtPayload) {
-    if (user?.role === 'host') {
-      return this.findOne(id, user._id);
-    } else {
-      return this.findOne(id);
-    }
   }
 
   /**
@@ -119,99 +71,74 @@ export class SafetyFeaturesService {
     updateSafetyFeatureDto: UpdateSafetyFeatureDto,
     user: JwtPayload,
   ) {
-    this.validateHost(user);
-
-    // Kiểm tra ownership
-    const existingSafetyFeature =
-      await this.safetyFeaturesRepo.findByIdAndCreatedBy(id, user._id);
-    if (!existingSafetyFeature) {
-      throw new NotFoundException(
-        'Không tìm thấy tính năng an toàn hoặc bạn không có quyền cập nhật',
-      );
-    }
+    this.validateStaff(user);
 
     const updateData = {
       ...updateSafetyFeatureDto,
       updatedBy: new Types.ObjectId(user._id),
     };
 
-    return this.safetyFeaturesRepo.updateById(id, updateData);
+    const updated = await this.safetyFeaturesRepo.updateById(id, updateData);
+    if (!updated) {
+      throw new NotFoundException(
+        'Không tìm thấy tính năng an toàn để cập nhật',
+      );
+    }
+    return updated;
   }
 
   /**
    * Soft delete tính năng an toàn (với kiểm tra ownership)
    */
   async softDelete(id: string, user: JwtPayload) {
-    // Kiểm tra ownership
-    const existingSafetyFeature =
-      await this.safetyFeaturesRepo.findByIdAndCreatedBy(id, user._id);
-    if (!existingSafetyFeature) {
-      throw new NotFoundException(
-        'Không tìm thấy tính năng an toàn hoặc bạn không có quyền xóa',
-      );
-    }
+    this.validateStaff(user);
 
-    return this.safetyFeaturesRepo.softDelete(id, user._id);
+    const deleted = await this.safetyFeaturesRepo.softDelete(id, user._id);
+    if (!deleted) {
+      throw new NotFoundException('Không tìm thấy tính năng an toàn để xóa');
+    }
+    return deleted;
   }
 
   /**
    * Khôi phục tính năng an toàn (với kiểm tra ownership)
    */
   async restore(id: string, user: JwtPayload) {
-    this.validateHost(user);
+    this.validateStaff(user);
 
-    // Kiểm tra ownership cho deleted record
-    const existingSafetyFeature =
-      await this.safetyFeaturesRepo.findByIdAndCreatedBy(
-        id,
-        user._id,
-        true, // includeDeleted = true
-      );
-
-    if (!existingSafetyFeature || !existingSafetyFeature.isDeleted) {
-      throw new NotFoundException(
-        'Không tìm thấy tính năng an toàn, chưa bị xóa hoặc bạn không có quyền khôi phục',
-      );
+    const restored = await this.safetyFeaturesRepo.restore(id, user._id);
+    if (!restored) {
+      throw new NotFoundException('Không thể khôi phục tính năng an toàn');
     }
-
-    return this.safetyFeaturesRepo.restore(id, user._id);
+    return restored;
   }
 
   /**
-   * Tìm kiếm tính năng an toàn (với filter theo user)
+   * Tìm kiếm tính năng an toàn với context của user (staff hoặc guest)
    */
-  async search(
-    query: string,
-    userId?: string,
-    additionalFilter: Record<string, any> = {},
-  ) {
-    if (!query?.trim()) return [];
-
-    const additionalFilters: FilterQuery<SafetyFeatureDocument> = userId
-      ? { createdBy: userId, isDeleted: { $ne: true }, ...additionalFilter }
-      : { isDeleted: { $ne: true }, ...additionalFilter };
-
-    try {
-      const result = await this.safetyFeaturesRepo.search(
-        query,
-        ['name', 'description'],
-        additionalFilters,
-        { sort: { created_at: -1 } },
-      );
-      return result.data;
-    } catch {
-      return [];
-    }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async search(query: string, _user?: JwtPayload): Promise<any> {
+    // Simple search implementation
+    return await this.safetyFeaturesRepo.search(query);
   }
 
   /**
-   * Tìm kiếm tính năng an toàn với context của user (host hoặc guest)
+   * Toggle trạng thái active/inactive của tính năng an toàn
    */
-  async searchWithUserContext(query: string, user?: JwtPayload) {
-    if (user?.role === 'host') {
-      return this.search(query, user._id);
-    } else {
-      return this.search(query, undefined, { isDeleted: false });
+  async toggleStatus(id: string, user: JwtPayload) {
+    this.validateStaff(user);
+
+    const existingSafetyFeature = await this.safetyFeaturesRepo.findById(id);
+    if (!existingSafetyFeature) {
+      throw new NotFoundException('Không tìm thấy tính năng an toàn');
     }
+
+    const newStatus = !existingSafetyFeature.is_active;
+    const updateData = {
+      is_active: newStatus,
+      updatedBy: user._id,
+    };
+
+    return this.safetyFeaturesRepo.updateById(id, updateData);
   }
 }

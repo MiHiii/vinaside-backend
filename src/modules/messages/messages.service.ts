@@ -21,6 +21,26 @@ import {
   createRealtimeMessage,
 } from './utils/message.util';
 
+// ============= TYPE DEFINITIONS =============
+
+interface MessageQueryDto {
+  page?: number;
+  limit?: number;
+  [key: string]: any;
+}
+
+interface ConversationQueryDto {
+  limit?: number;
+  page?: number;
+  [key: string]: any;
+}
+
+interface MessageSearchDto {
+  keyword?: string;
+  limit?: number;
+  [key: string]: any;
+}
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -84,7 +104,30 @@ export class MessagesService {
     return savedMessage;
   }
 
-  async findAll(): Promise<Message[]> {
+  /**
+   * Lấy tất cả tin nhắn với phân trang
+   */
+  async findAll(
+    queryDto?: MessageQueryDto,
+    user?: JwtPayload,
+  ): Promise<Message[]> {
+    // Implementation for backward compatibility
+    if (queryDto && user) {
+      // Filter messages for the specific user
+      const userObjectId = new Types.ObjectId(user._id);
+
+      return await this.messageModel
+        .find({
+          $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
+        })
+        .populate('sender_id', 'username email')
+        .populate('receiver_id', 'username email')
+        .sort({ sent_at: -1 })
+        .limit(queryDto?.limit || 10)
+        .skip(queryDto?.page ? (queryDto.page - 1) * (queryDto.limit || 10) : 0)
+        .exec();
+    }
+
     return await this.messageModel
       .find()
       .populate('sender_id', 'username email')
@@ -279,10 +322,10 @@ export class MessagesService {
       .exec();
   }
 
-  async markAsRead(
-    messageId: string,
-    user: JwtPayload,
-  ): Promise<Message | null> {
+  /**
+   * Đánh dấu đã đọc với user ID
+   */
+  async markAsRead(messageId: string, userId: string): Promise<Message | null> {
     if (!isValidObjectId(messageId)) {
       throw new BadRequestException('Invalid message ID format');
     }
@@ -293,7 +336,7 @@ export class MessagesService {
     }
 
     // Authorization: chỉ receiver mới có thể mark as read
-    if (user.role !== 'admin' && user._id !== message.receiver_id.toString()) {
+    if (userId !== message.receiver_id.toString()) {
       throw new ForbiddenException(
         'You can only mark messages sent to you as read',
       );
@@ -489,9 +532,155 @@ export class MessagesService {
     }
   }
 
+  /**
+   * Lấy danh sách cuộc trò chuyện
+   */
+  async getConversations(userId: string): Promise<any[]> {
+    return await this.findUserConversations(userId);
+  }
+
+  /**
+   * Lấy tin nhắn trong cuộc trò chuyện
+   */
+  async getConversation(
+    userId: string,
+    otherUserId: string,
+    query?: ConversationQueryDto,
+  ): Promise<Message[]> {
+    const messages = await this.findConversation(userId, otherUserId);
+
+    if (query?.limit && typeof query.limit === 'number') {
+      return messages.slice(0, query.limit);
+    }
+
+    return messages;
+  }
+
+  /**
+   * Ghim tin nhắn
+   */
+  async pinMessage(messageId: string, user: JwtPayload): Promise<Message> {
+    if (!isValidObjectId(messageId)) {
+      throw new BadRequestException('Invalid message ID format');
+    }
+
+    const message = await this.messageModel.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Check authorization
+    const senderId = message.sender_id.toString();
+    const receiverId = message.receiver_id.toString();
+
+    if (
+      user.role !== 'admin' &&
+      user._id !== senderId &&
+      user._id !== receiverId
+    ) {
+      throw new ForbiddenException('You can only pin your own messages');
+    }
+
+    const updatedMessage = await this.messageModel
+      .findByIdAndUpdate(messageId, { $set: { pinned: true } }, { new: true })
+      .populate('sender_id', 'username email')
+      .populate('receiver_id', 'username email')
+      .exec();
+
+    if (!updatedMessage) {
+      throw new NotFoundException('Failed to pin message');
+    }
+
+    return updatedMessage;
+  }
+
+  /**
+   * Bỏ ghim tin nhắn
+   */
+  async unpinMessage(messageId: string, user: JwtPayload): Promise<Message> {
+    if (!isValidObjectId(messageId)) {
+      throw new BadRequestException('Invalid message ID format');
+    }
+
+    const message = await this.messageModel.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Check authorization
+    const senderId = message.sender_id.toString();
+    const receiverId = message.receiver_id.toString();
+
+    if (
+      user.role !== 'admin' &&
+      user._id !== senderId &&
+      user._id !== receiverId
+    ) {
+      throw new ForbiddenException('You can only unpin your own messages');
+    }
+
+    const updatedMessage = await this.messageModel
+      .findByIdAndUpdate(messageId, { $unset: { pinned: 1 } }, { new: true })
+      .populate('sender_id', 'username email')
+      .populate('receiver_id', 'username email')
+      .exec();
+
+    if (!updatedMessage) {
+      throw new NotFoundException('Failed to unpin message');
+    }
+
+    return updatedMessage;
+  }
+
+  /**
+   * Tìm kiếm tin nhắn
+   */
+  async search(
+    searchDto: MessageSearchDto,
+    user: JwtPayload,
+  ): Promise<Message[]> {
+    const userObjectId = new Types.ObjectId(user._id);
+
+    const query: Record<string, any> = {
+      $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
+    };
+
+    if (searchDto?.keyword && typeof searchDto.keyword === 'string') {
+      query.content = { $regex: searchDto.keyword, $options: 'i' };
+    }
+
+    return await this.messageModel
+      .find(query)
+      .populate('sender_id', 'username email')
+      .populate('receiver_id', 'username email')
+      .sort({ sent_at: -1 })
+      .limit(searchDto?.limit || 20)
+      .exec();
+  }
+
+  /**
+   * Thêm reaction với messageId
+   */
+  async addReaction(
+    messageId: string,
+    addReactionDto: AddReactionDto,
+    user: JwtPayload,
+  ): Promise<Message> {
+    const dto = { ...addReactionDto, message_id: messageId };
+    return await this.addReactionInternal(dto, user);
+  }
+
+  /**
+   * Xóa reaction với messageId
+   */
+  async removeReaction(messageId: string, user: JwtPayload): Promise<Message> {
+    const removeReactionDto: RemoveReactionDto = { message_id: messageId };
+    return await this.removeReactionInternal(removeReactionDto, user);
+  }
+
   // ==================== REACTIONS METHODS ====================
 
-  async addReaction(
+  private async addReactionInternal(
     addReactionDto: AddReactionDto,
     user: JwtPayload,
   ): Promise<Message> {
@@ -555,7 +744,7 @@ export class MessagesService {
     return updatedMessage;
   }
 
-  async removeReaction(
+  private async removeReactionInternal(
     removeReactionDto: RemoveReactionDto,
     user: JwtPayload,
   ): Promise<Message> {
