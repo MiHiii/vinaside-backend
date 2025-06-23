@@ -43,24 +43,21 @@ export class HouseRulesController {
   @Get()
   @Public()
   @ResponseMessage('Lấy danh sách quy tắc nhà thành công')
-  findAll(
-    @Query() query: Record<string, any>,
-    @Req() req: AuthenticatedRequest,
-  ) {
-    return this.houseRulesService.findAll(query, req.user);
+  findAll() {
+    return this.houseRulesService.findAll();
   }
 
   @Get('search')
   @Public()
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
-  search(@Query('query') query: string, @Req() req: AuthenticatedRequest) {
-    return this.houseRulesService.search(query, req.user);
+  search(@Query('query') query: string) {
+    return this.houseRulesService.search(query);
   }
 
   @Get(':id')
   @ResponseMessage('Lấy quy tắc nhà thành công')
-  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.houseRulesService.findOne(id, req.user);
+  findOne(@Param('id') id: string) {
+    return this.houseRulesService.findOne(id);
   }
 
   @Patch(':id')

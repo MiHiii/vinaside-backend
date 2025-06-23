@@ -8,7 +8,6 @@ import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
 import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
 import { Types } from 'mongoose';
-import { QueryHouseRuleDto } from './dto/query-house-rule.dto';
 import { HouseRule } from './schemas/house-rule.schema';
 
 @Injectable()
@@ -44,7 +43,7 @@ export class HouseRulesService {
   /**
    * Lấy tất cả quy tắc nhà với context của user (staff hoặc guest)
    */
-  async findAll(query: Record<string, any>, user?: JwtPayload): Promise<any> {
+  async findAll(): Promise<any> {
     // Simple implementation - get all house rules
     return await this.houseRulesRepo.findAll({});
   }
@@ -52,7 +51,7 @@ export class HouseRulesService {
   /**
    * Lấy quy tắc nhà theo ID với context của user (staff hoặc guest)
    */
-  async findOne(id: string, user?: JwtPayload): Promise<HouseRule> {
+  async findOne(id: string): Promise<HouseRule> {
     const houseRule = await this.houseRulesRepo.findById(id);
     if (!houseRule) {
       throw new NotFoundException('Không tìm thấy quy tắc nhà');
@@ -107,7 +106,7 @@ export class HouseRulesService {
   /**
    * Tìm kiếm quy tắc nhà với context của user (staff hoặc guest)
    */
-  async search(query: string, user?: JwtPayload): Promise<any> {
+  async search(query: string): Promise<any> {
     // Simple search implementation
     return await this.houseRulesRepo.search(query);
   }
