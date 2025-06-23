@@ -50,7 +50,6 @@ export class NotificationsService {
 
   async create(
     createNotificationDto: CreateNotificationDto,
-    _user?: JwtPayload,
   ): Promise<Notification> {
     try {
       // Validate user_id is valid ObjectId
@@ -119,10 +118,7 @@ export class NotificationsService {
     }
   }
 
-  async findAll(
-    query: QueryNotificationDto,
-    user: JwtPayload,
-  ): Promise<NotificationResponse> {
+  async findAll(query: QueryNotificationDto, _user: JwtPayload): Promise<any> {
     try {
       const { page, limit, skip } = validatePaginationParams(
         query.page ? parseInt(query.page) : undefined,
@@ -130,7 +126,7 @@ export class NotificationsService {
       );
 
       const filter = buildNotificationFilter({
-        userId: user._id,
+        userId: _user._id,
         is_read: query.is_read,
         type: query.type,
         status: query.status,

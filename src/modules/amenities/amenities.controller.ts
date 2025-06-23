@@ -43,11 +43,8 @@ export class AmenitiesController {
   @Get()
   @Public()
   @ResponseMessage('Lấy danh sách tiện ích thành công')
-  findAll(
-    @Query() query: Record<string, any>,
-    @Req() req: AuthenticatedRequest,
-  ) {
-    return this.amenitiesService.findAll(query, req.user);
+  findAll() {
+    return this.amenitiesService.findAll();
   }
 
   @Get('search')

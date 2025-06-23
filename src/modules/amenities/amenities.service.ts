@@ -8,7 +8,6 @@ import { UpdateAmenityDto } from './dto/update-amenity.dto';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { AmenitiesRepo } from './amenities.repo';
 import { Types } from 'mongoose';
-import { QueryAmenityDto } from './dto/query-amenity.dto';
 import { Amenity } from './schemas/amenity.schema';
 
 @Injectable()
@@ -44,15 +43,15 @@ export class AmenitiesService {
   /**
    * Lấy tất cả tiện ích với context của user (staff hoặc guest)
    */
-  async findAll(query: Record<string, any>, user?: JwtPayload): Promise<any> {
-    // Simple implementation - get all amenities
+  async findAll(): Promise<any> {
     return await this.amenitiesRepo.findAll({});
   }
 
   /**
    * Lấy tiện ích theo ID với context của user (staff hoặc guest)
    */
-  async findOne(id: string, user?: JwtPayload): Promise<Amenity> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async findOne(id: string, _user?: JwtPayload): Promise<Amenity> {
     const amenity = await this.amenitiesRepo.findById(id);
     if (!amenity) {
       throw new NotFoundException('Không tìm thấy tiện ích');
@@ -111,7 +110,8 @@ export class AmenitiesService {
   /**
    * Tìm kiếm tiện ích với context của user (staff hoặc guest)
    */
-  async search(query: string, user?: JwtPayload): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async search(query: string, _user?: JwtPayload): Promise<any> {
     // Simple search implementation
     return await this.amenitiesRepo.search(query);
   }
