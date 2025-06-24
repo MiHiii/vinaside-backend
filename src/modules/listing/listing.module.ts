@@ -5,11 +5,13 @@ import { Listing, ListingSchema } from './schemas/listing.schema';
 import { ListingService } from './listing.service';
 import { ListingRepo } from './listing.repo';
 import { LocationModule } from '../location/location.module';
+import { PropertyModule } from '../properties/property.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Listing.name, schema: ListingSchema }]),
     LocationModule,
+    PropertyModule,
   ],
   controllers: [ListingController],
   providers: [ListingService, ListingRepo],
