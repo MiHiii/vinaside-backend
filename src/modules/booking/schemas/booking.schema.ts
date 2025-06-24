@@ -18,17 +18,32 @@ export enum PaymentStatus {
 
 @Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
 export class Booking extends Document {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
-  guest_id: Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Property',
+    required: true,
+    index: true,
+  })
+  propertyId: Types.ObjectId;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
-  host_id: Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Listing',
+    required: true,
+    index: true,
+  })
+  listingId: Types.ObjectId;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Listing', required: true })
-  listing_id: Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  })
+  guestId: Types.ObjectId;
 
   @Prop({ required: true })
-  check_in_date: Date;
+  checkInDate: Date;
 
   @Prop({ required: true })
   check_out_date: Date;
@@ -130,11 +145,10 @@ export class Booking extends Document {
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 
 // Thêm index cho các trường tìm kiếm phổ biến
-BookingSchema.index({ guest_id: 1 });
-BookingSchema.index({ host_id: 1 });
-BookingSchema.index({ listing_id: 1 });
+BookingSchema.index({ listingId: 1 });
+BookingSchema.index({ guestId: 1 });
 BookingSchema.index({ status: 1 });
 BookingSchema.index({ payment_status: 1 });
-BookingSchema.index({ check_in_date: 1, check_out_date: 1 });
+BookingSchema.index({ check_out_date: 1 });
 BookingSchema.index({ isDeleted: 1 });
 BookingSchema.index({ created_at: -1 });

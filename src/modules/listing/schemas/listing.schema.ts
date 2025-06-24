@@ -1,13 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
-export enum PropertyType {
-  APARTMENT = 'apartment',
-  MINI_APARTMENT = 'mini_apartment',
-  HOMESTAY = 'homestay',
-  VILLA = 'villa',
-}
-
 export enum CancelPolicy {
   FLEXIBLE = 'flexible',
   MODERATE = 'moderate',
@@ -28,48 +21,27 @@ export type Point = {
   coordinates: [number, number]; // [longitude, latitude]
 };
 
-@Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
+@Schema({ timestamps: true })
 export class Listing extends Document {
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
-  host_id: Types.ObjectId;
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Property',
+    required: true,
+    index: true,
+  })
+  propertyId: Types.ObjectId;
 
   @Prop({ required: true })
   title: string;
 
   @Prop()
-  building_name?: string;
-
-  @Prop({ required: true })
-  description: string;
+  description?: string;
 
   @Prop({ type: [String], required: true })
   images: string[];
 
   @Prop({ required: true })
-  address: string;
-
-  @Prop({
-    type: {
-      type: String,
-      enum: ['Point'],
-      default: 'Point',
-    },
-    coordinates: {
-      type: [Number],
-      required: true,
-    },
-  })
-  location: Point;
-
-  @Prop({ required: true })
   price_per_night: number;
-
-  @Prop({
-    type: String,
-    enum: PropertyType,
-    required: true,
-  })
-  property_type: PropertyType;
 
   @Prop({ default: 2 })
   guests: number;
@@ -100,12 +72,6 @@ export class Listing extends Document {
   })
   safety_features: Types.ObjectId[];
 
-  @Prop({ required: true })
-  check_in_time: string;
-
-  @Prop({ required: true })
-  check_out_time: string;
-
   @Prop({ type: [String], default: [] })
   other_rules: string[];
 
@@ -125,25 +91,20 @@ export class Listing extends Document {
   @Prop({
     type: String,
     enum: ListingStatus,
-    default: ListingStatus.ACTIVE,
+    default: ListingStatus.DRAFT,
   })
   status: ListingStatus;
 
   @Prop({ default: false })
   isDeleted: boolean;
 
-  @Prop()
-  average_rating?: number;
+  @Prop({ default: 0 })
+  average_rating: number;
 
   @Prop({ default: 0 })
   reviews_count: number;
 
-  @Prop({ type: Date })
-  created_at: Date;
-
-  @Prop({ type: Date })
-  updated_at: Date;
-
+  // Timestamps and user tracking
   @Prop({ type: MongooseSchema.Types.ObjectId })
   createdBy?: Types.ObjectId;
 
@@ -159,12 +120,8 @@ export class Listing extends Document {
 
 export const ListingSchema = SchemaFactory.createForClass(Listing);
 
-// Thêm index cho location để hỗ trợ tìm kiếm theo vị trí địa lý
-ListingSchema.index({ location: '2dsphere' });
-
-// Thêm index cho các trường tìm kiếm phổ biến
-ListingSchema.index({ host_id: 1 });
+// Indexes
+ListingSchema.index({ propertyId: 1 });
 ListingSchema.index({ status: 1 });
-ListingSchema.index({ property_type: 1 });
 ListingSchema.index({ price_per_night: 1 });
 ListingSchema.index({ isDeleted: 1 });

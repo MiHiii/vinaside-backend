@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -7,27 +6,16 @@ import {
   IsOptional,
   IsString,
   IsMongoId,
-  ValidateNested,
   Min,
   ArrayMinSize,
   IsNotEmpty,
 } from 'class-validator';
-import { PropertyType, CancelPolicy } from '../schemas/listing.schema';
-
-class LocationDto {
-  @IsString()
-  @IsNotEmpty()
-  type: string = 'Point';
-
-  @IsArray()
-  @ArrayMinSize(2)
-  coordinates: [number, number];
-}
+import { CancelPolicy } from '../schemas/listing.schema';
 
 export class CreateListingDto {
   @IsMongoId()
-  @IsOptional()
-  host_id: string;
+  @IsNotEmpty()
+  propertyId: string;
 
   @IsString()
   @IsNotEmpty()
@@ -35,31 +23,16 @@ export class CreateListingDto {
 
   @IsString()
   @IsOptional()
-  building_name?: string;
-
-  @IsString()
-  @IsNotEmpty()
-  description: string;
+  description?: string;
 
   @IsArray()
   @IsString({ each: true })
   @ArrayMinSize(1)
   images: string[];
 
-  @IsString()
-  @IsNotEmpty()
-  address: string;
-
-  @ValidateNested()
-  @Type(() => LocationDto)
-  location: LocationDto;
-
   @IsNumber()
   @Min(0)
   price_per_night: number;
-
-  @IsEnum(PropertyType)
-  property_type: PropertyType;
 
   @IsNumber()
   @IsOptional()
@@ -84,7 +57,7 @@ export class CreateListingDto {
   beds: number;
 
   @IsNumber()
-  @Min(0.5)
+  @Min(0)
   bathrooms: number;
 
   @IsArray()
@@ -95,31 +68,9 @@ export class CreateListingDto {
   @IsArray()
   @IsMongoId({ each: true })
   @IsOptional()
-  house_rules_selected?: string[];
-
-  @IsArray()
-  @IsMongoId({ each: true })
-  @IsOptional()
   safety_features?: string[];
-
-  @IsString()
-  @IsNotEmpty()
-  check_in_time: string;
-
-  @IsString()
-  @IsNotEmpty()
-  check_out_time: string;
-
-  @IsArray()
-  @IsString({ each: true })
-  @IsOptional()
-  other_rules?: string[];
 
   @IsEnum(CancelPolicy)
   @IsOptional()
   cancel_policy?: CancelPolicy = CancelPolicy.FLEXIBLE;
-
-  @IsBoolean()
-  @IsOptional()
-  allow_pets?: boolean = false;
 }

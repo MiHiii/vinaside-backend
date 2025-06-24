@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -18,6 +19,7 @@ import { BookingStatus } from './schemas/booking.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
+import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -34,7 +36,13 @@ export class BookingController {
     @Body() createBookingDto: CreateBookingDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.create(createBookingDto, req.user);
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
+    return this.bookingService.create(
+      createBookingDto,
+      req.user as any as UserWithPermissions,
+    );
   }
 
   @Get()
@@ -116,8 +124,14 @@ export class BookingController {
   @Get(':id')
   @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Lấy thông tin booking thành công')
-  findOne(@Param('id') id: string) {
-    return this.bookingService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
+    return this.bookingService.findOne(
+      id,
+      req.user as any as UserWithPermissions,
+    );
   }
 
   @Patch(':id')
@@ -128,24 +142,40 @@ export class BookingController {
     @Body() updateBookingDto: UpdateBookingDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.update(id, updateBookingDto, req.user);
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
+    return this.bookingService.update(
+      id,
+      updateBookingDto,
+      req.user as any as UserWithPermissions,
+    );
   }
 
   @Delete(':id')
   @Roles('guest', 'staff', 'admin')
   @ResponseMessage('Hủy booking thành công')
   cancel(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.bookingService.remove(id, req.user);
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
+    return this.bookingService.remove(
+      id,
+      req.user as any as UserWithPermissions,
+    );
   }
 
   @Patch(':id/confirm')
   @Roles('staff', 'admin')
   @ResponseMessage('Xác nhận booking thành công')
   confirm(@Param('id') id: string, @Request() req: RequestWithUser) {
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
     return this.bookingService.update(
       id,
       { status: BookingStatus.CONFIRMED },
-      req.user,
+      req.user as any as UserWithPermissions,
     );
   }
 }
