@@ -5,17 +5,12 @@ import {
   IsOptional,
   IsString,
   IsBoolean,
-  IsDate,
   IsArray,
   IsMongoId,
   Min,
   Max,
 } from 'class-validator';
-import {
-  PropertyType,
-  ListingStatus,
-  CancelPolicy,
-} from '../schemas/listing.schema';
+import { ListingStatus, CancelPolicy } from '../schemas/listing.schema';
 
 export class QueryListingDto {
   @IsOptional()
@@ -40,31 +35,8 @@ export class QueryListingDto {
   sortOrder?: 'asc' | 'desc' = 'desc';
 
   @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
-  includeDeleted?: boolean = false;
-
-  @IsOptional()
-  @IsString()
-  keyword?: string;
-
-  @IsOptional()
-  @IsString()
-  place_id?: string;
-
-  @IsOptional()
   @IsMongoId()
-  host_id?: string;
-
-  @IsOptional()
-  @IsEnum(PropertyType)
-  property_type?: PropertyType;
+  propertyId?: string;
 
   @IsOptional()
   @IsEnum(ListingStatus)
@@ -90,7 +62,7 @@ export class QueryListingDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  min_guests?: number;
+  guests?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -101,40 +73,13 @@ export class QueryListingDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  @Min(0.5)
+  @Min(0)
   min_bathrooms?: number;
 
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
-  allow_pets?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(({ value }) => value === 'true' || value === true)
   allow_infants?: boolean;
-
-  @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  available_from?: Date;
-
-  @IsOptional()
-  @IsDate()
-  @Type(() => Date)
-  available_to?: Date;
 
   @IsOptional()
   @IsArray()
@@ -148,46 +93,11 @@ export class QueryListingDto {
 
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(({ value }) => value === 'true' || value === true)
   is_verified?: boolean;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  guests?: number;
-
-  // Flat geo parameters for search compatibility
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  lat?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  lng?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  distance?: number;
-
-  @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(({ value }) => value === 'true' || value === true)
   isDeleted?: boolean;
 }

@@ -1,14 +1,14 @@
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEnum,
+  IsMongoId,
   IsNumber,
   IsOptional,
   IsString,
-  IsBoolean,
-  IsDateString,
-  IsMongoId,
   Min,
   Max,
+  IsBoolean,
 } from 'class-validator';
 import { BookingStatus, PaymentStatus } from '../schemas/booking.schema';
 
@@ -28,34 +28,27 @@ export class QueryBookingDto {
 
   @IsOptional()
   @IsString()
-  sortBy?: string = 'created_at';
+  sortBy?: string = 'createdAt';
 
   @IsOptional()
   @IsString()
   sortOrder?: 'asc' | 'desc' = 'desc';
 
   @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
-  includeDeleted?: boolean = false;
+  @IsMongoId()
+  propertyId?: string;
 
   @IsOptional()
   @IsMongoId()
-  guest_id?: string;
+  listingId?: string;
 
   @IsOptional()
   @IsMongoId()
-  host_id?: string;
+  guestId?: string;
 
   @IsOptional()
   @IsMongoId()
-  listing_id?: string;
+  ownerId?: string;
 
   @IsOptional()
   @IsEnum(BookingStatus)
@@ -63,45 +56,17 @@ export class QueryBookingDto {
 
   @IsOptional()
   @IsEnum(PaymentStatus)
-  payment_status?: PaymentStatus;
+  paymentStatus?: PaymentStatus;
 
   @IsOptional()
   @IsDateString()
-  check_in_from?: string;
+  checkInFrom?: string;
 
   @IsOptional()
   @IsDateString()
-  check_in_to?: string;
+  checkInTo?: string;
 
   @IsOptional()
-  @IsDateString()
-  check_out_from?: string;
-
-  @IsOptional()
-  @IsDateString()
-  check_out_to?: string;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  amount_from?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  amount_to?: number;
-
-  @IsOptional()
-  @IsString()
-  guest_name?: string;
-
-  @IsOptional()
-  @IsString()
-  guest_email?: string;
-
-  @IsOptional()
-  @IsString()
-  guest_phone?: string;
+  @IsBoolean()
+  includeDeleted?: boolean = false;
 }

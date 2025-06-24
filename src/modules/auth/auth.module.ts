@@ -16,6 +16,19 @@ import {
 } from './schemas/refresh-token.schema';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { ScheduleModule } from '@nestjs/schedule';
+import { RbacService } from './services/rbac.service';
+import { RbacManagementService } from './services/rbac-management.service';
+import { CustomRole, CustomRoleSchema } from './schemas/custom-role.schema';
+import { Permission, PermissionSchema } from './schemas/permission.schema';
+import {
+  CustomRolePermission,
+  CustomRolePermissionSchema,
+} from './schemas/custom-role-permission.schema';
+import {
+  UserCustomRole,
+  UserCustomRoleSchema,
+} from './schemas/user-custom-role.schema';
+import { RbacController } from './controllers/rbac.controller';
 
 @Module({
   imports: [
@@ -31,6 +44,10 @@ import { ScheduleModule } from '@nestjs/schedule';
     }),
     MongooseModule.forFeature([
       { name: RefreshToken.name, schema: RefreshTokenSchema },
+      { name: CustomRole.name, schema: CustomRoleSchema },
+      { name: Permission.name, schema: PermissionSchema },
+      { name: CustomRolePermission.name, schema: CustomRolePermissionSchema },
+      { name: UserCustomRole.name, schema: UserCustomRoleSchema },
     ]),
     ScheduleModule.forRoot(),
     MailModule,
@@ -41,8 +58,16 @@ import { ScheduleModule } from '@nestjs/schedule';
     JwtStrategy,
     AuthRepo,
     RefreshTokenService,
+    RbacService,
+    RbacManagementService,
   ],
-  controllers: [AuthController],
-  exports: [AuthService, AuthRepo, RefreshTokenService],
+  controllers: [AuthController, RbacController],
+  exports: [
+    AuthService,
+    AuthRepo,
+    RefreshTokenService,
+    RbacService,
+    RbacManagementService,
+  ],
 })
 export class AuthModule {}

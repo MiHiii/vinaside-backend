@@ -1,55 +1,36 @@
-import { Type } from 'class-transformer';
 import {
   IsDateString,
-  IsNumber,
+  IsInt,
+  IsMongoId,
+  IsNotEmpty,
   IsOptional,
   IsString,
-  IsMongoId,
-  IsEmail,
   Min,
-  IsNotEmpty,
 } from 'class-validator';
 
 export class CreateBookingDto {
   @IsMongoId()
-  listing_id: string;
+  @IsNotEmpty()
+  listingId: string;
 
   @IsDateString()
-  check_in_date: string;
+  @IsNotEmpty()
+  checkInDate: string;
 
   @IsDateString()
-  check_out_date: string;
+  @IsNotEmpty()
+  checkOutDate: string;
 
-  @IsNumber()
-  @Type(() => Number)
+  @IsInt()
   @Min(1)
   guests: number;
 
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
+  @IsInt()
   @Min(0)
+  @IsOptional()
   infants?: number = 0;
 
   @IsString()
   @IsOptional()
-  @IsNotEmpty()
-  guest_name?: string;
-
-  @IsEmail()
-  @IsOptional()
-  guest_email?: string;
-
-  @IsString()
-  @IsOptional()
-  @IsNotEmpty()
-  guest_phone?: string;
-
-  @IsString()
-  @IsOptional()
-  special_requests?: string;
-
-  @IsString()
-  @IsOptional()
-  payment_method?: string;
+  specialRequests?: string;
 }
