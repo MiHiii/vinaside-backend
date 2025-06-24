@@ -5,11 +5,13 @@ import { Booking, BookingSchema } from './schemas/booking.schema';
 import { BookingService } from './booking.service';
 import { BookingRepo } from './booking.repo';
 import { ListingModule } from '../listing/listing.module';
+import { PropertyModule } from '../properties/property.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Booking.name, schema: BookingSchema }]),
     ListingModule,
+    PropertyModule,
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingRepo],
