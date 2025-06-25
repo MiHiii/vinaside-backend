@@ -30,6 +30,8 @@ import { MessagesModule } from './modules/messages/messages.module';
 import { LocationModule } from './modules/location/location.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { PropertyModule } from './modules/properties/property.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 
 @Module({
@@ -67,6 +69,8 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     LocationModule,
     WishlistModule,
     PropertyModule,
+    NotificationsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [

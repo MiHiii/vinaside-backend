@@ -25,22 +25,25 @@ import { UserWithPermissions } from '../../interfaces/user-with-permissions.inte
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { Public } from '../../decorators/public.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RequirePermission } from 'src/decorators/require-permission.decorator';
+import { ResponseMessage } from '../../decorators/response-message.decorator';
 
 @ApiTags('Listings')
 @Controller('listings')
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@ApiBearerAuth()
 export class ListingController {
   constructor(private readonly listingService: ListingService) {}
 
   // =================== PROTECTED ENDPOINTS ===================
 
   @Post()
-  @UseGuards(PermissionGuard)
   @RequirePermission('listing.create')
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new listing' })
   @ApiResponse({ status: 201, description: 'Listing created successfully.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ResponseMessage('Listing created successfully')
   create(
     @Body() createListingDto: CreateListingDto,
     @Req() user: UserWithPermissions,
@@ -49,11 +52,10 @@ export class ListingController {
   }
 
   @Put(':id')
-  @UseGuards(PermissionGuard)
-  @RequirePermission('listing.update')
-  @ApiBearerAuth()
+  @RequirePermission('listing.edit')
   @ApiOperation({ summary: 'Update a listing' })
   @ApiResponse({ status: 200, description: 'Listing updated successfully.' })
+  @ResponseMessage('Listing updated successfully')
   update(
     @Param('id') id: string,
     @Body() updateListingDto: UpdateListingDto,
@@ -63,21 +65,19 @@ export class ListingController {
   }
 
   @Delete(':id')
-  @UseGuards(PermissionGuard)
   @RequirePermission('listing.delete')
-  @ApiBearerAuth()
   @ApiOperation({ summary: 'Soft delete a listing' })
   @ApiResponse({ status: 200, description: 'Listing deleted successfully.' })
+  @ResponseMessage('Listing deleted successfully')
   remove(@Param('id') id: string, @Req() user: UserWithPermissions) {
     return this.listingService.remove(id, user);
   }
 
   @Patch(':id/restore')
-  @UseGuards(PermissionGuard)
-  @RequirePermission('listing.restore')
-  @ApiBearerAuth()
+  @RequirePermission('listing.delete')
   @ApiOperation({ summary: 'Restore a soft-deleted listing' })
   @ApiResponse({ status: 200, description: 'Listing restored successfully.' })
+  @ResponseMessage('Listing restored successfully')
   restore(
     @Param('id') id: string,
     @Req() user: UserWithPermissions,
@@ -86,11 +86,10 @@ export class ListingController {
   }
 
   @Patch(':id/status')
-  @UseGuards(PermissionGuard)
-  @RequirePermission('listing.update.status')
-  @ApiBearerAuth()
+  @RequirePermission('listing.manage_status')
   @ApiOperation({ summary: 'Update listing status' })
   @ApiResponse({ status: 200, description: 'Status updated successfully.' })
+  @ResponseMessage('Listing status updated successfully')
   updateStatus(
     @Param('id') id: string,
     @Body('status') status: ListingStatus,
@@ -104,6 +103,7 @@ export class ListingController {
   @Public()
   @Get()
   @ApiOperation({ summary: 'Find all listings with filters' })
+  @ResponseMessage('Listings fetched successfully')
   findAll(@Query() queryListingDto: QueryListingDto) {
     return this.listingService.findAll(queryListingDto);
   }
@@ -111,6 +111,7 @@ export class ListingController {
   @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Find a listing by ID' })
+  @ResponseMessage('Listing fetched successfully')
   findOne(@Param('id') id: string) {
     return this.listingService.findOne(id);
   }

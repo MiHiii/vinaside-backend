@@ -10,25 +10,42 @@ import {
   HttpCode,
   ParseFilePipe,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { UploadService } from './upload.service';
 import { UploadMetadataDto } from './dto/upload-response.dto';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from '../../decorators/roles.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+} from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+@ApiTags('File Upload')
 @Controller('upload')
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@ApiBearerAuth()
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
   @Post()
-  @Roles('admin')
+  @RequirePermission('upload.manage')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upload files (Admin)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 200, description: 'Files uploaded successfully' })
   @ResponseMessage('Tải lên ảnh thành công')
   @UseInterceptors(FilesInterceptor('files', 50))
   async uploadFiles(
@@ -52,8 +69,14 @@ export class UploadController {
   }
 
   @Post('room')
-  @Roles('staff')
+  @RequirePermission('listing.edit')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upload room/listing images' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 200,
+    description: 'Room images uploaded successfully',
+  })
   @ResponseMessage('Tải lên ảnh phòng thành công')
   @UseInterceptors(FilesInterceptor('files', 50))
   async uploadRoomImages(
@@ -79,6 +102,12 @@ export class UploadController {
   @Post('user')
   @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upload user avatar/profile images' })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({
+    status: 200,
+    description: 'User images uploaded successfully',
+  })
   @ResponseMessage('Tải lên ảnh người dùng thành công')
   @UseInterceptors(FilesInterceptor('files', 1))
   async uploadUserImages(

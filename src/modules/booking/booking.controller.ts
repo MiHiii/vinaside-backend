@@ -9,28 +9,43 @@ import {
   Query,
   Request,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
-import { Roles } from 'src/decorators/roles.decorator';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from './schemas/booking.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
 import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { Roles } from 'src/decorators/roles.decorator';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+@ApiTags('Booking Management')
 @Controller('bookings')
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@ApiBearerAuth()
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
 
   @Post()
   @Roles('guest')
+  @ApiOperation({ summary: 'Tạo booking mới' })
+  @ApiResponse({ status: 201, description: 'Booking được tạo thành công' })
   @ResponseMessage('Tạo booking thành công')
   create(
     @Body() createBookingDto: CreateBookingDto,
@@ -46,7 +61,9 @@ export class BookingController {
   }
 
   @Get()
-  @Roles('admin')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy danh sách tất cả bookings (Admin)' })
+  @ApiResponse({ status: 200, description: 'Danh sách bookings' })
   @ResponseMessage('Lấy danh sách bookings thành công')
   findAll(@Query() queryDto: QueryBookingDto) {
     return this.bookingService.findAll(queryDto);
@@ -54,6 +71,8 @@ export class BookingController {
 
   @Get('my-bookings')
   @Roles('guest')
+  @ApiOperation({ summary: 'Lấy booking của tôi (Guest)' })
+  @ApiResponse({ status: 200, description: 'Danh sách booking của user' })
   @ResponseMessage('Lấy danh sách booking của tôi thành công')
   getMyBookings(
     @Query() query: QueryBookingDto,
@@ -64,6 +83,8 @@ export class BookingController {
 
   @Get('my-history')
   @Roles('guest', 'admin')
+  @ApiOperation({ summary: 'Lấy lịch sử booking' })
+  @ApiResponse({ status: 200, description: 'Lịch sử booking' })
   @ResponseMessage('Lấy lịch sử booking của tôi thành công')
   findMyHistory(
     @Query() queryDto: QueryBookingDto,
@@ -73,7 +94,9 @@ export class BookingController {
   }
 
   @Get('guest/:guestId')
-  @Roles('guest', 'admin')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy bookings của guest cụ thể' })
+  @ApiResponse({ status: 200, description: 'Danh sách bookings của guest' })
   @ResponseMessage('Lấy danh sách bookings của guest thành công')
   findByGuest(
     @Param('guestId') guestId: string,
@@ -83,7 +106,9 @@ export class BookingController {
   }
 
   @Get('staff/:staffId')
-  @Roles('staff', 'admin')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy bookings của staff cụ thể' })
+  @ApiResponse({ status: 200, description: 'Danh sách bookings của staff' })
   @ResponseMessage('Lấy danh sách bookings của staff thành công')
   findByStaff(
     @Param('staffId') staffId: string,
@@ -93,7 +118,9 @@ export class BookingController {
   }
 
   @Get('listing/:listingId')
-  @Roles('staff', 'admin')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy bookings của listing cụ thể' })
+  @ApiResponse({ status: 200, description: 'Danh sách bookings của listing' })
   @ResponseMessage('Lấy danh sách bookings của listing thành công')
   findByListing(
     @Param('listingId') listingId: string,
@@ -104,7 +131,9 @@ export class BookingController {
   }
 
   @Get('check-availability/:listingId')
-  @Roles('guest', 'staff', 'admin')
+  @Public()
+  @ApiOperation({ summary: 'Kiểm tra tính khả dụng của listing' })
+  @ApiResponse({ status: 200, description: 'Thông tin khả dụng' })
   @ResponseMessage('Kiểm tra tính khả dụng thành công')
   checkAvailability(
     @Param('listingId') listingId: string,
@@ -116,6 +145,8 @@ export class BookingController {
 
   @Public()
   @Get('booked-dates/:listingId')
+  @ApiOperation({ summary: 'Lấy ngày đã được đặt của listing' })
+  @ApiResponse({ status: 200, description: 'Danh sách ngày đã đặt' })
   @ResponseMessage('Lấy ngày đã đặt thành công')
   getBookedDates(@Param('listingId') listingId: string) {
     return this.bookingService.getBookedDates(listingId);
@@ -123,6 +154,8 @@ export class BookingController {
 
   @Get(':id')
   @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Lấy thông tin chi tiết booking' })
+  @ApiResponse({ status: 200, description: 'Thông tin booking' })
   @ResponseMessage('Lấy thông tin booking thành công')
   findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
     if (!req.user.role) {
@@ -135,7 +168,9 @@ export class BookingController {
   }
 
   @Patch(':id')
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('booking.edit')
+  @ApiOperation({ summary: 'Cập nhật thông tin booking' })
+  @ApiResponse({ status: 200, description: 'Booking được cập nhật thành công' })
   @ResponseMessage('Cập nhật booking thành công')
   update(
     @Param('id') id: string,
@@ -153,7 +188,9 @@ export class BookingController {
   }
 
   @Delete(':id')
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('booking.cancel')
+  @ApiOperation({ summary: 'Hủy booking' })
+  @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
   @ResponseMessage('Hủy booking thành công')
   cancel(@Param('id') id: string, @Request() req: RequestWithUser) {
     if (!req.user.role) {
@@ -166,7 +203,9 @@ export class BookingController {
   }
 
   @Patch(':id/confirm')
-  @Roles('staff', 'admin')
+  @RequirePermission('booking.confirm')
+  @ApiOperation({ summary: 'Xác nhận booking' })
+  @ApiResponse({ status: 200, description: 'Booking được xác nhận thành công' })
   @ResponseMessage('Xác nhận booking thành công')
   confirm(@Param('id') id: string, @Request() req: RequestWithUser) {
     if (!req.user.role) {
