@@ -72,7 +72,6 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     PropertyModule,
     NotificationsModule,
     ReviewsModule,
-    ReviewsModule,
     VoucherModule,
   ],
   controllers: [AppController],
