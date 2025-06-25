@@ -31,6 +31,7 @@ import { LocationModule } from './modules/location/location.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PropertyModule } from './modules/properties/property.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { VoucherModule } from './modules/vouchers/voucher.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 
@@ -69,6 +70,7 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     LocationModule,
     WishlistModule,
     PropertyModule,
+    NotificationsModule,
     ReviewsModule,
     VoucherModule,
   ],

@@ -9,19 +9,32 @@ import {
   HttpStatus,
   Request,
   Put,
+  UseGuards,
 } from '@nestjs/common';
 import { WishlistService } from './wishlist.service';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from 'src/decorators/roles.decorator';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+@ApiTags('Wishlist')
 @Controller('wishlists')
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@ApiBearerAuth()
 export class WishlistController {
   constructor(private readonly wishlistService: WishlistService) {}
 
@@ -35,6 +48,9 @@ export class WishlistController {
    * Logic: Nếu đã có record → toggle isDelete, nếu chưa có → tạo mới
    */
   @Post('rooms/:roomId/toggle')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Toggle trạng thái yêu thích phòng' })
+  @ApiResponse({ status: 201, description: 'Toggle yêu thích thành công' })
   @ResponseMessage('Toggle yêu thích thành công')
   toggleFavorite(
     @Param('roomId') roomId: string,
@@ -50,6 +66,9 @@ export class WishlistController {
    * Response: Danh sách wishlist với thông tin phòng và user đã populate, có phân trang
    */
   @Get()
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Lấy danh sách yêu thích của tôi' })
+  @ApiResponse({ status: 200, description: 'Danh sách yêu thích' })
   @ResponseMessage('Lấy danh sách yêu thích thành công')
   getMyWishlists(
     @Query() queryDto: QueryWishlistDto,
@@ -66,7 +85,10 @@ export class WishlistController {
    * Note: Bất kỳ user nào cũng có thể xóa wishlist
    */
   @Delete(':id')
+  @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xóa khỏi danh sách yêu thích' })
+  @ApiResponse({ status: 200, description: 'Xóa khỏi yêu thích thành công' })
   @ResponseMessage('Xóa khỏi danh sách yêu thích thành công')
   remove(@Param('id') id: string) {
     return this.wishlistService.remove(id);
@@ -79,6 +101,9 @@ export class WishlistController {
    * Response: { success: true, isFavorite: boolean }
    */
   @Get('rooms/:roomId/check')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái yêu thích phòng' })
+  @ApiResponse({ status: 200, description: 'Trạng thái yêu thích' })
   @ResponseMessage('Kiểm tra trạng thái yêu thích thành công')
   checkFavorite(
     @Param('roomId') roomId: string,
@@ -90,7 +115,10 @@ export class WishlistController {
 
 // =========================== ADMIN CONTROLLER ===========================
 
+@ApiTags('Admin Wishlist')
 @Controller('admin/wishlists')
+@UseGuards(JwtAuthGuard, PermissionGuard)
+@ApiBearerAuth()
 export class AdminWishlistController {
   constructor(private readonly wishlistService: WishlistService) {}
 
@@ -101,7 +129,9 @@ export class AdminWishlistController {
    * Response: Danh sách tất cả wishlist với thông tin user và phòng, có phân trang và filter
    */
   @Get()
-  @Roles('admin')
+  @RequirePermission('user.view')
+  @ApiOperation({ summary: 'Lấy tất cả wishlist (Admin)' })
+  @ApiResponse({ status: 200, description: 'Danh sách tất cả wishlist' })
   @ResponseMessage('Lấy tất cả wishlist thành công')
   getAllWishlists(@Query() queryDto: AdminQueryWishlistDto) {
     return this.wishlistService.getAllForAdmin(queryDto);
@@ -117,7 +147,9 @@ export class AdminWishlistController {
    * }
    */
   @Get('statistics')
-  @Roles('admin')
+  @RequirePermission('analytics.view')
+  @ApiOperation({ summary: 'Lấy thống kê wishlist' })
+  @ApiResponse({ status: 200, description: 'Thống kê wishlist' })
   @ResponseMessage('Lấy thống kê wishlist thành công')
   getStatistics() {
     return this.wishlistService.getStatistics();
@@ -129,8 +161,10 @@ export class AdminWishlistController {
    * Params: id - ID của wishlist record cần xóa cứng
    */
   @Delete(':id')
-  @Roles('admin')
+  @RequirePermission('user.delete')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Xóa cứng wishlist (Admin)' })
+  @ApiResponse({ status: 200, description: 'Xóa cứng wishlist thành công' })
   @ResponseMessage('Xóa cứng wishlist thành công')
   forceDelete(@Param('id') id: string) {
     return this.wishlistService.forceDelete(id);
@@ -141,7 +175,9 @@ export class AdminWishlistController {
    * Chức năng: Admin khôi phục một wishlist đã bị xóa mềm (isDelete: true → false)
    */
   @Put(':id/restore')
-  @Roles('admin')
+  @RequirePermission('user.edit')
+  @ApiOperation({ summary: 'Khôi phục wishlist đã xóa' })
+  @ApiResponse({ status: 200, description: 'Khôi phục wishlist thành công' })
   @ResponseMessage('Khôi phục wishlist thành công')
   restore(@Param('id') id: string) {
     return this.wishlistService.restore(id);
