@@ -110,11 +110,8 @@ export class VoucherController {
   @Put(':id/restore')
   @Roles('admin')
   @ResponseMessage('Khôi phục voucher thành công')
-  restore(@Param('id') id: string, @Request() req: RequestWithUser) {
-    if (!req.user.role) {
-      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
-    }
-    return this.voucherService.restore(id, req.user);
+  restore(@Param('id') id: string) {
+    return this.voucherService.restore(id);
   }
 
   @Put(':id/toggle-status')

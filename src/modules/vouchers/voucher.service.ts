@@ -89,17 +89,14 @@ export class VoucherService {
     }
 
     if (filters.expiration_date_from || filters.expiration_date_to) {
-      filterQuery.expiration_date = {};
+      const dateFilter: Record<string, Date> = {};
       if (filters.expiration_date_from) {
-        (filterQuery.expiration_date as any).$gte = new Date(
-          filters.expiration_date_from,
-        );
+        dateFilter.$gte = new Date(filters.expiration_date_from);
       }
       if (filters.expiration_date_to) {
-        (filterQuery.expiration_date as any).$lte = new Date(
-          filters.expiration_date_to,
-        );
+        dateFilter.$lte = new Date(filters.expiration_date_to);
       }
+      filterQuery.expiration_date = dateFilter;
     }
 
     if (filters.search) {
@@ -180,6 +177,7 @@ export class VoucherService {
           'Ngày hết hạn phải sau thời điểm hiện tại',
         );
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       (updateVoucherDto as any).expiration_date = expirationDate;
     }
 
@@ -231,7 +229,7 @@ export class VoucherService {
   /**
    * Khôi phục voucher đã xóa
    */
-  async restore(id: string, _user: UserWithPermissions): Promise<Voucher> {
+  async restore(id: string): Promise<Voucher> {
     const restored = await this.voucherRepo.restore(id);
     if (!restored) {
       throw new NotFoundException(
