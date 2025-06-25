@@ -151,7 +151,7 @@ export class PropertyService {
 
   async findOne(id: string): Promise<Property> {
     if (!Types.ObjectId.isValid(id)) {
-      throw new NotFoundException('Invalid property ID format');
+      throw new NotFoundException('Định dạng ID tài sản không hợp lệ');
     }
 
     const property = await this.propertyModel
@@ -161,7 +161,7 @@ export class PropertyService {
       .exec();
 
     if (!property) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return property;
@@ -243,7 +243,7 @@ export class PropertyService {
       .exec();
 
     if (!updatedProperty) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return updatedProperty;
@@ -266,7 +266,7 @@ export class PropertyService {
   async restore(id: string, user: UserWithPermissions): Promise<Property> {
     // Only admin can restore
     if (user.role !== 'admin') {
-      throw new ForbiddenException('Only admin can restore properties');
+      throw new ForbiddenException('Chỉ admin mới có thể khôi phục tài sản');
     }
 
     const property = await this.propertyModel
@@ -283,7 +283,7 @@ export class PropertyService {
       .exec();
 
     if (!property) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return property;
@@ -296,7 +296,7 @@ export class PropertyService {
       .exec();
 
     if (!property) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return property;
@@ -317,7 +317,7 @@ export class PropertyService {
       .exec();
 
     if (!updatedProperty) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return updatedProperty;
@@ -345,7 +345,7 @@ export class PropertyService {
       .exec();
 
     if (!updatedProperty) {
-      throw new NotFoundException('Property not found');
+      throw new NotFoundException('Không tìm thấy tài sản');
     }
 
     return updatedProperty;

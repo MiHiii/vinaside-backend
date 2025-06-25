@@ -1,7 +1,7 @@
 export interface ReservationData {
   id: string;
   userName: string;
-  hostName?: string;
+  staffEmails?: string[];
   propertyName?: string;
   checkIn: Date | string;
   checkOut: Date | string;

@@ -41,8 +41,8 @@ export class PropertyController {
 
   @Post()
   @RequirePermission('property.create')
-  @ApiOperation({ summary: 'Create new property' })
-  @ApiResponse({ status: 201, description: 'Property created successfully' })
+  @ApiOperation({ summary: 'Tạo tài sản mới' })
+  @ApiResponse({ status: 201, description: 'Tài sản được tạo thành công' })
   @ResponseMessage('Property created successfully')
   create(
     @Body() createPropertyDto: CreatePropertyDto,
@@ -53,8 +53,8 @@ export class PropertyController {
 
   @Get()
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Get all properties' })
-  @ApiResponse({ status: 200, description: 'List of properties' })
+  @ApiOperation({ summary: 'Lấy tất cả tài sản' })
+  @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
   @ResponseMessage('Properties fetched successfully')
   findAll(@Query() queryDto: QueryPropertyDto) {
     return this.propertyService.findAll(queryDto);
@@ -62,8 +62,8 @@ export class PropertyController {
 
   @Public()
   @Get('public')
-  @ApiOperation({ summary: 'Get public properties (active and verified)' })
-  @ApiResponse({ status: 200, description: 'List of public properties' })
+  @ApiOperation({ summary: 'Lấy tài sản công khai (đã kích hoạt và xác minh)' })
+  @ApiResponse({ status: 200, description: 'Danh sách tài sản công khai' })
   @ResponseMessage('Public properties fetched successfully')
   findPublic(@Query() queryDto: QueryPropertyDto) {
     return this.propertyService.findAll({
@@ -75,8 +75,8 @@ export class PropertyController {
 
   @Public()
   @Get('nearby')
-  @ApiOperation({ summary: 'Find properties nearby a location' })
-  @ApiResponse({ status: 200, description: 'List of nearby properties' })
+  @ApiOperation({ summary: 'Tìm tài sản gần một vị trí' })
+  @ApiResponse({ status: 200, description: 'Danh sách tài sản gần đó' })
   @ResponseMessage('Nearby properties fetched successfully')
   findNearby(
     @Query('lat') lat: number,
@@ -89,8 +89,8 @@ export class PropertyController {
 
   @Get('stats')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Get property statistics' })
-  @ApiResponse({ status: 200, description: 'Property statistics' })
+  @ApiOperation({ summary: 'Lấy thống kê tài sản' })
+  @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
   @ResponseMessage('Property statistics fetched successfully')
   getStats() {
     return this.propertyService.getStats();
@@ -98,8 +98,8 @@ export class PropertyController {
 
   @Get('my-properties')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Get current user properties' })
-  @ApiResponse({ status: 200, description: 'User properties' })
+  @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại' })
+  @ApiResponse({ status: 200, description: 'Tài sản của người dùng' })
   @ResponseMessage('User properties fetched successfully')
   getMyProperties(
     @Query() queryDto: QueryPropertyDto,
@@ -110,8 +110,8 @@ export class PropertyController {
 
   @Get('staff/:staffId')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Get properties assigned to a staff member' })
-  @ApiResponse({ status: 200, description: 'Staff properties' })
+  @ApiOperation({ summary: 'Lấy tài sản được gán cho một nhân viên' })
+  @ApiResponse({ status: 200, description: 'Tài sản của nhân viên' })
   @ResponseMessage('Staff properties fetched successfully')
   getStaffProperties(
     @Param('staffId') staffId: string,
@@ -122,8 +122,8 @@ export class PropertyController {
 
   @Get(':id')
   @Public()
-  @ApiOperation({ summary: 'Get property by ID' })
-  @ApiResponse({ status: 200, description: 'Property details' })
+  @ApiOperation({ summary: 'Lấy tài sản theo ID' })
+  @ApiResponse({ status: 200, description: 'Chi tiết tài sản' })
   @ResponseMessage('Property fetched successfully')
   findOne(@Param('id') id: string) {
     return this.propertyService.findOne(id);
@@ -131,8 +131,8 @@ export class PropertyController {
 
   @Patch(':id')
   @RequirePermission('property.edit')
-  @ApiOperation({ summary: 'Update property' })
-  @ApiResponse({ status: 200, description: 'Property updated successfully' })
+  @ApiOperation({ summary: 'Cập nhật tài sản' })
+  @ApiResponse({ status: 200, description: 'Tài sản được cập nhật thành công' })
   @ResponseMessage('Property updated successfully')
   update(
     @Param('id') id: string,
@@ -144,10 +144,10 @@ export class PropertyController {
 
   @Patch(':id/status')
   @RequirePermission('property.edit')
-  @ApiOperation({ summary: 'Update property status' })
+  @ApiOperation({ summary: 'Cập nhật trạng thái tài sản' })
   @ApiResponse({
     status: 200,
-    description: 'Property status updated successfully',
+    description: 'Trạng thái tài sản được cập nhật thành công',
   })
   @ResponseMessage('Property status updated successfully')
   updateStatus(
@@ -160,10 +160,10 @@ export class PropertyController {
 
   @Patch(':id/verify')
   @RequirePermission('property.verify')
-  @ApiOperation({ summary: 'Verify/unverify property' })
+  @ApiOperation({ summary: 'Xác minh/hủy xác minh tài sản' })
   @ApiResponse({
     status: 200,
-    description: 'Property verification updated successfully',
+    description: 'Xác minh tài sản được cập nhật thành công',
   })
   @ResponseMessage('Property verification updated successfully')
   verify(@Param('id') id: string, @Body('isVerified') isVerified: boolean) {
@@ -172,8 +172,8 @@ export class PropertyController {
 
   @Patch(':id/staff')
   @RequirePermission('property.edit')
-  @ApiOperation({ summary: 'Assign staff to property' })
-  @ApiResponse({ status: 200, description: 'Staff assigned successfully' })
+  @ApiOperation({ summary: 'Gán nhân viên cho tài sản' })
+  @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
   @ResponseMessage('Staff assigned successfully')
   assignStaff(
     @Param('id') id: string,
@@ -186,8 +186,8 @@ export class PropertyController {
   @Delete(':id')
   @RequirePermission('property.delete')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Delete property (soft delete)' })
-  @ApiResponse({ status: 204, description: 'Property deleted successfully' })
+  @ApiOperation({ summary: 'Xóa tài sản (xóa mềm)' })
+  @ApiResponse({ status: 204, description: 'Tài sản được xóa thành công' })
   @ResponseMessage('Property deleted successfully')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.propertyService.remove(id, req.user);
@@ -195,8 +195,11 @@ export class PropertyController {
 
   @Patch(':id/restore')
   @RequirePermission('property.delete')
-  @ApiOperation({ summary: 'Restore deleted property' })
-  @ApiResponse({ status: 200, description: 'Property restored successfully' })
+  @ApiOperation({ summary: 'Khôi phục tài sản đã xóa' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tài sản được khôi phục thành công',
+  })
   @ResponseMessage('Property restored successfully')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.propertyService.restore(id, req.user);
