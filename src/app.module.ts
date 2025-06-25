@@ -29,7 +29,9 @@ import { SafetyFeaturesModule } from './modules/safety_features/safety_features.
 import { MessagesModule } from './modules/messages/messages.module';
 import { LocationModule } from './modules/location/location.module';
 import { WishlistModule } from './modules/wishlist/wishlist.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PropertyModule } from './modules/properties/property.module';
+import { VoucherModule } from './modules/vouchers/voucher.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 
 @Module({
@@ -67,6 +69,8 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     LocationModule,
     WishlistModule,
     PropertyModule,
+    ReviewsModule,
+    VoucherModule,
   ],
   controllers: [AppController],
   providers: [
