@@ -12,7 +12,6 @@ import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { QueryVoucherDto } from './dto/query-voucher.dto';
 import { VoucherRepo } from './voucher.repo';
 import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
-import { parseSortString } from '../../utils/common.util';
 
 export interface PaginatedVouchers {
   data: Voucher[];
@@ -72,15 +71,7 @@ export class VoucherService {
    * Lấy danh sách vouchers với phân trang và bộ lọc
    */
   async findAll(queryDto: QueryVoucherDto): Promise<PaginatedVouchers> {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy,
-      sortOrder,
-      include_deleted,
-      ...filters
-    } = queryDto;
-    const skip = (page - 1) * limit;
+    const { page = 1, limit = 10, include_deleted, ...filters } = queryDto;
 
     // Build filter query
     const filterQuery: FilterQuery<Voucher> = {};
@@ -100,12 +91,14 @@ export class VoucherService {
     if (filters.expiration_date_from || filters.expiration_date_to) {
       filterQuery.expiration_date = {};
       if (filters.expiration_date_from) {
-        filterQuery.expiration_date.$gte = new Date(
+        (filterQuery.expiration_date as any).$gte = new Date(
           filters.expiration_date_from,
         );
       }
       if (filters.expiration_date_to) {
-        filterQuery.expiration_date.$lte = new Date(filters.expiration_date_to);
+        (filterQuery.expiration_date as any).$lte = new Date(
+          filters.expiration_date_to,
+        );
       }
     }
 
@@ -115,10 +108,6 @@ export class VoucherService {
         { description: { $regex: filters.search, $options: 'i' } },
       ];
     }
-
-    // Build sort
-    const sortString = `${sortBy}:${sortOrder}`;
-    const sort = parseSortString(sortString);
 
     const { data, total } = await this.voucherRepo.findAll(filterQuery);
 
@@ -191,7 +180,7 @@ export class VoucherService {
           'Ngày hết hạn phải sau thời điểm hiện tại',
         );
       }
-      updateVoucherDto.expiration_date = expirationDate as any;
+      (updateVoucherDto as any).expiration_date = expirationDate;
     }
 
     // Kiểm tra uses_count không vượt quá max_uses
@@ -242,7 +231,7 @@ export class VoucherService {
   /**
    * Khôi phục voucher đã xóa
    */
-  async restore(id: string, user: UserWithPermissions): Promise<Voucher> {
+  async restore(id: string, _user: UserWithPermissions): Promise<Voucher> {
     const restored = await this.voucherRepo.restore(id);
     if (!restored) {
       throw new NotFoundException(
