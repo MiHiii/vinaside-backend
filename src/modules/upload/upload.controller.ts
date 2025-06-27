@@ -47,7 +47,7 @@ export class UploadController {
   @ApiResponse({ status: 400, description: 'Lỗi xác thực' })
   async uploadAdminFiles(
     @UploadedFiles() files: Express.Multer.File[],
-    @Body() body: any,
+    @Body() body: Record<string, any>,
   ) {
     if (!files?.length) {
       throw new BadRequestException('Không tìm thấy tệp nào');

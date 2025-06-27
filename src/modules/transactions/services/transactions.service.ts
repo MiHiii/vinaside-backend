@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, FilterQuery } from 'mongoose';
 import {
   Transaction,
   TransactionDocument,
@@ -18,6 +18,16 @@ import {
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
+
+interface AmountRangeFilter {
+  $gte?: number;
+  $lte?: number;
+}
+
+interface DateRangeFilter {
+  $gte?: Date;
+  $lte?: Date;
+}
 
 @Injectable()
 export class TransactionsService {
@@ -86,7 +96,7 @@ export class TransactionsService {
     };
 
     // Build filter object
-    const filterConditions: any = {};
+    const filterConditions: FilterQuery<Transaction> = {};
 
     if (!includeDeleted) {
       filterConditions.isDeleted = false;
@@ -125,23 +135,25 @@ export class TransactionsService {
     }
 
     if (filters.min_amount || filters.max_amount) {
-      filterConditions.amount = {};
+      const amountFilter: AmountRangeFilter = {};
       if (filters.min_amount) {
-        filterConditions.amount.$gte = filters.min_amount;
+        amountFilter.$gte = filters.min_amount;
       }
       if (filters.max_amount) {
-        filterConditions.amount.$lte = filters.max_amount;
+        amountFilter.$lte = filters.max_amount;
       }
+      filterConditions.amount = amountFilter;
     }
 
     if (filters.from_date || filters.to_date) {
-      filterConditions.createdAt = {};
+      const dateFilter: DateRangeFilter = {};
       if (filters.from_date) {
-        filterConditions.createdAt.$gte = new Date(filters.from_date);
+        dateFilter.$gte = new Date(filters.from_date);
       }
       if (filters.to_date) {
-        filterConditions.createdAt.$lte = new Date(filters.to_date);
+        dateFilter.$lte = new Date(filters.to_date);
       }
+      filterConditions.createdAt = dateFilter;
     }
 
     if (filters.search) {
@@ -288,67 +300,86 @@ export class TransactionsService {
     return log.save();
   }
 
-  async getTransactionStats(filters?: Partial<QueryTransactionDto>) {
-    const filterConditions: any = { isDeleted: false };
+  async getTransactionStats(filters?: Partial<QueryTransactionDto>): Promise<{
+    overview: {
+      totalTransactions: number;
+      totalAmount: number;
+      avgAmount: number;
+      statusBreakdown: string[];
+    };
+    statusBreakdown: Array<{
+      _id: string;
+      count: number;
+      totalAmount: number;
+    }>;
+  }> {
+    const filterConditions: FilterQuery<Transaction> = { isDeleted: false };
 
     if (filters?.user_id) {
       filterConditions.user_id = new Types.ObjectId(filters.user_id);
     }
 
     if (filters?.from_date || filters?.to_date) {
-      filterConditions.createdAt = {};
+      const dateFilter: DateRangeFilter = {};
       if (filters.from_date) {
-        filterConditions.createdAt.$gte = new Date(filters.from_date);
+        dateFilter.$gte = new Date(filters.from_date);
       }
       if (filters.to_date) {
-        filterConditions.createdAt.$lte = new Date(filters.to_date);
+        dateFilter.$lte = new Date(filters.to_date);
       }
+      filterConditions.createdAt = dateFilter;
     }
 
-    const stats = await this.transactionModel.aggregate([
-      { $match: filterConditions },
-      {
-        $group: {
-          _id: null,
-          totalTransactions: { $sum: 1 },
-          totalAmount: { $sum: '$amount' },
-          successfulTransactions: {
-            $sum: {
-              $cond: [{ $eq: ['$status', TransactionStatus.SUCCESS] }, 1, 0],
-            },
-          },
-          successfulAmount: {
-            $sum: {
-              $cond: [
-                { $eq: ['$status', TransactionStatus.SUCCESS] },
-                '$amount',
-                0,
-              ],
-            },
-          },
-          pendingTransactions: {
-            $sum: {
-              $cond: [{ $eq: ['$status', TransactionStatus.PENDING] }, 1, 0],
-            },
-          },
-          failedTransactions: {
-            $sum: {
-              $cond: [{ $eq: ['$status', TransactionStatus.FAILED] }, 1, 0],
+    const [stats, statusStats] = await Promise.all([
+      this.transactionModel.aggregate([
+        { $match: filterConditions },
+        {
+          $group: {
+            _id: null,
+            totalTransactions: { $sum: 1 },
+            totalAmount: { $sum: '$amount' },
+            avgAmount: { $avg: '$amount' },
+            statusBreakdown: {
+              $push: '$status',
             },
           },
         },
-      },
+      ]),
+      this.transactionModel.aggregate([
+        { $match: filterConditions },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalAmount: { $sum: '$amount' },
+          },
+        },
+      ]),
     ]);
 
-    return (
-      stats[0] || {
+    const overviewResult = stats[0] as
+      | {
+          totalTransactions: number;
+          totalAmount: number;
+          avgAmount: number;
+          statusBreakdown: string[];
+        }
+      | undefined;
+
+    const statusResult = statusStats as Array<{
+      _id: string;
+      count: number;
+      totalAmount: number;
+    }>;
+
+    return {
+      overview: overviewResult || {
         totalTransactions: 0,
         totalAmount: 0,
-        successfulTransactions: 0,
-        successfulAmount: 0,
-        pendingTransactions: 0,
-        failedTransactions: 0,
-      }
-    );
+        avgAmount: 0,
+        statusBreakdown: [],
+      },
+      statusBreakdown: statusResult,
+    };
   }
 }

@@ -105,7 +105,7 @@ export class PropertyController {
     @Query() queryDto: QueryPropertyDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.propertyService.findByOwner(req.user._id, queryDto);
+    return this.propertyService.findByStaff(req.user._id, queryDto);
   }
 
   @Get('staff/:staffId')

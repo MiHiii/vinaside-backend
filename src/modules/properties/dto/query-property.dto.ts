@@ -48,11 +48,6 @@ export class QueryPropertyDto {
   @IsBoolean()
   isVerified?: boolean;
 
-  @ApiPropertyOptional({ description: 'Owner ID' })
-  @IsOptional()
-  @IsString()
-  ownerId?: string;
-
   @ApiPropertyOptional({ description: 'City name' })
   @IsOptional()
   @IsString()

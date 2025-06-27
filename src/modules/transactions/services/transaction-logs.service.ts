@@ -1,12 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, FilterQuery } from 'mongoose';
 import {
   TransactionLog,
   TransactionLogDocument,
   ChangedBy,
 } from '../schemas/transaction-log.schema';
 import { TransactionStatus } from '../schemas/transaction.schema';
+
+interface DateRangeFilter {
+  $gte?: Date;
+  $lte?: Date;
+}
 
 @Injectable()
 export class TransactionLogsService {
@@ -77,19 +82,20 @@ export class TransactionLogsService {
     startDate?: Date,
     endDate?: Date,
   ): Promise<TransactionLogDocument[]> {
-    const filter: Record<string, any> = {
+    const filter: FilterQuery<TransactionLogDocument> = {
       changed_by_user: new Types.ObjectId(userId),
       isDeleted: false,
     };
 
     if (startDate || endDate) {
-      filter.timestamp = {} as Record<string, Date>;
+      const timestampFilter: DateRangeFilter = {};
       if (startDate) {
-        (filter.timestamp as any).$gte = startDate;
+        timestampFilter.$gte = startDate;
       }
       if (endDate) {
-        (filter.timestamp as any).$lte = endDate;
+        timestampFilter.$lte = endDate;
       }
+      filter.timestamp = timestampFilter;
     }
 
     return this.transactionLogModel
@@ -104,19 +110,20 @@ export class TransactionLogsService {
     startDate?: Date,
     endDate?: Date,
   ): Promise<TransactionLogDocument[]> {
-    const filter: Record<string, any> = {
+    const filter: FilterQuery<TransactionLogDocument> = {
       changed_by: changedBy,
       isDeleted: false,
     };
 
     if (startDate || endDate) {
-      filter.timestamp = {} as Record<string, Date>;
+      const timestampFilter: DateRangeFilter = {};
       if (startDate) {
-        (filter.timestamp as any).$gte = startDate;
+        timestampFilter.$gte = startDate;
       }
       if (endDate) {
-        (filter.timestamp as any).$lte = endDate;
+        timestampFilter.$lte = endDate;
       }
+      filter.timestamp = timestampFilter;
     }
 
     return this.transactionLogModel
@@ -136,16 +143,17 @@ export class TransactionLogsService {
   }
 
   async getLogsStatistics(startDate?: Date, endDate?: Date) {
-    const filter: Record<string, any> = { isDeleted: false };
+    const filter: FilterQuery<TransactionLogDocument> = { isDeleted: false };
 
     if (startDate || endDate) {
-      filter.timestamp = {} as Record<string, Date>;
+      const timestampFilter: DateRangeFilter = {};
       if (startDate) {
-        (filter.timestamp as any).$gte = startDate;
+        timestampFilter.$gte = startDate;
       }
       if (endDate) {
-        (filter.timestamp as any).$lte = endDate;
+        timestampFilter.$lte = endDate;
       }
+      filter.timestamp = timestampFilter;
     }
 
     const stats = await this.transactionLogModel.aggregate([

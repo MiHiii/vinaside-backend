@@ -25,6 +25,11 @@ import { TransactionsService } from '../services/transactions.service';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
+import { UserWithPermissions } from '../../../interfaces/user-with-permissions.interface';
+
+interface RequestWithUser extends Request {
+  user: UserWithPermissions;
+}
 
 @ApiTags('Transactions')
 @Controller('transactions')
@@ -37,7 +42,7 @@ export class TransactionsController {
   @RequirePermission('booking.manage_payment')
   @ApiOperation({
     summary: 'Tạo giao dịch mới',
-    description: 'Tạo một giao dịch tài chính mới',
+    description: 'Tạo giao dịch mới trong hệ thống',
   })
   @ApiResponse({
     status: 201,
@@ -49,11 +54,11 @@ export class TransactionsController {
   })
   async createTransaction(
     @Body() createTransactionDto: CreateTransactionDto,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ) {
     // Auto-fill created_by from authenticated user
     if (!createTransactionDto.created_by) {
-      createTransactionDto.created_by = req.user.userId;
+      createTransactionDto.created_by = req.user._id;
     }
 
     return this.transactionsService.createTransaction(createTransactionDto);
@@ -85,9 +90,9 @@ export class TransactionsController {
   })
   async getMyTransactions(
     @Query() query: QueryTransactionDto,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ) {
-    return this.transactionsService.getUserTransactions(req.user.userId, query);
+    return this.transactionsService.getUserTransactions(req.user._id, query);
   }
 
   @Get('stats')
@@ -153,12 +158,12 @@ export class TransactionsController {
   async updateTransactionStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateTransactionStatusDto,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ) {
     return this.transactionsService.updateTransactionStatus(
       id,
       updateStatusDto,
-      req.user.userId,
+      req.user._id,
     );
   }
 
@@ -232,8 +237,11 @@ export class TransactionsController {
     status: 404,
     description: 'Không tìm thấy giao dịch',
   })
-  async deleteTransaction(@Param('id') id: string, @Request() req: any) {
-    await this.transactionsService.deleteTransaction(id, req.user.userId);
+  async deleteTransaction(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    await this.transactionsService.deleteTransaction(id, req.user._id);
     return { message: 'Xóa giao dịch thành công' };
   }
 }

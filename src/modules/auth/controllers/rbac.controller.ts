@@ -13,6 +13,8 @@ import { RbacManagementService } from '../services/rbac-management.service';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import { CreateRoleDto } from '../dto/create-role.dto';
+import { CreatePermissionDto } from '../dto/create-permission.dto';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -96,7 +98,7 @@ export class RbacController {
   @RequirePermission('system.manage')
   @ApiOperation({ summary: 'Tạo vai trò tùy chỉnh mới' })
   @ApiResponse({ status: 201, description: 'Vai trò được tạo thành công' })
-  async createRole(@Body() roleData: any) {
+  async createRole(@Body() roleData: CreateRoleDto) {
     return this.rbacManagementService.createCustomRole(roleData);
   }
 
@@ -104,7 +106,7 @@ export class RbacController {
   @RequirePermission('system.manage')
   @ApiOperation({ summary: 'Tạo quyền mới' })
   @ApiResponse({ status: 201, description: 'Quyền được tạo thành công' })
-  async createPermission(@Body() permissionData: any) {
+  async createPermission(@Body() permissionData: CreatePermissionDto) {
     return this.rbacManagementService.createPermission(permissionData);
   }
 

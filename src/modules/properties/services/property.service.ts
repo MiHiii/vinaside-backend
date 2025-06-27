@@ -35,19 +35,16 @@ export class PropertyService {
       return;
     }
 
-    // Define an interface to help TypeScript understand the shape of the populated object
+    // Staff-based permission only
     interface PopulatedProperty {
-      ownerId: { toString: () => string };
       staffIds: { toString: () => string }[];
     }
 
     const p = property as unknown as PopulatedProperty;
-
-    const isOwner = p.ownerId?.toString() === user._id;
     const isStaff =
       p.staffIds && p.staffIds.some((id) => id?.toString() === user._id);
 
-    if (!isOwner && !isStaff) {
+    if (!isStaff) {
       throw new ForbiddenException(message);
     }
   }
@@ -58,7 +55,7 @@ export class PropertyService {
   ): Promise<Property> {
     const propertyData = {
       ...createPropertyDto,
-      ownerId: new Types.ObjectId(user._id),
+      createdBy: new Types.ObjectId(user._id),
       staffIds:
         createPropertyDto.staffIds?.map((id) => new Types.ObjectId(id)) || [],
     };
@@ -96,10 +93,6 @@ export class PropertyService {
       filterQuery.isVerified = filters.isVerified;
     }
 
-    if (filters.ownerId) {
-      filterQuery.ownerId = new Types.ObjectId(filters.ownerId);
-    }
-
     if (filters.city) {
       filterQuery['location.city'] = new RegExp(filters.city, 'i');
     }
@@ -131,7 +124,6 @@ export class PropertyService {
     const [data, total] = await Promise.all([
       this.propertyModel
         .find(filterQuery)
-        .populate('ownerId', 'name email')
         .populate('staffIds', 'name email')
         .sort(sortObj)
         .skip(skip)
@@ -156,7 +148,6 @@ export class PropertyService {
 
     const property = await this.propertyModel
       .findOne({ _id: id, isDeleted: false })
-      .populate('ownerId', 'name email phone')
       .populate('staffIds', 'name email phone')
       .exec();
 
@@ -165,13 +156,6 @@ export class PropertyService {
     }
 
     return property;
-  }
-
-  async findByOwner(
-    ownerId: string,
-    queryDto: QueryPropertyDto,
-  ): Promise<PaginatedProperties> {
-    return this.findAll({ ...queryDto, ownerId });
   }
 
   async findByStaff(
@@ -197,7 +181,7 @@ export class PropertyService {
     const [data, total] = await Promise.all([
       this.propertyModel
         .find(filterQuery)
-        .populate('ownerId', 'name email')
+        .populate('staffIds', 'name email')
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
@@ -238,7 +222,6 @@ export class PropertyService {
 
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, updateData, { new: true })
-      .populate('ownerId', 'name email')
       .populate('staffIds', 'name email')
       .exec();
 
@@ -278,7 +261,6 @@ export class PropertyService {
         },
         { new: true },
       )
-      .populate('ownerId', 'name email')
       .populate('staffIds', 'name email')
       .exec();
 
@@ -292,7 +274,7 @@ export class PropertyService {
   async verify(id: string, isVerified: boolean): Promise<Property> {
     const property = await this.propertyModel
       .findByIdAndUpdate(id, { isVerified }, { new: true })
-      .populate('ownerId', 'name email')
+      .populate('staffIds', 'name email')
       .exec();
 
     if (!property) {
@@ -312,7 +294,6 @@ export class PropertyService {
 
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, { status }, { new: true })
-      .populate('ownerId', 'name email')
       .populate('staffIds', 'name email')
       .exec();
 
@@ -340,7 +321,6 @@ export class PropertyService {
 
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, { staffIds: objectIdStaffIds }, { new: true })
-      .populate('ownerId', 'name email')
       .populate('staffIds', 'name email')
       .exec();
 
@@ -390,5 +370,57 @@ export class PropertyService {
         {} as { [key: string]: number },
       ),
     };
+  }
+
+  // ================== PUBLIC UTILITY METHODS FOR OTHER SERVICES ==================
+
+  /**
+   * Public method để các service khác có thể sử dụng cho permission checking
+   */
+  async checkUserPermissionForProperty(
+    propertyId: string,
+    user: UserWithPermissions,
+    message: string = 'You do not have permission to perform this action',
+  ): Promise<void> {
+    const property = await this.findOne(propertyId);
+    this.checkPermission(property, user, message);
+  }
+
+  /**
+   * Kiểm tra user có phải staff của property không
+   */
+  async isUserStaffOfProperty(
+    propertyId: string,
+    userId: string,
+  ): Promise<boolean> {
+    try {
+      const property = await this.findOne(propertyId);
+      interface PopulatedProperty {
+        staffIds: { toString: () => string }[];
+      }
+      const p = property as unknown as PopulatedProperty;
+      return (
+        p.staffIds?.some((staffId) => staffId?.toString() === userId) || false
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Lấy danh sách property IDs mà user được gán làm staff
+   */
+  async getStaffPropertyIds(staffId: string): Promise<string[]> {
+    try {
+      const staffProperties = await this.findByStaff(staffId, {});
+      interface PropertyWithId {
+        _id: Types.ObjectId;
+      }
+      return staffProperties.data.map((prop) =>
+        (prop as unknown as PropertyWithId)._id.toString(),
+      );
+    } catch {
+      return [];
+    }
   }
 }
