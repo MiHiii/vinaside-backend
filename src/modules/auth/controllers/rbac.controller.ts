@@ -13,19 +13,14 @@ import { RbacManagementService } from '../services/rbac-management.service';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import { CreateRoleDto } from '../dto/create-role.dto';
+import { CreatePermissionDto } from '../dto/create-permission.dto';
 import {
   ApiTags,
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { CreateRoleDto } from '../dto/create-role.dto';
-import { CreatePermissionDto } from '../dto/create-permission.dto';
-import {
-  AssignRoleDto,
-  BulkAssignRolesDto,
-  AssignPermissionToRoleDto,
-} from '../dto/assign-role.dto';
 
 @ApiTags('RBAC Management')
 @Controller('rbac')
@@ -36,74 +31,62 @@ export class RbacController {
   constructor(private rbacManagementService: RbacManagementService) {}
 
   @Get('roles')
-  @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get all custom roles' })
-  @ApiResponse({ status: 200, description: 'List of custom roles' })
-  async getAllCustomRoles() {
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Lấy tất cả vai trò tùy chỉnh' })
+  @ApiResponse({ status: 200, description: 'Danh sách vai trò' })
+  async getAllRoles() {
     return this.rbacManagementService.getAllCustomRoles();
   }
 
   @Get('permissions')
-  @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get all permissions' })
-  @ApiResponse({ status: 200, description: 'List of permissions' })
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Lấy tất cả quyền' })
+  @ApiResponse({ status: 200, description: 'Danh sách quyền' })
   async getAllPermissions() {
     return this.rbacManagementService.getAllPermissions();
   }
 
-  @Get('roles/:roleKey/permissions')
-  @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get permissions for a specific role' })
-  @ApiResponse({ status: 200, description: 'List of role permissions' })
-  async getRolePermissions(@Param('roleKey') roleKey: string) {
-    return this.rbacManagementService.getRolePermissions(roleKey);
+  @Get('roles/:roleId/permissions')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Lấy quyền cho một vai trò cụ thể' })
+  @ApiResponse({ status: 200, description: 'Danh sách quyền của vai trò' })
+  async getRolePermissions(@Param('roleId') roleId: string) {
+    return this.rbacManagementService.getRolePermissions(roleId);
   }
 
   @Get('users/:userId/roles')
   @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get user roles' })
-  @ApiResponse({ status: 200, description: 'List of user roles' })
+  @ApiOperation({ summary: 'Lấy vai trò của người dùng' })
+  @ApiResponse({ status: 200, description: 'Danh sách vai trò của người dùng' })
   async getUserRoles(@Param('userId') userId: string) {
     return this.rbacManagementService.getUserRoles(userId);
   }
 
   @Get('users/:userId/permissions')
   @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get user permissions' })
-  @ApiResponse({ status: 200, description: 'List of user permissions' })
+  @ApiOperation({ summary: 'Lấy quyền của người dùng' })
+  @ApiResponse({ status: 200, description: 'Danh sách quyền của người dùng' })
   async getUserPermissions(@Param('userId') userId: string) {
     return this.rbacManagementService.getUserPermissions(userId);
   }
 
   @Post('users/:userId/roles')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Assign role to user' })
-  @ApiResponse({ status: 201, description: 'Role assigned successfully' })
+  @RequirePermission('user.manage_roles')
+  @ApiOperation({ summary: 'Gán vai trò cho người dùng' })
+  @ApiResponse({ status: 200, description: 'Vai trò được gán thành công' })
   async assignRoleToUser(
     @Param('userId') userId: string,
-    @Body() assignRoleDto: AssignRoleDto,
+    @Body() body: { roleKey: string },
   ) {
-    return this.rbacManagementService.assignRoleToUser(userId, assignRoleDto);
-  }
-
-  @Post('users/:userId/roles/bulk')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Assign multiple roles to user' })
-  @ApiResponse({ status: 201, description: 'Roles assigned successfully' })
-  async bulkAssignRolesToUser(
-    @Param('userId') userId: string,
-    @Body() bulkAssignDto: BulkAssignRolesDto,
-  ) {
-    return this.rbacManagementService.bulkAssignRolesToUser(
-      userId,
-      bulkAssignDto,
-    );
+    return this.rbacManagementService.assignRoleToUser(userId, {
+      roleKey: body.roleKey,
+    });
   }
 
   @Delete('users/:userId/roles/:roleKey')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Remove role from user' })
-  @ApiResponse({ status: 200, description: 'Role removed successfully' })
+  @RequirePermission('user.manage_roles')
+  @ApiOperation({ summary: 'Gỡ bỏ vai trò khỏi người dùng' })
+  @ApiResponse({ status: 200, description: 'Vai trò được gỡ bỏ thành công' })
   async removeRoleFromUser(
     @Param('userId') userId: string,
     @Param('roleKey') roleKey: string,
@@ -112,39 +95,44 @@ export class RbacController {
   }
 
   @Post('roles')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Create new custom role' })
-  @ApiResponse({ status: 201, description: 'Role created successfully' })
-  async createCustomRole(@Body() createRoleDto: CreateRoleDto) {
-    return this.rbacManagementService.createCustomRole(createRoleDto);
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Tạo vai trò tùy chỉnh mới' })
+  @ApiResponse({ status: 201, description: 'Vai trò được tạo thành công' })
+  async createRole(@Body() roleData: CreateRoleDto) {
+    return this.rbacManagementService.createCustomRole(roleData);
   }
 
   @Post('permissions')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Create new permission' })
-  @ApiResponse({ status: 201, description: 'Permission created successfully' })
-  async createPermission(@Body() createPermissionDto: CreatePermissionDto) {
-    return this.rbacManagementService.createPermission(createPermissionDto);
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Tạo quyền mới' })
+  @ApiResponse({ status: 201, description: 'Quyền được tạo thành công' })
+  async createPermission(@Body() permissionData: CreatePermissionDto) {
+    return this.rbacManagementService.createPermission(permissionData);
   }
 
   @Post('roles/:roleKey/permissions')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Assign permission to role' })
-  @ApiResponse({ status: 201, description: 'Permission assigned successfully' })
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Gán quyền cho vai trò' })
+  @ApiResponse({
+    status: 200,
+    description: 'Quyền được gán cho vai trò thành công',
+  })
   async assignPermissionToRole(
     @Param('roleKey') roleKey: string,
-    @Body() assignPermissionDto: AssignPermissionToRoleDto,
+    @Body() body: { permissionKey: string },
   ) {
-    return this.rbacManagementService.assignPermissionToRole(
-      roleKey,
-      assignPermissionDto,
-    );
+    return this.rbacManagementService.assignPermissionToRole(roleKey, {
+      permissionKey: body.permissionKey,
+    });
   }
 
   @Delete('roles/:roleKey/permissions/:permissionKey')
-  @RequirePermission('user.edit')
-  @ApiOperation({ summary: 'Remove permission from role' })
-  @ApiResponse({ status: 200, description: 'Permission removed successfully' })
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Gỡ bỏ quyền khỏi vai trò' })
+  @ApiResponse({
+    status: 200,
+    description: 'Quyền được gỡ bỏ khỏi vai trò thành công',
+  })
   async removePermissionFromRole(
     @Param('roleKey') roleKey: string,
     @Param('permissionKey') permissionKey: string,
@@ -157,16 +145,16 @@ export class RbacController {
 
   @Get('roles/:roleKey/users')
   @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Get users with specific role' })
-  @ApiResponse({ status: 200, description: 'List of user IDs with the role' })
+  @ApiOperation({ summary: 'Lấy người dùng có vai trò cụ thể' })
+  @ApiResponse({ status: 200, description: 'Danh sách người dùng có vai trò' })
   async getUsersWithRole(@Param('roleKey') roleKey: string) {
     return this.rbacManagementService.getUsersWithRole(roleKey);
   }
 
-  @Get('users/:userId/permissions/:permissionKey/check')
-  @RequirePermission('user.view')
-  @ApiOperation({ summary: 'Check if user has specific permission' })
-  @ApiResponse({ status: 200, description: 'Permission check result' })
+  @Get('check-permission/:userId/:permissionKey')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Kiểm tra người dùng có quyền cụ thể không' })
+  @ApiResponse({ status: 200, description: 'Kết quả kiểm tra quyền' })
   async checkUserPermission(
     @Param('userId') userId: string,
     @Param('permissionKey') permissionKey: string,

@@ -40,9 +40,9 @@ export class ListingController {
 
   @Post()
   @RequirePermission('listing.create')
-  @ApiOperation({ summary: 'Create a new listing' })
-  @ApiResponse({ status: 201, description: 'Listing created successfully.' })
-  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiOperation({ summary: 'Tạo listing mới' })
+  @ApiResponse({ status: 201, description: 'Listing được tạo thành công.' })
+  @ApiResponse({ status: 403, description: 'Bị cấm.' })
   @ResponseMessage('Listing created successfully')
   create(
     @Body() createListingDto: CreateListingDto,
@@ -53,8 +53,11 @@ export class ListingController {
 
   @Put(':id')
   @RequirePermission('listing.edit')
-  @ApiOperation({ summary: 'Update a listing' })
-  @ApiResponse({ status: 200, description: 'Listing updated successfully.' })
+  @ApiOperation({ summary: 'Cập nhật listing' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listing được cập nhật thành công.',
+  })
   @ResponseMessage('Listing updated successfully')
   update(
     @Param('id') id: string,
@@ -66,17 +69,20 @@ export class ListingController {
 
   @Delete(':id')
   @RequirePermission('listing.delete')
-  @ApiOperation({ summary: 'Soft delete a listing' })
-  @ApiResponse({ status: 200, description: 'Listing deleted successfully.' })
+  @ApiOperation({ summary: 'Xóa mềm listing' })
+  @ApiResponse({ status: 200, description: 'Listing được xóa thành công.' })
   @ResponseMessage('Listing deleted successfully')
   remove(@Param('id') id: string, @Req() user: UserWithPermissions) {
     return this.listingService.remove(id, user);
   }
 
   @Patch(':id/restore')
-  @RequirePermission('listing.delete')
-  @ApiOperation({ summary: 'Restore a soft-deleted listing' })
-  @ApiResponse({ status: 200, description: 'Listing restored successfully.' })
+  @RequirePermission('listing.edit')
+  @ApiOperation({ summary: 'Khôi phục listing đã xóa mềm' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listing được khôi phục thành công.',
+  })
   @ResponseMessage('Listing restored successfully')
   restore(
     @Param('id') id: string,
@@ -87,8 +93,11 @@ export class ListingController {
 
   @Patch(':id/status')
   @RequirePermission('listing.manage_status')
-  @ApiOperation({ summary: 'Update listing status' })
-  @ApiResponse({ status: 200, description: 'Status updated successfully.' })
+  @ApiOperation({ summary: 'Cập nhật trạng thái listing' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái được cập nhật thành công.',
+  })
   @ResponseMessage('Listing status updated successfully')
   updateStatus(
     @Param('id') id: string,
@@ -102,7 +111,7 @@ export class ListingController {
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Find all listings with filters' })
+  @ApiOperation({ summary: 'Tìm tất cả listing với bộ lọc' })
   @ResponseMessage('Listings fetched successfully')
   findAll(@Query() queryListingDto: QueryListingDto) {
     return this.listingService.findAll(queryListingDto);
@@ -110,7 +119,7 @@ export class ListingController {
 
   @Public()
   @Get(':id')
-  @ApiOperation({ summary: 'Find a listing by ID' })
+  @ApiOperation({ summary: 'Tìm listing theo ID' })
   @ResponseMessage('Listing fetched successfully')
   findOne(@Param('id') id: string) {
     return this.listingService.findOne(id);

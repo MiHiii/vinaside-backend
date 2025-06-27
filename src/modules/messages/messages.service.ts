@@ -55,7 +55,7 @@ export class MessagesService {
   ): Promise<Message> {
     // Validation
     if (!isValidObjectId(createMessageDto.receiver_id)) {
-      throw new BadRequestException('Invalid receiver ID format');
+      throw new BadRequestException('Định dạng ID người nhận không hợp lệ');
     }
 
     // Convert string IDs to ObjectId before saving
@@ -138,7 +138,7 @@ export class MessagesService {
 
   async findOne(id: string, user: JwtPayload): Promise<Message | null> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel
@@ -148,7 +148,7 @@ export class MessagesService {
       .exec();
 
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ sender hoặc receiver mới xem được tin nhắn
@@ -160,7 +160,7 @@ export class MessagesService {
       user._id !== senderId &&
       user._id !== receiverId
     ) {
-      throw new ForbiddenException('You can only view your own messages');
+      throw new ForbiddenException('Bạn chỉ có thể xem tin nhắn của mình');
     }
 
     return message;
@@ -171,7 +171,7 @@ export class MessagesService {
     otherUserId: string,
   ): Promise<Message[]> {
     if (!isValidObjectId(otherUserId)) {
-      throw new BadRequestException('Invalid user ID format');
+      throw new BadRequestException('Định dạng ID người dùng không hợp lệ');
     }
 
     // Handle both string and ObjectId formats for backward compatibility
@@ -301,17 +301,17 @@ export class MessagesService {
     user: JwtPayload,
   ): Promise<Message | null> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(id);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ sender mới có thể update tin nhắn
     if (user.role !== 'admin' && user._id !== message.sender_id.toString()) {
-      throw new ForbiddenException('You can only update your own messages');
+      throw new ForbiddenException('Bạn chỉ có thể cập nhật tin nhắn của mình');
     }
 
     const cleanedData = removeUndefinedObject(updateMessageDto);
@@ -327,12 +327,12 @@ export class MessagesService {
    */
   async markAsRead(messageId: string, userId: string): Promise<Message | null> {
     if (!isValidObjectId(messageId)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(messageId);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ receiver mới có thể mark as read
@@ -358,7 +358,7 @@ export class MessagesService {
     otherUserId: string,
   ): Promise<{ modifiedCount: number }> {
     if (!isValidObjectId(otherUserId)) {
-      throw new BadRequestException('Invalid user ID format');
+      throw new BadRequestException('Định dạng ID người dùng không hợp lệ');
     }
 
     const result = await this.messageModel
@@ -377,17 +377,17 @@ export class MessagesService {
 
   async remove(id: string, user: JwtPayload): Promise<Message | null> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(id);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ sender hoặc admin mới có thể xóa tin nhắn
     if (user.role !== 'admin' && user._id !== message.sender_id.toString()) {
-      throw new ForbiddenException('You can only delete your own messages');
+      throw new ForbiddenException('Bạn chỉ có thể xóa tin nhắn của mình');
     }
 
     return await this.messageModel.findByIdAndDelete(id).exec();
@@ -561,12 +561,12 @@ export class MessagesService {
    */
   async pinMessage(messageId: string, user: JwtPayload): Promise<Message> {
     if (!isValidObjectId(messageId)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(messageId);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Check authorization
@@ -599,12 +599,12 @@ export class MessagesService {
    */
   async unpinMessage(messageId: string, user: JwtPayload): Promise<Message> {
     if (!isValidObjectId(messageId)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(messageId);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Check authorization
@@ -687,12 +687,12 @@ export class MessagesService {
     const { message_id, type } = addReactionDto;
 
     if (!isValidObjectId(message_id)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(message_id);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ sender hoặc receiver mới có thể react
@@ -751,12 +751,12 @@ export class MessagesService {
     const { message_id } = removeReactionDto;
 
     if (!isValidObjectId(message_id)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(message_id);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization: chỉ sender hoặc receiver mới có thể react
@@ -802,12 +802,12 @@ export class MessagesService {
     user: JwtPayload,
   ): Promise<{ action: 'added' | 'removed'; message: Message }> {
     if (!isValidObjectId(messageId)) {
-      throw new BadRequestException('Invalid message ID format');
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
     const message = await this.messageModel.findById(messageId);
     if (!message) {
-      throw new NotFoundException('Message not found');
+      throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
     // Authorization check

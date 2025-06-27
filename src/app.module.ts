@@ -33,6 +33,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PropertyModule } from './modules/properties/property.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { VoucherModule } from './modules/vouchers/voucher.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 
 @Module({
@@ -73,6 +74,7 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     NotificationsModule,
     ReviewsModule,
     VoucherModule,
+    TransactionsModule,
   ],
   controllers: [AppController],
   providers: [

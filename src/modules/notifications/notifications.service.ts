@@ -54,7 +54,7 @@ export class NotificationsService {
     try {
       // Validate user_id is valid ObjectId
       if (!isValidObjectId(createNotificationDto.user_id)) {
-        throw new BadRequestException('Invalid user_id');
+        throw new BadRequestException('ID người dùng không hợp lệ');
       }
 
       const notificationData = {
@@ -114,7 +114,7 @@ export class NotificationsService {
         this.logger.error('Error creating notification:', String(error));
       }
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('Failed to create notification');
+      throw new BadRequestException('Không thể tạo thông báo');
     }
   }
 
@@ -165,13 +165,13 @@ export class NotificationsService {
       } else {
         this.logger.error('Error finding notifications:', String(error));
       }
-      throw new BadRequestException('Failed to retrieve notifications');
+      throw new BadRequestException('Không thể lấy thông báo');
     }
   }
 
   async findOne(id: string, user: JwtPayload): Promise<Notification> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid notification ID');
+      throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
     const notification = await this.notificationModel
@@ -184,7 +184,7 @@ export class NotificationsService {
       .exec();
 
     if (!notification) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException('Không tìm thấy thông báo');
     }
 
     return notification;
@@ -192,7 +192,7 @@ export class NotificationsService {
 
   async markAsRead(id: string, user: JwtPayload): Promise<Notification> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid notification ID');
+      throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
     const notification = await this.notificationModel.findOne({
@@ -202,7 +202,7 @@ export class NotificationsService {
     });
 
     if (!notification) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException('Không tìm thấy thông báo');
     }
 
     if (notification.is_read) {
@@ -253,7 +253,7 @@ export class NotificationsService {
 
   async softDelete(id: string, user: JwtPayload): Promise<void> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid notification ID');
+      throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
     const notification = await this.notificationModel.findOne({
@@ -263,7 +263,7 @@ export class NotificationsService {
     });
 
     if (!notification) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException('Không tìm thấy thông báo');
     }
 
     notification.isDeleted = true;
@@ -306,7 +306,7 @@ export class NotificationsService {
 
   async getUnreadCount(userId: string): Promise<UnreadCountResponse> {
     if (!isValidObjectId(userId)) {
-      throw new BadRequestException('Invalid user ID');
+      throw new BadRequestException('ID người dùng không hợp lệ');
     }
 
     const [totalUnread, byTypeData] = await Promise.all([
@@ -431,13 +431,13 @@ export class NotificationsService {
           String(error),
         );
       }
-      throw new BadRequestException('Failed to retrieve notifications');
+      throw new BadRequestException('Không thể lấy thông báo');
     }
   }
 
   async findOneForAdmin(id: string): Promise<Notification> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid notification ID');
+      throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
     const notification = await this.notificationModel
@@ -446,7 +446,7 @@ export class NotificationsService {
       .exec();
 
     if (!notification) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException('Không tìm thấy thông báo');
     }
 
     return notification;
@@ -458,7 +458,7 @@ export class NotificationsService {
     user: JwtPayload,
   ): Promise<Notification> {
     if (!isValidObjectId(id)) {
-      throw new BadRequestException('Invalid notification ID');
+      throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
     const notification = await this.notificationModel.findOne({
@@ -468,7 +468,7 @@ export class NotificationsService {
     });
 
     if (!notification) {
-      throw new NotFoundException('Notification not found');
+      throw new NotFoundException('Không tìm thấy thông báo');
     }
 
     const cleanedData = removeUndefinedObject(updateNotificationDto);
