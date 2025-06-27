@@ -1,0 +1,158 @@
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Thông báo đặt phòng mới - Nhân viên</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .container {
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        padding: 20px;
+        background-color: #f9f9f9;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .logo {
+        max-width: 150px;
+        margin-bottom: 15px;
+      }
+      .alert-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+        border-left: 4px solid #ff6b35;
+      }
+      .reservation-details {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .details-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+      }
+      .total-price {
+        font-size: 18px;
+        font-weight: bold;
+        text-align: right;
+        margin-top: 20px;
+        color: #27ae60;
+      }
+      .button {
+        display: inline-block;
+        background-color: #ff5a5f;
+        color: white;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        margin: 20px 0;
+        font-weight: bold;
+      }
+      .staff-actions {
+        background-color: #e8f5e8;
+        border: 1px solid #c3e6c3;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .footer {
+        margin-top: 30px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='container'>
+      <div class='header'>
+        <h2>🔔 Đặt phòng mới cần xử lý!</h2>
+      </div>
+
+      <p>Xin chào nhân viên,</p>
+
+      <div class='alert-box'>
+        <strong>⚠️ Cần hành động:</strong>
+        Có đơn đặt phòng mới cần được xác nhận và xử lý trong hệ thống.
+      </div>
+
+      <div class='reservation-details'>
+        <h3>Chi tiết đặt phòng #{{reservationId}}</h3>
+
+        <div class='details-row'>
+          <span><strong>Khách hàng:</strong></span>
+          <span>{{guestName}}</span>
+        </div>
+
+        <div class='details-row'>
+          <span><strong>Tài sản:</strong></span>
+          <span>{{propertyName}}</span>
+        </div>
+
+        <div class='details-row'>
+          <span><strong>Ngày nhận phòng:</strong></span>
+          <span>{{checkIn}}</span>
+        </div>
+
+        <div class='details-row'>
+          <span><strong>Ngày trả phòng:</strong></span>
+          <span>{{checkOut}}</span>
+        </div>
+
+        <div class='total-price'>
+          Tổng giá trị:
+          {{totalPrice}}
+          VND
+        </div>
+      </div>
+
+      <div class='staff-actions'>
+        <h4>📝 Hành động cần thực hiện:</h4>
+        <ul>
+          <li>Xác nhận tình trạng phòng trống</li>
+          <li>Kiểm tra thông tin khách hàng</li>
+          <li>Chuẩn bị phòng cho ngày check-in</li>
+          <li>Cập nhật trạng thái đặt phòng trong hệ thống</li>
+        </ul>
+      </div>
+
+      <p><strong>⏰ Lưu ý quan trọng:</strong>
+        Vui lòng xử lý đơn đặt phòng này trong vòng
+        <strong>24 giờ</strong>
+        để đảm bảo trải nghiệm tốt nhất cho khách hàng.</p>
+
+      <div style='text-align: center;'>
+        <a href='https://vinaside.com/staff/reservations' class='button'>Quản lý
+          đặt phòng</a>
+      </div>
+
+      <p>Nếu có bất kỳ thắc mắc nào, vui lòng liên hệ với quản lý hoặc bộ phận
+        hỗ trợ.</p>
+
+      <p>Trân trọng,<br />Hệ thống Vinaside</p>
+    </div>
+
+    <div class='footer'>
+      <p>© 2024 Vinaside. Tất cả các quyền được bảo lưu.</p>
+      <p>Email này được gửi tự động đến nhân viên được gán cho tài sản.</p>
+      <p>Địa chỉ nhân viên: {{staffEmail}}</p>
+    </div>
+  </body>
+</html>

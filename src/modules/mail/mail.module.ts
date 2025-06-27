@@ -11,9 +11,20 @@ import {
   EmailQueueService,
   EMAIL_QUEUE,
 } from './mail.queue';
+import { MongooseModule } from '@nestjs/mongoose';
+import { User, UserSchema } from '../users/schemas/user.schema';
+import {
+  Property,
+  PropertySchema,
+} from '../properties/schemas/property.schema';
 
 @Module({
   imports: [
+    ConfigModule,
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Property.name, schema: PropertySchema },
+    ]),
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     MailerModule.forRootAsync({
       imports: [ConfigModule],

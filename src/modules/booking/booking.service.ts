@@ -16,6 +16,9 @@ import { BookingRepo } from './booking.repo';
 import { ListingService } from '../listing/listing.service';
 import { PropertyService } from '../properties/services/property.service';
 import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { MailService } from '../mail/mail.service';
+import { EmailQueueService } from '../mail/mail.queue';
+import { ReservationData } from '../mail/interfaces/reservation-data.interface';
 
 export interface PaginatedBookings {
   data: Booking[];
@@ -33,6 +36,8 @@ export class BookingService {
     private readonly bookingRepo: BookingRepo,
     private readonly listingService: ListingService,
     private readonly propertyService: PropertyService,
+    private readonly mailService: MailService,
+    private readonly emailQueueService: EmailQueueService,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -78,8 +83,10 @@ export class BookingService {
     interface PopulatedListingForBooking {
       propertyId: {
         _id: Types.ObjectId;
+        name?: string;
       };
       price_per_night: number;
+      title?: string;
     }
     const populatedListing = listing as unknown as PopulatedListingForBooking;
     const propertyId = populatedListing.propertyId._id;
@@ -118,7 +125,64 @@ export class BookingService {
     };
 
     // BaseRepo.create expects a generic object, not a DTO with methods
-    return this.bookingRepo.create(bookingData, user._id);
+    const createdBooking = await this.bookingRepo.create(bookingData, user._id);
+
+    // Gửi email thông báo cho khách hàng
+    const guestReservationData: ReservationData = {
+      id: (createdBooking._id as Types.ObjectId).toString(),
+      userName: user.name || user.email,
+      propertyName:
+        populatedListing.propertyId.name || populatedListing.title || 'Tài sản',
+      checkIn: checkIn,
+      checkOut: checkOut,
+      roomInfo: {
+        name: populatedListing.title || 'Phòng',
+        address: '', // Có thể lấy từ property location
+      },
+      totalPrice: finalAmount,
+    };
+
+    // Gửi email xác nhận cho khách
+    await this.emailQueueService.addReservationConfirmation({
+      email: user.email,
+      reservationData: guestReservationData,
+    });
+
+    // Lấy staff emails từ property và gửi thông báo
+    try {
+      const staffEmails = await this.mailService.getStaffEmailsFromProperty(
+        propertyId.toString(),
+      );
+
+      if (staffEmails.length > 0) {
+        const staffReservationData: ReservationData = {
+          ...guestReservationData,
+          staffEmails,
+        };
+
+        // Gửi email thông báo cho tất cả staff
+        await this.emailQueueService.addStaffNotification({
+          staffEmails,
+          reservationData: staffReservationData,
+        });
+
+        this.logger.log(
+          `Sent staff notification emails to ${staffEmails.length} staff members for booking ${(createdBooking._id as Types.ObjectId).toString()}`,
+        );
+      } else {
+        this.logger.warn(
+          `No staff found for property ${propertyId.toString()} - no staff notification sent for booking ${(createdBooking._id as Types.ObjectId).toString()}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to send staff notifications for booking ${(createdBooking._id as Types.ObjectId).toString()}:`,
+        error,
+      );
+      // Không throw error để không ảnh hưởng đến việc tạo booking
+    }
+
+    return createdBooking;
   }
 
   /**
@@ -371,20 +435,71 @@ export class BookingService {
   }
 
   /**
-   * Lấy tất cả bookings của host hiện tại (tất cả listings của host)
+   * Lấy tất cả bookings của staff hiện tại (tất cả bookings của properties mà staff được gán)
    */
-  findMyBookingsAsHost(user: JwtPayload, queryDto: QueryBookingDto) {
+  async findMyBookingsAsHost(user: JwtPayload, queryDto: QueryBookingDto) {
     if (!user || !user._id) {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
     }
 
-    // Staff chỉ xem được bookings của listings mình sở hữu
-    if (user.role !== 'admin' && user.role !== 'staff') {
-      throw new ForbiddenException('Chỉ staff và admin mới có quyền này');
-    }
+    if (user.role === 'admin') {
+      // Admin xem tất cả bookings
+      return this.findAll(queryDto);
+    } else if (user.role === 'staff') {
+      // Staff chỉ xem được bookings của properties mình được gán
+      const staffProperties = await this.propertyService.findByStaff(
+        user._id,
+        {},
+      );
 
-    return this.findBookingsByGuest(user._id, queryDto).then((result) => {
-      const { page = 1, limit = 10 } = queryDto;
+      interface PropertyWithId {
+        _id: Types.ObjectId;
+      }
+
+      const propertyIds = staffProperties.data.map((prop) =>
+        (prop as unknown as PropertyWithId)._id.toString(),
+      );
+
+      if (propertyIds.length === 0) {
+        return {
+          bookings: [],
+          meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
+        };
+      }
+
+      // Filter bookings theo properties của staff bằng cách query multiple propertyId
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = false,
+        ...filters
+      } = queryDto;
+
+      const query: FilterQuery<Booking> = {
+        propertyId: { $in: propertyIds.map((id) => new Types.ObjectId(id)) },
+        isDeleted: includeDeleted,
+      };
+
+      // Thêm các bộ lọc khác
+      if (filters.status) query.status = filters.status;
+      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+
+      const skip = (page - 1) * limit;
+      const sort = parseSortString(`${sortBy}:${sortOrder}`);
+
+      const result = await this.bookingRepo.findAll(query, {
+        sort,
+        skip,
+        limit,
+        populate: [
+          { path: 'listingId', select: 'title address images price_per_night' },
+          { path: 'guestId', select: 'name avatar email phone' },
+          { path: 'propertyId', select: 'name address' },
+        ],
+      });
+
       return {
         bookings: result.data,
         meta: {
@@ -394,7 +509,9 @@ export class BookingService {
           totalPages: Math.ceil(result.total / limit) || 1,
         },
       };
-    });
+    } else {
+      throw new ForbiddenException('Chỉ staff và admin mới có quyền này');
+    }
   }
 
   /**

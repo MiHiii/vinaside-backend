@@ -27,8 +27,8 @@ export interface ReservationConfirmationJob {
   reservationData: ReservationData;
 }
 
-export interface HostNotificationJob {
-  hostEmail: string;
+export interface StaffNotificationJob {
+  staffEmails: string[];
   reservationData: ReservationData;
 }
 
@@ -81,15 +81,17 @@ export class EmailQueueService {
     );
   }
 
-  async addHostNotification(job: HostNotificationJob): Promise<void> {
-    await this.emailQueue.add('host-notification', job, {
+  async addStaffNotification(job: StaffNotificationJob): Promise<void> {
+    await this.emailQueue.add('staff-notification', job, {
       attempts: 3,
       backoff: {
         type: 'exponential',
         delay: 5000,
       },
     });
-    this.logger.log(`Added host notification email job for: ${job.hostEmail}`);
+    this.logger.log(
+      `Added staff notification email job for staff: ${job.staffEmails.join(', ')}`,
+    );
   }
 
   async addGenericEmail(job: EmailJob): Promise<void> {
@@ -183,25 +185,27 @@ export class EmailQueueProcessor {
     }
   }
 
-  @Process('host-notification')
-  async processHostNotification(job: {
-    data: HostNotificationJob;
+  @Process('staff-notification')
+  async processStaffNotification(job: {
+    data: StaffNotificationJob;
   }): Promise<void> {
     this.logger.log(
-      `Processing host notification email job for: ${job.data.hostEmail}`,
+      `Processing staff notification email job for staff: ${job.data.staffEmails.join(', ')}`,
     );
 
     try {
-      await this.mailService.sendHostReservationNotification(
-        job.data.hostEmail,
+      await this.mailService.sendStaffReservationNotification(
+        job.data.staffEmails,
         job.data.reservationData,
       );
-      this.logger.log(`Host notification email sent to: ${job.data.hostEmail}`);
+      this.logger.log(
+        `Staff notification emails sent to: ${job.data.staffEmails.join(', ')}`,
+      );
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(
-        `Failed to send host notification email to ${job.data.hostEmail}: ${errorMessage}`,
+        `Failed to send staff notification emails to ${job.data.staffEmails.join(', ')}: ${errorMessage}`,
       );
       throw error;
     }
