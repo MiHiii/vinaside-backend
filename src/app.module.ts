@@ -35,6 +35,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { VoucherModule } from './modules/vouchers/voucher.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
+import { ServicesModule } from './modules/services/services.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { RbacSeedService } from './database/seeds/rbac.seed';
     NotificationsModule,
     ReviewsModule,
     VoucherModule,
+    ServicesModule,
     TransactionsModule,
   ],
   controllers: [AppController],
