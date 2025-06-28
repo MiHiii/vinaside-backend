@@ -64,7 +64,7 @@ export class ServicesRepo extends BaseRepo<Service> {
     minPrice?: number,
     maxPrice?: number,
   ): Promise<Service[]> {
-    const priceFilter: any = {};
+    const priceFilter: Record<string, number> = {};
     if (minPrice !== undefined) {
       priceFilter.$gte = minPrice;
     }
@@ -119,7 +119,7 @@ export class ServicesRepo extends BaseRepo<Service> {
    * Build filter query từ QueryServiceDto
    */
   private buildFilterQuery(
-    filters: any,
+    filters: Partial<QueryServiceDto>,
     includeDeleted: boolean = false,
   ): FilterQuery<Service> {
     const filterQuery: FilterQuery<Service> = {};
@@ -225,8 +225,17 @@ export class ServicesRepo extends BaseRepo<Service> {
   /**
    * Thống kê service theo unit
    */
-  async getStatsByUnit(): Promise<any[]> {
-    return this.serviceModel
+  async getStatsByUnit(): Promise<
+    {
+      _id: string;
+      count: number;
+      avgPrice: number;
+      minPrice: number;
+      maxPrice: number;
+      activeCount: number;
+    }[]
+  > {
+    const results = await this.serviceModel
       .aggregate([
         { $match: { isDeleted: false } },
         {
@@ -244,6 +253,15 @@ export class ServicesRepo extends BaseRepo<Service> {
         { $sort: { count: -1 } },
       ])
       .exec();
+
+    return results as {
+      _id: string;
+      count: number;
+      avgPrice: number;
+      minPrice: number;
+      maxPrice: number;
+      activeCount: number;
+    }[];
   }
 
   /**
@@ -266,7 +284,13 @@ export class ServicesRepo extends BaseRepo<Service> {
     ids: string[],
     isActive: boolean,
     userId?: string,
-  ): Promise<any> {
+  ): Promise<{
+    acknowledged: boolean;
+    modifiedCount: number;
+    upsertedId: unknown;
+    upsertedCount: number;
+    matchedCount: number;
+  }> {
     const objectIds = ids.map((id) => new Types.ObjectId(id));
 
     return this.serviceModel
@@ -288,7 +312,7 @@ export class ServicesRepo extends BaseRepo<Service> {
     targetPrice: number,
     limit: number = 5,
   ): Promise<Service[]> {
-    return this.serviceModel
+    const results = await this.serviceModel
       .aggregate([
         { $match: { isDeleted: false, is_active: true } },
         {
@@ -302,5 +326,7 @@ export class ServicesRepo extends BaseRepo<Service> {
         { $limit: limit },
       ])
       .exec();
+
+    return results as Service[];
   }
 }

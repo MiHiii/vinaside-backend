@@ -13,13 +13,13 @@ export class PriceRangeQueryDto {
   @IsOptional()
   @IsNumber({}, { message: 'Giá tối thiểu phải là số hợp lệ' })
   @Min(0, { message: 'Giá tối thiểu phải từ 0 trở lên' })
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }: { value: string }) => parseFloat(value))
   min_price?: number;
 
   @IsOptional()
   @IsNumber({}, { message: 'Giá tối đa phải là số hợp lệ' })
   @Min(0, { message: 'Giá tối đa phải từ 0 trở lên' })
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }: { value: string }) => parseFloat(value))
   max_price?: number;
 }
 

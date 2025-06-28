@@ -11,13 +11,13 @@ export class QueryServiceDto {
   @IsOptional()
   @IsNumber({}, { message: 'Trang phải là số' })
   @Min(1, { message: 'Trang phải từ 1 trở lên' })
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: string }) => parseInt(value))
   page?: number = 1;
 
   @IsOptional()
   @IsNumber({}, { message: 'Limit phải là số' })
   @Min(1, { message: 'Limit phải từ 1 trở lên' })
-  @Transform(({ value }) => parseInt(value))
+  @Transform(({ value }: { value: string }) => parseInt(value))
   limit?: number = 10;
 
   @IsOptional()
@@ -30,19 +30,19 @@ export class QueryServiceDto {
 
   @IsOptional()
   @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value: string | boolean }) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-    return value;
+    return Boolean(value);
   })
   is_active?: boolean;
 
   @IsOptional()
   @IsBoolean({ message: 'Bao gồm đã xóa phải là boolean' })
-  @Transform(({ value }) => {
+  @Transform(({ value }: { value: string | boolean }) => {
     if (value === 'true') return true;
     if (value === 'false') return false;
-    return value;
+    return Boolean(value);
   })
   include_deleted?: boolean = false;
 
@@ -52,11 +52,11 @@ export class QueryServiceDto {
 
   @IsOptional()
   @IsNumber({}, { message: 'Giá tối thiểu phải là số' })
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }: { value: string }) => parseFloat(value))
   min_price?: number;
 
   @IsOptional()
   @IsNumber({}, { message: 'Giá tối đa phải là số' })
-  @Transform(({ value }) => parseFloat(value))
+  @Transform(({ value }: { value: string }) => parseFloat(value))
   max_price?: number;
 }

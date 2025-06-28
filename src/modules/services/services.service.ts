@@ -5,7 +5,6 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { FilterQuery } from 'mongoose';
 import { Service } from './schemas/service.schema';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -158,7 +157,7 @@ export class ServicesService {
     if (order !== 'asc' && order !== 'desc') {
       throw new BadRequestException('Thứ tự phải là asc hoặc desc');
     }
-    return order as 'asc' | 'desc';
+    return order;
   }
 
   /**
@@ -349,7 +348,16 @@ export class ServicesService {
   /**
    * Lấy thống kê service theo đơn vị
    */
-  async getStatsByUnit(): Promise<any[]> {
+  async getStatsByUnit(): Promise<
+    {
+      _id: string;
+      count: number;
+      avgPrice: number;
+      minPrice: number;
+      maxPrice: number;
+      activeCount: number;
+    }[]
+  > {
     return this.servicesRepo.getStatsByUnit();
   }
 
@@ -406,7 +414,13 @@ export class ServicesService {
     ids: string[],
     isActive: boolean,
     user?: UserWithPermissions,
-  ): Promise<any> {
+  ): Promise<{
+    acknowledged: boolean;
+    modifiedCount: number;
+    upsertedId: unknown;
+    upsertedCount: number;
+    matchedCount: number;
+  }> {
     // Validation
     this.validateIds(ids);
 
