@@ -1,14 +1,54 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ReservationData } from './interfaces/reservation-data.interface';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import {
+  Property,
+  PropertyDocument,
+} from '../properties/schemas/property.schema';
 
 @Injectable()
 export class MailService {
   constructor(
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+    @InjectModel(Property.name)
+    private readonly propertyModel: Model<PropertyDocument>,
   ) {}
+
+  /**
+   * Lấy email của tất cả staff được gán cho property
+   * @param propertyId ID của property
+   * @returns Array of staff emails
+   */
+  async getStaffEmailsFromProperty(propertyId: string): Promise<string[]> {
+    // Lấy property với staffIds
+    const property = await this.propertyModel
+      .findById(propertyId)
+      .select('staffIds')
+      .exec();
+
+    if (!property || !property.staffIds || property.staffIds.length === 0) {
+      return [];
+    }
+
+    // Lấy email của tất cả staff
+    const staffUsers = await this.userModel
+      .find({
+        _id: { $in: property.staffIds },
+        role: 'staff',
+        isDeleted: false,
+        is_verified: true,
+      })
+      .select('email')
+      .exec();
+
+    return staffUsers.map((user) => user.email);
+  }
 
   /**
    * Gửi email xác minh tài khoản
@@ -79,27 +119,33 @@ export class MailService {
   }
 
   /**
-   * Gửi email thông báo cho chủ nhà khi có đặt phòng mới
-   * @param hostEmail Email chủ nhà
+   * Gửi email thông báo cho nhân viên khi có đặt phòng mới
+   * @param staffEmails Danh sách email nhân viên
    * @param reservationData Thông tin đặt phòng
    */
-  async sendHostReservationNotification(
-    hostEmail: string,
+  async sendStaffReservationNotification(
+    staffEmails: string[],
     reservationData: ReservationData,
   ): Promise<void> {
-    await this.mailerService.sendMail({
-      to: hostEmail,
-      subject: 'Có đặt phòng mới',
-      template: 'host-reservation-notification',
-      context: {
-        hostName: reservationData.hostName,
-        guestName: reservationData.userName,
-        propertyName: reservationData.propertyName,
-        checkIn: reservationData.checkIn,
-        checkOut: reservationData.checkOut,
-        totalPrice: reservationData.totalPrice,
-      },
+    // Gửi email đến tất cả nhân viên được gán
+    const emailPromises = staffEmails.map(async (staffEmail) => {
+      await this.mailerService.sendMail({
+        to: staffEmail,
+        subject: 'Có đặt phòng mới cần xử lý',
+        template: 'staff-reservation-notification',
+        context: {
+          staffEmail,
+          guestName: reservationData.userName,
+          propertyName: reservationData.propertyName,
+          checkIn: reservationData.checkIn,
+          checkOut: reservationData.checkOut,
+          totalPrice: reservationData.totalPrice,
+          reservationId: reservationData.id,
+        },
+      });
     });
+
+    await Promise.all(emailPromises);
   }
 
   /**
@@ -121,5 +167,21 @@ export class MailService {
       template,
       context,
     });
+  }
+
+  /**
+   * Gửi thông báo đến tất cả staff của một property
+   * @param propertyId ID của property
+   * @param reservationData Dữ liệu đặt phòng
+   */
+  async sendStaffNotificationByProperty(
+    propertyId: string,
+    reservationData: ReservationData,
+  ): Promise<void> {
+    const staffEmails = await this.getStaffEmailsFromProperty(propertyId);
+
+    if (staffEmails.length > 0) {
+      await this.sendStaffReservationNotification(staffEmails, reservationData);
+    }
   }
 }

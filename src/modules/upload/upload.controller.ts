@@ -11,10 +11,10 @@ import {
   ParseFilePipe,
   Request,
   UseGuards,
+  Body,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { UploadService } from './upload.service';
-import { UploadMetadataDto } from './dto/upload-response.dto';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -40,42 +40,30 @@ interface RequestWithUser extends Request {
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
-  @Post()
+  @Post('admin')
   @RequirePermission('upload.manage')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Upload files (Admin)' })
-  @ApiConsumes('multipart/form-data')
-  @ApiResponse({ status: 200, description: 'Files uploaded successfully' })
-  @ResponseMessage('Tải lên ảnh thành công')
-  @UseInterceptors(FilesInterceptor('files', 50))
-  async uploadFiles(
-    @UploadedFiles(
-      new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 15 * 1024 * 1024 })],
-      }),
-    )
-    files: Express.Multer.File[],
-    @Query('prefix') prefix?: string,
-    @Query('userId') userId?: string,
-    @Query('roomId') roomId?: string,
+  @ApiOperation({ summary: 'Tải lên tệp (Admin)' })
+  @ApiResponse({ status: 200, description: 'Tệp được tải lên thành công' })
+  @ApiResponse({ status: 400, description: 'Lỗi xác thực' })
+  async uploadAdminFiles(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() body: Record<string, any>,
   ) {
-    // Create metadata object if any query params are provided
-    let metadata: UploadMetadataDto | undefined;
-    if (prefix || userId || roomId) {
-      metadata = { prefix, userId, roomId };
+    if (!files?.length) {
+      throw new BadRequestException('Không tìm thấy tệp nào');
     }
 
-    return this.uploadService.uploadFiles(files, metadata);
+    return this.uploadService.uploadFiles(files, body);
   }
 
   @Post('room')
   @RequirePermission('listing.edit')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Upload room/listing images' })
+  @ApiOperation({ summary: 'Tải lên hình ảnh phòng/listing' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: 200,
-    description: 'Room images uploaded successfully',
+    description: 'Hình ảnh phòng được tải lên thành công',
   })
   @ResponseMessage('Tải lên ảnh phòng thành công')
   @UseInterceptors(FilesInterceptor('files', 50))
@@ -90,7 +78,7 @@ export class UploadController {
     @Request() req: RequestWithUser,
   ) {
     if (!roomId) {
-      throw new BadRequestException('roomId is required');
+      throw new BadRequestException('roomId là bắt buộc');
     }
 
     // Lấy userId từ JWT token
@@ -102,11 +90,11 @@ export class UploadController {
   @Post('user')
   @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Upload user avatar/profile images' })
+  @ApiOperation({ summary: 'Tải lên hình ảnh avatar/profile người dùng' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: 200,
-    description: 'User images uploaded successfully',
+    description: 'Hình ảnh người dùng được tải lên thành công',
   })
   @ResponseMessage('Tải lên ảnh người dùng thành công')
   @UseInterceptors(FilesInterceptor('files', 1))

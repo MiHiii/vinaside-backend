@@ -7,19 +7,19 @@ import {
   IsIn,
   Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class QueryVoucherDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
-  @Transform(({ value }) => parseInt(value))
+  @Type(() => Number)
   page?: number = 1;
 
   @IsOptional()
   @IsNumber()
   @Min(1)
-  @Transform(({ value }) => parseInt(value))
+  @Type(() => Number)
   limit?: number = 10;
 
   @IsOptional()

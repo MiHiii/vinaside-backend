@@ -23,4 +23,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('❌ Failed to run database seeding:', error);
+  process.exit(1);
+});
