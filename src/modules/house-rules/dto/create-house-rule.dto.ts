@@ -1,21 +1,47 @@
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNotEmpty,
+  MaxLength,
+  IsUrl,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateHouseRuleDto {
-  @IsString()
+  @ApiProperty({
+    description: 'Tên quy tắc nhà',
+    example: 'Không hút thuốc',
+  })
+  @IsString({ message: 'Tên quy tắc nhà phải là chuỗi' })
+  @IsNotEmpty({ message: 'Tên quy tắc nhà không được để trống' })
+  @MaxLength(100, { message: 'Tên quy tắc nhà không được vượt quá 100 ký tự' })
   name: string;
 
+  @ApiPropertyOptional({
+    description: 'Mô tả chi tiết quy tắc nhà',
+    example: 'Tuyệt đối không được hút thuốc trong phòng và khu vực chung',
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'Mô tả phải là chuỗi' })
+  @MaxLength(500, { message: 'Mô tả không được vượt quá 500 ký tự' })
   description?: string;
 
+  @ApiPropertyOptional({
+    description: 'URL icon cho quy tắc nhà',
+    example: 'https://example.com/no-smoking.png',
+  })
   @IsOptional()
-  @IsString()
+  @IsString({ message: 'URL icon phải là chuỗi' })
+  @IsUrl({}, { message: 'URL icon không hợp lệ' })
   icon_url?: string;
 
+  @ApiPropertyOptional({
+    description: 'Quy tắc có được chọn mặc định khi tạo listing không',
+    example: true,
+    default: false,
+  })
   @IsOptional()
-  @IsBoolean()
-  default_checked?: boolean;
-
-  @IsString()
-  room_id: string;
+  @IsBoolean({ message: 'Default checked phải là boolean' })
+  default_checked?: boolean = false;
 }

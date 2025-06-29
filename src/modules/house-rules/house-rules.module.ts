@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
-import { HouseRulesService } from './houserules.service';
+import { HouseRulesService } from './house-rules.service';
 import { HouseRulesController } from './house-rules.controller';
 import { HouseRulesRepo } from './house-rules.repo';
 import { HouseRule, HouseRuleSchema } from './schemas/house-rule.schema';
@@ -14,6 +14,6 @@ import { HouseRule, HouseRuleSchema } from './schemas/house-rule.schema';
   ],
   controllers: [HouseRulesController],
   providers: [HouseRulesService, HouseRulesRepo],
-  exports: [HouseRulesService],
+  exports: [HouseRulesService, HouseRulesRepo],
 })
 export class HouseRulesModule {}
