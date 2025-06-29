@@ -17,6 +17,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PermissionGuard } from './common/guards/permission.guard';
 import { MailModule } from './modules/mail/mail.module';
 import { BullModule } from '@nestjs/bull';
 import { redisConfigFactory } from './configs/redis.config';
@@ -89,6 +90,10 @@ import { ServicesModule } from './modules/services/services.module';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionGuard,
     },
     {
       provide: APP_FILTER,
