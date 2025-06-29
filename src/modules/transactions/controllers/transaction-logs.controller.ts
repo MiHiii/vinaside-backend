@@ -16,13 +16,15 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
+import { PropertyStaffGuard } from '../../../common/guards/property-staff.guard';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
+import { RequirePropertyStaff } from '../../../decorators/require-property-staff.decorator';
 import { TransactionLogsService } from '../services/transaction-logs.service';
 import { ChangedBy } from '../schemas/transaction-log.schema';
 
 @ApiTags('Transaction Logs')
 @Controller('transaction-logs')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class TransactionLogsController {
   constructor(
@@ -218,5 +220,48 @@ export class TransactionLogsController {
   async deleteLog(@Param('id') id: string) {
     await this.transactionLogsService.deleteLog(id);
     return { message: 'Xóa log giao dịch thành công' };
+  }
+
+  @Get('property/:propertyId')
+  @RequirePermission('booking.view')
+  @RequirePropertyStaff('propertyId')
+  @ApiOperation({
+    summary: 'Lấy log giao dịch theo property',
+    description: 'Lấy tất cả log giao dịch của một property cụ thể (chỉ staff)',
+  })
+  @ApiParam({
+    name: 'propertyId',
+    description: 'ID property',
+    example: '507f1f77bcf86cd799439011',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: 'Ngày bắt đầu lọc (chuỗi ISO)',
+    example: '2024-01-01T00:00:00.000Z',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: 'Ngày kết thúc lọc (chuỗi ISO)',
+    example: '2024-12-31T23:59:59.999Z',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lấy log giao dịch property thành công',
+  })
+  async getLogsByProperty(
+    @Param('propertyId') propertyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const start = startDate ? new Date(startDate) : undefined;
+    const end = endDate ? new Date(endDate) : undefined;
+
+    return this.transactionLogsService.getLogsByProperty(
+      propertyId,
+      start,
+      end,
+    );
   }
 }

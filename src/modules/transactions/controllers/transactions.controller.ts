@@ -19,7 +19,9 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
+import { PropertyStaffGuard } from '../../../common/guards/property-staff.guard';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
+import { RequirePropertyStaff } from '../../../decorators/require-property-staff.decorator';
 import { Roles } from '../../../decorators/roles.decorator';
 import { TransactionsService } from '../services/transactions.service';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
@@ -33,13 +35,14 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Transactions')
 @Controller('transactions')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post()
   @RequirePermission('booking.manage_payment')
+  @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({
     summary: 'Tạo giao dịch mới',
     description: 'Tạo giao dịch mới trong hệ thống',

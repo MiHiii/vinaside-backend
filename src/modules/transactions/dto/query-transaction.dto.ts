@@ -53,6 +53,14 @@ export class QueryTransactionDto {
   user_id?: string;
 
   @ApiPropertyOptional({
+    description: 'Filter by property ID',
+    example: '507f1f77bcf86cd799439012',
+  })
+  @IsOptional()
+  @IsMongoId()
+  propertyId?: string;
+
+  @ApiPropertyOptional({
     description: 'Filter by transaction type',
     enum: TransactionType,
     example: TransactionType.PAYMENT,

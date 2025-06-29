@@ -10,6 +10,11 @@ import {
 } from 'class-validator';
 
 export class CreateReviewDto {
+  @IsString({ message: 'propertyId phải là chuỗi' })
+  @IsNotEmpty({ message: 'propertyId không được để trống' })
+  @IsMongoId({ message: 'propertyId phải là ObjectId hợp lệ' })
+  propertyId: string;
+
   @IsString({ message: 'room_id phải là chuỗi' })
   @IsNotEmpty({ message: 'room_id không được để trống' })
   @IsMongoId({ message: 'room_id phải là ObjectId hợp lệ' })

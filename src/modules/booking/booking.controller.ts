@@ -16,7 +16,9 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
+import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from './schemas/booking.schema';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
@@ -36,13 +38,14 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Booking Management')
 @Controller('bookings')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
 
   @Post()
   @Roles('guest')
+  @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({ summary: 'Tạo booking mới' })
   @ApiResponse({ status: 201, description: 'Booking được tạo thành công' })
   @ResponseMessage('Tạo booking thành công')
@@ -116,17 +119,18 @@ export class BookingController {
     return this.bookingService.findByHost(staffId, queryDto);
   }
 
-  @Get('listing/:listingId')
+  @Get('property/:propertyId/listing/:listingId')
   @RequirePermission('booking.view')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Lấy bookings của listing cụ thể' })
   @ApiResponse({ status: 200, description: 'Danh sách bookings của listing' })
   @ResponseMessage('Lấy danh sách bookings của listing thành công')
   findByListing(
+    @Param('propertyId') propertyId: string,
     @Param('listingId') listingId: string,
     @Query() queryDto: QueryBookingDto,
-    @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.findByListing(listingId, queryDto, req.user);
+    return this.bookingService.findByListing(listingId, queryDto);
   }
 
   @Get('check-availability/:listingId')
@@ -151,24 +155,31 @@ export class BookingController {
     return this.bookingService.getBookedDates(listingId);
   }
 
-  @Get(':id')
+  @Get('property/:propertyId/:id')
   @Roles('guest', 'staff', 'admin')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết booking' })
   @ApiResponse({ status: 200, description: 'Thông tin booking' })
   @ResponseMessage('Lấy thông tin booking thành công')
-  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
+  findOne(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
     return this.bookingService.findOne(id, req.user as any as JwtPayload);
   }
 
-  @Patch(':id')
+  @Patch('property/:propertyId/:id')
   @RequirePermission('booking.edit')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Cập nhật thông tin booking' })
   @ApiResponse({ status: 200, description: 'Booking được cập nhật thành công' })
   @ResponseMessage('Cập nhật booking thành công')
   update(
+    @Param('propertyId') propertyId: string,
     @Param('id') id: string,
     @Body() updateBookingDto: UpdateBookingDto,
     @Request() req: RequestWithUser,
@@ -183,30 +194,40 @@ export class BookingController {
     );
   }
 
-  @Delete(':id')
+  @Delete('property/:propertyId/:id')
   @RequirePermission('booking.cancel')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Hủy booking' })
   @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
   @ResponseMessage('Hủy booking thành công')
-  cancel(@Param('id') id: string, @Request() req: RequestWithUser) {
+  cancel(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
     return this.bookingService.remove(id, req.user as any as JwtPayload);
   }
 
-  @Patch(':id/confirm')
+  @Patch('property/:propertyId/:id/confirm')
   @RequirePermission('booking.confirm')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Xác nhận booking' })
   @ApiResponse({ status: 200, description: 'Booking được xác nhận thành công' })
   @ResponseMessage('Xác nhận booking thành công')
-  confirm(@Param('id') id: string, @Request() req: RequestWithUser) {
+  confirm(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
-    return this.bookingService.update(
+    return this.bookingService.updateStatus(
       id,
-      { status: BookingStatus.CONFIRMED },
+      BookingStatus.CONFIRMED,
       req.user as any as JwtPayload,
     );
   }

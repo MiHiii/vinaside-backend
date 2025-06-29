@@ -59,6 +59,14 @@ export class Transaction {
 
   @Prop({
     type: Types.ObjectId,
+    ref: 'Property',
+    required: false,
+    index: true,
+  })
+  propertyId?: Types.ObjectId;
+
+  @Prop({
+    type: Types.ObjectId,
     required: true,
     index: true,
   })
@@ -178,6 +186,8 @@ export const TransactionSchema = SchemaFactory.createForClass(Transaction);
 
 // Compound indexes for better query performance
 TransactionSchema.index({ reference_type: 1, reference_id: 1 });
+TransactionSchema.index({ propertyId: 1, status: 1 });
+TransactionSchema.index({ propertyId: 1, type: 1 });
 TransactionSchema.index({ user_id: 1, status: 1 });
 TransactionSchema.index({ user_id: 1, type: 1 });
 TransactionSchema.index({ user_id: 1, direction: 1 });

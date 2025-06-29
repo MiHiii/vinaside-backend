@@ -1,7 +1,7 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
@@ -26,27 +26,15 @@ export class PropertyService {
     private propertyModel: Model<PropertyDocument>,
   ) {}
 
-  private checkPermission(
-    property: Property,
-    user: JwtPayload,
-    message: string = 'You do not have permission to perform this action',
-  ) {
+  private checkPermission(property: Property, user: JwtPayload) {
+    // Admin bypass
     if (user.role === 'admin') {
       return;
     }
 
-    // Staff-based permission only
-    interface PopulatedProperty {
-      staffIds: { toString: () => string }[];
-    }
-
-    const p = property as unknown as PopulatedProperty;
-    const isStaff =
-      p.staffIds && p.staffIds.some((id) => id?.toString() === user._id);
-
-    if (!isStaff) {
-      throw new ForbiddenException(message);
-    }
+    // Staff permission checking is now handled by @RequirePropertyStaff decorator
+    // at controller level, so if we reach here the user should be authorized
+    // This method can be simplified or removed in future refactoring
   }
 
   async create(
@@ -204,11 +192,7 @@ export class PropertyService {
     user: JwtPayload,
   ): Promise<Property> {
     const property = await this.findOne(id);
-    this.checkPermission(
-      property,
-      user,
-      'You can only update your own properties',
-    );
+    this.checkPermission(property, user);
 
     // Create a mutable update object
     const updateData: { [key: string]: any } = { ...updatePropertyDto };
@@ -232,35 +216,25 @@ export class PropertyService {
     return updatedProperty;
   }
 
-  async remove(id: string, user: JwtPayload): Promise<void> {
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
     const property = await this.findOne(id);
-    this.checkPermission(
-      property,
-      user,
-      'You can only delete your own properties',
-    );
+    this.checkPermission(property, user);
 
-    await this.propertyModel.findByIdAndUpdate(id, {
-      isDeleted: true,
-      deletedAt: new Date(),
-    });
+    const updatedProperty = await this.propertyModel
+      .findByIdAndUpdate(id, { isDeleted: true }, { new: true })
+      .populate('staffIds', 'name email')
+      .exec();
+
+    if (!updatedProperty) {
+      throw new NotFoundException('Không tìm thấy tài sản');
+    }
+
+    return { success: true };
   }
 
   async restore(id: string, user: JwtPayload): Promise<Property> {
-    // Only admin can restore
-    if (user.role !== 'admin') {
-      throw new ForbiddenException('Chỉ admin mới có thể khôi phục tài sản');
-    }
-
     const property = await this.propertyModel
-      .findByIdAndUpdate(
-        id,
-        {
-          isDeleted: false,
-          $unset: { deletedAt: 1 },
-        },
-        { new: true },
-      )
+      .findOne({ _id: id })
       .populate('staffIds', 'name email')
       .exec();
 
@@ -268,7 +242,18 @@ export class PropertyService {
       throw new NotFoundException('Không tìm thấy tài sản');
     }
 
-    return property;
+    this.checkPermission(property, user);
+
+    const restoredProperty = await this.propertyModel
+      .findByIdAndUpdate(id, { isDeleted: false }, { new: true })
+      .populate('staffIds', 'name email')
+      .exec();
+
+    if (!restoredProperty) {
+      throw new NotFoundException('Không thể khôi phục tài sản');
+    }
+
+    return restoredProperty;
   }
 
   async verify(id: string, isVerified: boolean): Promise<Property> {
@@ -290,7 +275,7 @@ export class PropertyService {
     user: JwtPayload,
   ): Promise<Property> {
     const property = await this.findOne(id);
-    this.checkPermission(property, user, 'You can only update property status');
+    this.checkPermission(property, user);
 
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, { status }, { new: true })
@@ -311,11 +296,11 @@ export class PropertyService {
   ): Promise<Property> {
     const property = await this.findOne(id);
     // Only owner or admin can assign staff
-    this.checkPermission(
-      property,
-      user,
-      'You can only manage your own properties',
-    );
+    this.checkPermission(property, user);
+
+    if (!staffIds || !Array.isArray(staffIds)) {
+      throw new BadRequestException('Danh sách staff không hợp lệ');
+    }
 
     const objectIdStaffIds = staffIds.map((id) => new Types.ObjectId(id));
 
@@ -380,10 +365,9 @@ export class PropertyService {
   async checkUserPermissionForProperty(
     propertyId: string,
     user: JwtPayload,
-    message: string = 'You do not have permission to perform this action',
   ): Promise<void> {
     const property = await this.findOne(propertyId);
-    this.checkPermission(property, user, message);
+    this.checkPermission(property, user);
   }
 
   /**

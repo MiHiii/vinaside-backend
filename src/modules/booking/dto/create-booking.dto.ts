@@ -11,6 +11,10 @@ import {
 export class CreateBookingDto {
   @IsMongoId()
   @IsNotEmpty()
+  propertyId: string;
+
+  @IsMongoId()
+  @IsNotEmpty()
   listingId: string;
 
   @IsDateString()

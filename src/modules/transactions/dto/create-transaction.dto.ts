@@ -27,6 +27,14 @@ export class CreateTransactionDto {
   @IsNotEmpty()
   type: TransactionType;
 
+  @ApiPropertyOptional({
+    description: 'Property ID associated with this transaction',
+    example: '507f1f77bcf86cd799439012',
+  })
+  @IsMongoId()
+  @IsOptional()
+  propertyId?: string;
+
   @ApiProperty({
     description: 'Reference ID to booking, payout, etc.',
     example: '507f1f77bcf86cd799439011',

@@ -22,6 +22,14 @@ export class TransactionLog {
   transaction_id: Types.ObjectId;
 
   @Prop({
+    type: Types.ObjectId,
+    ref: 'Property',
+    required: false,
+    index: true,
+  })
+  propertyId?: Types.ObjectId;
+
+  @Prop({
     type: String,
     enum: TransactionStatus,
   })
@@ -80,6 +88,8 @@ export const TransactionLogSchema =
 
 // Indexes for better query performance
 TransactionLogSchema.index({ transaction_id: 1, timestamp: -1 });
+TransactionLogSchema.index({ propertyId: 1, timestamp: -1 });
+TransactionLogSchema.index({ propertyId: 1, to_status: 1 });
 TransactionLogSchema.index({ changed_by: 1 });
 TransactionLogSchema.index({ to_status: 1 });
 TransactionLogSchema.index({ createdAt: -1 });

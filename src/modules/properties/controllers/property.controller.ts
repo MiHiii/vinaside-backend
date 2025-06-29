@@ -16,7 +16,9 @@ import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
+import { RequirePropertyStaff } from '../../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
+import { PropertyStaffGuard } from '../../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
@@ -34,7 +36,7 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Properties')
 @Controller('properties')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
@@ -131,6 +133,7 @@ export class PropertyController {
 
   @Patch(':id')
   @RequirePermission('property.edit')
+  @RequirePropertyStaff('id')
   @ApiOperation({ summary: 'Cập nhật tài sản' })
   @ApiResponse({ status: 200, description: 'Tài sản được cập nhật thành công' })
   @ResponseMessage('Property updated successfully')
@@ -144,6 +147,7 @@ export class PropertyController {
 
   @Patch(':id/status')
   @RequirePermission('property.edit')
+  @RequirePropertyStaff('id')
   @ApiOperation({ summary: 'Cập nhật trạng thái tài sản' })
   @ApiResponse({
     status: 200,
@@ -172,6 +176,7 @@ export class PropertyController {
 
   @Patch(':id/staff')
   @RequirePermission('property.edit')
+  @RequirePropertyStaff('id')
   @ApiOperation({ summary: 'Gán nhân viên cho tài sản' })
   @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
   @ResponseMessage('Staff assigned successfully')
@@ -185,6 +190,7 @@ export class PropertyController {
 
   @Delete(':id')
   @RequirePermission('property.delete')
+  @RequirePropertyStaff('id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Xóa tài sản (xóa mềm)' })
   @ApiResponse({ status: 204, description: 'Tài sản được xóa thành công' })
@@ -195,6 +201,7 @@ export class PropertyController {
 
   @Patch(':id/restore')
   @RequirePermission('property.delete')
+  @RequirePropertyStaff('id')
   @ApiOperation({ summary: 'Khôi phục tài sản đã xóa' })
   @ApiResponse({
     status: 200,
