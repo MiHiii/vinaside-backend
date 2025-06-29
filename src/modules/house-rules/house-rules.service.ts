@@ -5,14 +5,17 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { FilterQuery, Types, SortOrder } from 'mongoose';
+import { FilterQuery, Types } from 'mongoose';
 import { HouseRulesRepo } from './house-rules.repo';
 import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
 import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
 import { QueryHouseRuleDto } from './dto/query-house-rule.dto';
 import { HouseRule } from './schemas/house-rule.schema';
-import { IHouseRuleResponse } from './interfaces/house-rule.interface';
+import {
+  IHouseRuleResponse,
+  IHouseRule,
+} from './interfaces/house-rule.interface';
 
 // Using interface from interfaces folder
 // export interface PaginatedHouseRules moved to interfaces/house-rule.interface.ts
@@ -61,12 +64,15 @@ export class HouseRulesService {
 
       const houseRule = await this.houseRulesRepo.create(data);
       this.logger.log(
-        `House rule created: ${houseRule._id} by user: ${user._id}`,
+        `House rule created: ${String(houseRule._id)} by user: ${user._id}`,
       );
 
       return houseRule;
     } catch (error) {
-      this.logger.error('Error creating house rule:', error);
+      this.logger.error(
+        'Error creating house rule:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể tạo quy tắc nhà');
     }
   }
@@ -83,14 +89,17 @@ export class HouseRulesService {
         sortOrder = 'desc',
         includeDeleted = false,
         search,
-        ...filters
+        is_active,
       } = queryDto || {};
-
-      const skip = (page - 1) * limit;
 
       const query: FilterQuery<HouseRule> = {
         isDeleted: includeDeleted ? { $in: [true, false] } : false,
       };
+
+      // Apply is_active filter if provided
+      if (typeof is_active === 'boolean') {
+        query.is_active = is_active;
+      }
 
       // Text search
       if (search) {
@@ -108,10 +117,12 @@ export class HouseRulesService {
       const result = await this.houseRulesRepo.findAll(query, {
         sort,
         limit,
+        page,
+        includeDeleted,
       });
 
       return {
-        houseRules: result.data as any,
+        houseRules: result.data as unknown as IHouseRule[],
         meta: {
           total: result.total,
           page,
@@ -122,7 +133,10 @@ export class HouseRulesService {
         },
       };
     } catch (error) {
-      this.logger.error('Error finding house rules:', error);
+      this.logger.error(
+        'Error finding house rules:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể lấy danh sách quy tắc nhà');
     }
   }
@@ -169,7 +183,10 @@ export class HouseRulesService {
       return updatedRule!;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error('Error updating house rule:', error);
+      this.logger.error(
+        'Error updating house rule:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể cập nhật quy tắc nhà');
     }
   }
@@ -196,7 +213,10 @@ export class HouseRulesService {
       return { success: true };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error('Error deleting house rule:', error);
+      this.logger.error(
+        'Error deleting house rule:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể xóa quy tắc nhà');
     }
   }
@@ -218,7 +238,10 @@ export class HouseRulesService {
       return restoredRule;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error('Error restoring house rule:', error);
+      this.logger.error(
+        'Error restoring house rule:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể khôi phục quy tắc nhà');
     }
   }
@@ -253,7 +276,10 @@ export class HouseRulesService {
       return updatedRule!;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error('Error toggling house rule status:', error);
+      this.logger.error(
+        'Error toggling house rule status:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException(
         'Không thể thay đổi trạng thái quy tắc nhà',
       );
@@ -263,16 +289,29 @@ export class HouseRulesService {
   /**
    * Tìm kiếm quy tắc nhà
    */
-  async search(query: string): Promise<any> {
+  async search(query: string): Promise<{ data: IHouseRule[]; total: number }> {
     if (!query || query.trim().length === 0) {
       return { data: [], total: 0 };
     }
 
     try {
-      const searchResult = await this.houseRulesRepo.search(query.trim());
-      return Array.isArray(searchResult) ? searchResult : searchResult;
+      const searchResult = await this.houseRulesRepo.search(
+        query.trim(),
+        ['name', 'description'],
+        {
+          isDeleted: false,
+        },
+      );
+
+      return {
+        data: searchResult.data as unknown as IHouseRule[],
+        total: searchResult.total,
+      };
     } catch (error) {
-      this.logger.error('Error searching house rules:', error);
+      this.logger.error(
+        'Error searching house rules:',
+        error instanceof Error ? error.message : String(error),
+      );
       throw new BadRequestException('Không thể tìm kiếm quy tắc nhà');
     }
   }
