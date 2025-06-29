@@ -59,7 +59,19 @@ export class RbacService {
       return [];
     }
 
-    const roleIds = userRoles.map((ur) => ur.customRoleId);
+    // Extract ObjectIds from populated roles
+    const roleIds = userRoles
+      .map((ur) => {
+        if (
+          ur.customRoleId &&
+          typeof ur.customRoleId === 'object' &&
+          '_id' in ur.customRoleId
+        ) {
+          return ur.customRoleId._id;
+        }
+        return ur.customRoleId; // fallback if not populated
+      })
+      .filter(Boolean);
 
     // Find all permissions for these roles (not deleted)
     const rolePermissions = await this.customRolePermissionModel

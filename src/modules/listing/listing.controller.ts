@@ -58,6 +58,8 @@ export class ListingController {
     @Body() createListingDto: CreateListingDto,
     @Request() req: RequestWithUser,
   ): Promise<Listing> {
+    console.log(createListingDto);
+    console.log(req.user);
     return this.listingService.create(createListingDto, req.user);
   }
 

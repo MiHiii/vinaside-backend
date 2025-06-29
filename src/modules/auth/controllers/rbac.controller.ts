@@ -65,7 +65,7 @@ export class RbacController {
   }
 
   @Get('users/:userId/roles')
-  @RequirePermission('user.view')
+  @RequirePermission('user.view_private_info')
   @ApiOperation({ summary: 'Lấy vai trò của người dùng' })
   @ApiResponse({ status: 200, description: 'Danh sách vai trò của người dùng' })
   @ResponseMessage('Lấy vai trò của người dùng thành công.')
@@ -74,7 +74,7 @@ export class RbacController {
   }
 
   @Get('users/:userId/permissions')
-  @RequirePermission('user.view')
+  @RequirePermission('user.view_private_info')
   @ApiOperation({ summary: 'Lấy quyền của người dùng' })
   @ApiResponse({ status: 200, description: 'Danh sách quyền của người dùng' })
   @ResponseMessage('Lấy quyền của người dùng thành công.')
