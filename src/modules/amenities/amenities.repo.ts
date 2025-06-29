@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, PopulateOptions, UpdateQuery } from 'mongoose';
+import {
+  FilterQuery,
+  Model,
+  PopulateOptions,
+  UpdateQuery,
+  Types,
+} from 'mongoose';
 import { Amenity, AmenityDocument } from './schemas/amenity.schema';
+import { QueryAmenityDto } from './dto/query-amenity.dto';
 
 @Injectable()
 export class AmenitiesRepo {
@@ -14,6 +21,30 @@ export class AmenitiesRepo {
    */
   async findById(id: string): Promise<AmenityDocument | null> {
     return this.amenityModel.findById(id).exec();
+  }
+
+  /**
+   * Tìm amenity active theo ID (không bị xóa)
+   */
+  async findActiveById(id: string): Promise<AmenityDocument | null> {
+    return this.amenityModel
+      .findOne({
+        _id: id,
+        isDeleted: { $ne: true },
+      })
+      .exec();
+  }
+
+  /**
+   * Tìm amenity đã bị xóa theo ID
+   */
+  async findDeletedById(id: string): Promise<AmenityDocument | null> {
+    return this.amenityModel
+      .findOne({
+        _id: id,
+        isDeleted: true,
+      })
+      .exec();
   }
 
   /**
@@ -34,6 +65,40 @@ export class AmenitiesRepo {
     return this.amenityModel
       .findByIdAndUpdate(id, updateData, { new: true })
       .exec();
+  }
+
+  /**
+   * Toggle trạng thái active/inactive
+   */
+  async toggleStatus(
+    id: string,
+    updatedBy: string | Types.ObjectId,
+  ): Promise<AmenityDocument | null> {
+    const amenity = await this.findActiveById(id);
+    if (!amenity) return null;
+
+    const newStatus = !amenity.is_active;
+    return this.updateById(id, {
+      is_active: newStatus,
+      updatedBy: new Types.ObjectId(updatedBy.toString()),
+    });
+  }
+
+  /**
+   * Toggle trạng thái default_checked
+   */
+  async toggleDefaultChecked(
+    id: string,
+    updatedBy: string | Types.ObjectId,
+  ): Promise<AmenityDocument | null> {
+    const amenity = await this.findActiveById(id);
+    if (!amenity) return null;
+
+    const newDefaultStatus = !amenity.default_checked;
+    return this.updateById(id, {
+      default_checked: newDefaultStatus,
+      updatedBy: new Types.ObjectId(updatedBy.toString()),
+    });
   }
 
   /**
@@ -75,6 +140,74 @@ export class AmenitiesRepo {
         { new: true },
       )
       .exec();
+  }
+
+  /**
+   * Tìm tất cả amenities với filters từ DTO
+   */
+  async findAllWithFilters(queryDto: QueryAmenityDto): Promise<{
+    data: AmenityDocument[];
+    total: number;
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      includeDeleted = false,
+      search,
+      is_active,
+    } = queryDto;
+
+    // Build query
+    const query: FilterQuery<Amenity> = {
+      isDeleted: includeDeleted ? { $in: [true, false] } : false,
+    };
+
+    // Apply is_active filter if provided
+    if (typeof is_active === 'boolean') {
+      query.is_active = is_active;
+    }
+
+    // Text search
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    const result = await this.findAll(query, {
+      sort,
+      limit,
+      page,
+      includeDeleted,
+    });
+
+    return {
+      ...result,
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / (limit || 1)),
+        hasNext: page < Math.ceil(result.total / (limit || 1)),
+        hasPrevious: page > 1,
+      },
+    };
   }
 
   /**
@@ -129,6 +262,21 @@ export class AmenitiesRepo {
       data,
       total,
     };
+  }
+
+  /**
+   * Tìm kiếm amenities cho public endpoints
+   */
+  async searchPublic(query: string): Promise<{
+    data: AmenityDocument[];
+    total: number;
+  }> {
+    if (!query || query.trim() === '') {
+      return { data: [], total: 0 };
+    }
+
+    const searchFilters = { isDeleted: false };
+    return this.search(query.trim(), ['name', 'description'], searchFilters);
   }
 
   /**

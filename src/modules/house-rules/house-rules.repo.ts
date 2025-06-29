@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, PopulateOptions, UpdateQuery } from 'mongoose';
+import {
+  FilterQuery,
+  Model,
+  PopulateOptions,
+  UpdateQuery,
+  Types,
+} from 'mongoose';
 import { HouseRule, HouseRuleDocument } from './schemas/house-rule.schema';
 
 @Injectable()
@@ -75,6 +81,23 @@ export class HouseRulesRepo {
         { new: true },
       )
       .exec();
+  }
+
+  /**
+   * Toggle trạng thái default_checked
+   */
+  async toggleDefaultChecked(
+    id: string,
+    updatedBy: string | Types.ObjectId,
+  ): Promise<HouseRuleDocument | null> {
+    const houseRule = await this.findById(id);
+    if (!houseRule || houseRule.isDeleted) return null;
+
+    const newDefaultStatus = !houseRule.default_checked;
+    return this.updateById(id, {
+      default_checked: newDefaultStatus,
+      updatedBy: new Types.ObjectId(updatedBy.toString()),
+    });
   }
 
   /**

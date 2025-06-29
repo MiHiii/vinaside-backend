@@ -106,6 +106,23 @@ export class HouseRulesController {
     return this.houseRulesService.toggleStatus(id, req.user);
   }
 
+  @Put(':id/toggle-default')
+  @RequirePermission('house_rule.manage')
+  @ApiOperation({
+    summary: 'Thay đổi trạng thái default_checked (có được chọn mặc định)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái default_checked được thay đổi',
+  })
+  @ResponseMessage('Cập nhật trạng thái default_checked thành công')
+  toggleDefaultChecked(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.houseRulesService.toggleDefaultChecked(id, req.user);
+  }
+
   // =================== PUBLIC ENDPOINTS ===================
 
   @Public()
