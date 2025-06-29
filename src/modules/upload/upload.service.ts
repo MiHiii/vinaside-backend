@@ -11,11 +11,13 @@ import * as path from 'path';
 import {
   UploadResponseDto,
   UploadMetadataDto,
+  UserFileResponseDto,
 } from './dto/upload-response.dto';
 import * as AWS from 'aws-sdk';
 import { extname } from 'path';
 import { diskStorage } from 'multer';
 import { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
+import { UploadRepository } from './repositories/upload.repository';
 
 @Injectable()
 export class UploadService {
@@ -25,7 +27,10 @@ export class UploadService {
   private readonly bucketName: string;
   private readonly cdnUrl: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly uploadRepository: UploadRepository,
+  ) {
     // Đảm bảo thư mục temp tồn tại
     fs.ensureDirSync(this.tempDir);
 
@@ -102,7 +107,7 @@ export class UploadService {
   /**
    * Upload nhiều file cùng lúc
    * @param files Danh sách file cần upload
-   * @param metadata Metadata tùy chọn (prefix, userId, roomId)
+   * @param metadata Metadata tùy chọn (prefix, userId, roomId, category)
    */
   async uploadFiles(
     files: Express.Multer.File[],
@@ -125,6 +130,7 @@ export class UploadService {
 
       return {
         urls: results.map((result) => result.url),
+        keys: results.map((result) => result.key),
         originalNames: files.map((file) => file.originalname),
       };
     } catch (error: unknown) {
@@ -207,7 +213,7 @@ export class UploadService {
   private async uploadToS3(
     file: Express.Multer.File,
     metadata?: UploadMetadataDto,
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; key: string }> {
     if (!file || !file.path) {
       throw new BadRequestException(
         `File không hợp lệ hoặc thiếu path: ${file?.originalname || 'unknown'}`,
@@ -223,17 +229,13 @@ export class UploadService {
         `Uploading file ${file.originalname} (${file.size} bytes)`,
       );
 
-      // Tạo key cho file
+      // Tạo key cho file dựa trên category
+      const category = metadata?.category || 'general';
       const prefix = metadata?.prefix || '';
-      const folder = metadata?.roomId
-        ? `rooms/${metadata.roomId}/`
-        : metadata?.userId
-          ? `users/${metadata.userId}/`
-          : 'general/';
 
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
       const ext = extname(file.originalname);
-      const key = `uploads/${folder}${prefix}${uniqueSuffix}${ext}`;
+      const key = `${category}/${prefix}${uniqueSuffix}${ext}`;
 
       // Đọc file để upload
       const fileContent = await fs.readFile(file.path);
@@ -255,8 +257,8 @@ export class UploadService {
       const fileUrl = `${this.cdnUrl}/${key}`;
       this.logger.log(`File uploaded successfully, URL: ${fileUrl}`);
 
-      // Trả về URL
-      return { url: fileUrl };
+      // Trả về URL và key
+      return { url: fileUrl, key };
     } catch (error: unknown) {
       if (error instanceof Error) {
         this.logger.error(
@@ -292,5 +294,498 @@ export class UploadService {
         `Không thể tải lên file ${file.originalname}`,
       );
     }
+  }
+
+  /**
+   * Xóa file từ S3 bucket
+   * @param key Key của file trên S3
+   */
+  async deleteFile(key: string): Promise<void> {
+    if (!key) {
+      throw new BadRequestException('Key file là bắt buộc');
+    }
+
+    try {
+      this.logger.log(`Deleting file with key: ${key}`);
+
+      const params = {
+        Bucket: this.bucketName,
+        Key: key,
+      };
+
+      await this.s3.deleteObject(params).promise();
+      this.logger.log(`File deleted successfully: ${key}`);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Lỗi khi xóa file ${key}: ${error.message}`,
+          error.stack,
+        );
+
+        const awsError = error as AWS.AWSError;
+        if (awsError.code === 'NoSuchKey') {
+          throw new BadRequestException('File không tồn tại');
+        }
+      }
+      throw new InternalServerErrorException(`Không thể xóa file ${key}`);
+    }
+  }
+
+  /**
+   * Upload file data (Excel/CSV) với validation riêng
+   * @param file File Excel/CSV
+   * @param metadata Metadata tùy chọn
+   */
+  async uploadDataFile(
+    file: Express.Multer.File,
+    metadata?: UploadMetadataDto,
+  ): Promise<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Không có file nào được tải lên');
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+    ];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        'Chỉ chấp nhận file Excel (.xls, .xlsx) hoặc CSV',
+      );
+    }
+
+    try {
+      this.logger.log(`Uploading data file: ${file.originalname}`);
+
+      const result = await this.uploadToS3(file, {
+        ...metadata,
+        category: 'document',
+        prefix: 'data_',
+      });
+
+      return {
+        urls: [result.url],
+        keys: [result.key],
+        originalNames: [file.originalname],
+      };
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Lỗi khi tải lên file data: ${error.message}`,
+          error.stack,
+        );
+      }
+      throw new InternalServerErrorException('Không thể tải lên file data');
+    } finally {
+      // Dọn dẹp file tạm
+      await this.cleanupTempFiles([file]);
+    }
+  }
+
+  /**
+   * Cấu hình Multer cho upload file data (Excel/CSV)
+   */
+  getDataFileMulterConfig(): MulterOptions {
+    return {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          cb(null, 'temp');
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `data_${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/csv',
+        ];
+
+        if (!allowedTypes.includes(file.mimetype)) {
+          return cb(
+            new BadRequestException(
+              'Chỉ chấp nhận file Excel (.xls, .xlsx) hoặc CSV',
+            ),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+        files: 1,
+      },
+    };
+  }
+
+  // ===== BUSINESS LOGIC METHODS =====
+
+  /**
+   * Xử lý upload 1 ảnh với validation
+   */
+  async handleSingleImageUpload(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file type
+    if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
+      throw new BadRequestException(
+        'Chỉ chấp nhận file ảnh (jpg, jpeg, png, gif, webp)',
+      );
+    }
+
+    const result = await this.uploadFiles([file], {
+      category: 'avatar',
+      userId,
+    });
+
+    // Save metadata to repository
+    await this.saveFileMetadata(file, result.urls[0], userId, 'image');
+
+    return result;
+  }
+
+  /**
+   * Xử lý upload nhiều ảnh với validation
+   */
+  async handleMultipleImagesUpload(
+    files: Express.Multer.File[],
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    if (!files?.length) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    if (files.length > 50) {
+      throw new BadRequestException('Không được tải lên quá 50 ảnh cùng lúc');
+    }
+
+    // Validate file types
+    for (const file of files) {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
+        throw new BadRequestException(
+          `File ${file.originalname} không phải là ảnh hợp lệ`,
+        );
+      }
+    }
+
+    const result = await this.uploadFiles(files, {
+      category: 'listing',
+      userId,
+    });
+
+    // Save metadata for all files
+    for (let i = 0; i < files.length; i++) {
+      await this.saveFileMetadata(files[i], result.urls[i], userId, 'image');
+    }
+
+    return result;
+  }
+
+  /**
+   * Xử lý upload file data với validation đặc biệt
+   */
+  async handleDataFileUpload(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    const result = await this.uploadDataFile(file, { userId });
+
+    // Save metadata
+    await this.saveFileMetadata(file, result.urls[0], userId, 'data');
+
+    return result;
+  }
+
+  /**
+   * Xử lý upload ảnh banner với validation
+   */
+  async handleBannerImageUpload(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file type
+    if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
+      throw new BadRequestException(
+        'Chỉ chấp nhận file ảnh (jpg, jpeg, png, gif, webp)',
+      );
+    }
+
+    const result = await this.uploadFiles([file], {
+      category: 'banner',
+      userId,
+    });
+
+    // Save metadata to repository
+    await this.saveFileMetadata(file, result.urls[0], userId, 'image');
+
+    return result;
+  }
+
+  /**
+   * Xử lý xóa file với validation quyền
+   */
+  async handleDeleteFile(
+    key: string,
+    userId: string,
+    userRole: string,
+  ): Promise<{ message: string; deletedKey: string }> {
+    if (!key) {
+      throw new BadRequestException('Key file là bắt buộc');
+    }
+
+    // Decode URL key
+    const decodedKey = decodeURIComponent(key);
+
+    // Validate quyền xóa (chỉ được xóa file của mình hoặc admin)
+    if (userRole !== 'admin' && !decodedKey.includes(`users/${userId}/`)) {
+      throw new BadRequestException('Bạn chỉ được xóa file của chính mình');
+    }
+
+    // Check if file exists in our repository
+    const fileMetadata = await this.uploadRepository.findFileByKey(decodedKey);
+    if (!fileMetadata) {
+      this.logger.warn(`File metadata not found for key: ${decodedKey}`);
+    }
+
+    // Delete from S3
+    await this.deleteFile(decodedKey);
+
+    // Mark as deleted in repository
+    if (fileMetadata) {
+      await this.uploadRepository.markAsDeleted(decodedKey);
+    }
+
+    return {
+      message: 'File đã được xóa thành công',
+      deletedKey: decodedKey,
+    };
+  }
+
+  /**
+   * Lưu metadata file vào repository
+   */
+  private async saveFileMetadata(
+    file: Express.Multer.File,
+    url: string,
+    userId: string,
+    fileType: 'image' | 'data',
+  ): Promise<void> {
+    try {
+      // Extract S3 key from URL
+      const s3Key = url.replace(this.cdnUrl + '/', '');
+
+      await this.uploadRepository.saveFileMetadata({
+        fileName: file.filename || `${Date.now()}_${file.originalname}`,
+        originalName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        s3Key,
+        url,
+        userId,
+        fileType,
+        uploadedAt: new Date(),
+      });
+
+      this.logger.log(`File metadata saved for: ${file.originalname}`);
+    } catch (error) {
+      // Log error but don't fail the upload
+      this.logger.error(
+        `Failed to save file metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  /**
+   * Lấy danh sách file của user
+   */
+  async getUserFiles(userId: string): Promise<UserFileResponseDto[]> {
+    const files = await this.uploadRepository.findFilesByUserId(userId);
+    return files.map((file) => ({
+      id: file.id!,
+      fileName: file.fileName,
+      originalName: file.originalName,
+      fileSize: file.fileSize,
+      mimeType: file.mimeType,
+      url: file.url,
+      fileType: file.fileType,
+      uploadedAt: file.uploadedAt,
+    }));
+  }
+
+  /**
+   * Lấy tất cả files (chỉ dành cho admin/manager)
+   */
+  async getAllFiles(): Promise<UserFileResponseDto[]> {
+    const files = await this.uploadRepository.findAllFiles();
+
+    return files.map((file) => ({
+      id: file.id!,
+      fileName: file.fileName,
+      originalName: file.originalName,
+      fileSize: file.fileSize,
+      mimeType: file.mimeType,
+      url: file.url,
+      fileType: file.fileType,
+      uploadedAt: file.uploadedAt,
+    }));
+  }
+
+  // ===== CONTROLLER WRAPPER METHODS =====
+
+  /**
+   * Wrapper method cho controller - xử lý upload single image với đầy đủ validation
+   */
+  async uploadSingleImageFromController(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    // Validate file existence
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file size (5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `File quá lớn. Kích thước tối đa: ${maxSize / 1024 / 1024}MB`,
+      );
+    }
+
+    return this.handleSingleImageUpload(file, userId);
+  }
+
+  /**
+   * Wrapper method cho controller - xử lý upload multiple images với đầy đủ validation
+   */
+  async uploadMultipleImagesFromController(
+    files: Express.Multer.File[],
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    // Validate files existence
+    if (!files?.length) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file count
+    if (files.length > 50) {
+      throw new BadRequestException('Không được tải lên quá 50 ảnh cùng lúc');
+    }
+
+    // Validate each file size (15MB)
+    const maxSize = 15 * 1024 * 1024;
+    for (const file of files) {
+      if (file.size > maxSize) {
+        throw new BadRequestException(
+          `File ${file.originalname} quá lớn. Kích thước tối đa: ${maxSize / 1024 / 1024}MB`,
+        );
+      }
+    }
+
+    return this.handleMultipleImagesUpload(files, userId);
+  }
+
+  /**
+   * Wrapper method cho controller - xử lý upload data file với đầy đủ validation
+   */
+  async uploadDataFileFromController(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    // Validate file existence
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `File quá lớn. Kích thước tối đa: ${maxSize / 1024 / 1024}MB`,
+      );
+    }
+
+    return this.handleDataFileUpload(file, userId);
+  }
+
+  /**
+   * Wrapper method cho controller - xử lý upload banner image với đầy đủ validation
+   */
+  async uploadBannerImageFromController(
+    file: Express.Multer.File,
+    userId: string,
+  ): Promise<UploadResponseDto> {
+    // Validate file existence
+    if (!file) {
+      throw new BadRequestException('Không tìm thấy file nào');
+    }
+
+    // Validate file size (10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new BadRequestException(
+        `File quá lớn. Kích thước tối đa: ${maxSize / 1024 / 1024}MB`,
+      );
+    }
+
+    return this.handleBannerImageUpload(file, userId);
+  }
+
+  /**
+   * Wrapper method cho controller - xử lý delete file với đầy đủ validation
+   */
+  async deleteFileFromController(
+    key: string,
+    userId: string,
+    userRole: string,
+  ): Promise<{ message: string; deletedKey: string }> {
+    // Validate key existence
+    if (!key?.trim()) {
+      throw new BadRequestException('Key file là bắt buộc');
+    }
+
+    return this.handleDeleteFile(key, userId, userRole);
+  }
+
+  /**
+   * Wrapper method cho controller - lấy danh sách file với validation
+   */
+  async getUserFilesFromController(
+    userId: string,
+  ): Promise<UserFileResponseDto[]> {
+    // Validate userId
+    if (!userId?.trim()) {
+      throw new BadRequestException('User ID là bắt buộc');
+    }
+
+    return this.getUserFiles(userId);
+  }
+
+  /**
+   * Wrapper method cho controller - lấy tất cả files
+   * Permission đã được validate ở controller level với @RequirePermission('upload.manage')
+   */
+  async getAllFilesFromController(): Promise<UserFileResponseDto[]> {
+    return this.getAllFiles();
   }
 }

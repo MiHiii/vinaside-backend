@@ -20,7 +20,7 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
-import { UserWithPermissions } from '../../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -29,7 +29,7 @@ import {
 } from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @ApiTags('Properties')

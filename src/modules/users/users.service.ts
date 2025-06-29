@@ -1,130 +1,188 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { FilterQuery, PopulateOptions } from 'mongoose';
-import { UserDocument } from './schemas/user.schema';
-import { compare } from 'bcryptjs';
-import { UserRepo } from './users.repo';
-import { QueryUserDto } from './dto/query-user.dto';
-import { buildSearchFilter, parseSortString } from 'src/utils/common.util';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UserDocument } from './schemas/user.schema';
+import { QueryUserDto } from './dto/query-user.dto';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
+import { UserRepo } from './users.repo';
+import { compare } from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly userRepo: UserRepo) {}
 
   /**
-   * Tạo người dùng mới và trả về dữ liệu định dạng
+   * Tìm tất cả người dùng với filters
    */
-  async createUser(createUserDto: CreateUserDto) {
-    const user = await this.create(createUserDto);
-    return { data: user };
-  }
+  async findAllWithFilters(
+    queryDto: QueryUserDto,
+    currentUser: JwtPayload,
+  ): Promise<any> {
+    // Staff restrictions - can only see users in their scope
+    if (currentUser.role === 'staff') {
+      // Add any scope restrictions here if needed
+    }
 
-  /**
-   * Tìm người dùng theo ID và trả về dữ liệu định dạng
-   */
-  async findOne(id: string) {
-    const user = await this.findById(id);
-    return { data: user };
-  }
+    // Extract pagination options from queryDto
+    const { page = 1, limit = 10, ...filters } = queryDto;
+    const options = { page, limit };
 
-  /**
-   * Cập nhật toàn bộ thông tin người dùng (PUT)
-   */
-  async updateFull(id: string, updateUserDto: UpdateUserDto) {
-    // Validation đã được xử lý ở DTO
-    // Có thể thêm validation bổ sung cho PUT (yêu cầu đầy đủ các trường)
-    const user = await this.updateUser(id, updateUserDto);
-    return { data: user };
-  }
-
-  /**
-   * Cập nhật một phần thông tin người dùng (PATCH)
-   */
-  async updatePartial(id: string, updateUserDto: UpdateUserDto) {
-    // Validation đã được xử lý ở DTO
-    const user = await this.updateUser(id, updateUserDto);
-    return { data: user };
-  }
-
-  /**
-   * Chuyển đổi trạng thái người dùng và trả về dữ liệu định dạng
-   */
-  async toggleStatus(id: string) {
-    const user = await this.toggleUserStatus(id);
-    return { data: user };
-  }
-
-  /**
-   * Xóa người dùng và trả về dữ liệu định dạng
-   */
-  async delete(id: string) {
-    await this.deleteUserById(id);
-    return { success: true };
-  }
-
-  /**
-   * Đếm số lượng người dùng và trả về dữ liệu định dạng
-   */
-  async count() {
-    const count = await this.countUsers();
-    return { data: { count } };
-  }
-
-  /**
-   * Tạo người dùng mới
-   */
-  async create(createUserDto: CreateUserDto): Promise<UserDocument> {
-    return this.userRepo.create(createUserDto);
-  }
-
-  /**
-   * Tìm tất cả người dùng với phân trang và lọc
-   */
-  async findAll(
-    query: FilterQuery<UserDocument> = {},
-    options: {
-      page?: number;
-      limit?: number;
-      sort?: Record<string, 1 | -1>;
-      select?: string;
-      populate?: PopulateOptions | (string | PopulateOptions)[];
-    } = {},
-  ): Promise<{
-    users: UserDocument[];
-    meta: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
-  }> {
-    const { page = 1, limit = 10 } = options;
-
-    // Gọi repository để lấy dữ liệu
-    const { data, total } = await this.userRepo.findAll(query, options);
-
-    // Trả về kết quả định dạng chuẩn RESTful
+    const result = await this.userRepo.findAll(filters, options);
     return {
-      users: data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit) || 1,
+      data: result.data,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(result.total / limit),
+        totalItems: result.total,
+        itemsPerPage: limit,
       },
     };
   }
 
   /**
-   * Tìm người dùng theo tên đăng nhập
+   * Đếm tổng số người dùng
    */
-  async findOneByUsername(username: string): Promise<UserDocument | null> {
-    return this.userRepo.findByEmail(username);
+  async count(currentUser: JwtPayload): Promise<{ data: { count: number } }> {
+    // Staff restrictions
+    if (currentUser.role === 'staff') {
+      // Add scope restrictions if needed
+    }
+
+    const count = await this.userRepo.countUsers({ isDeleted: { $ne: true } });
+    return { data: { count } };
+  }
+
+  /**
+   * Tìm người dùng theo ID
+   */
+  async findOne(
+    id: string,
+    currentUser: JwtPayload,
+  ): Promise<{ data: UserDocument }> {
+    // Staff can only view users in their scope
+    if (currentUser.role === 'staff') {
+      // Add scope validation here if needed
+    }
+
+    const user = await this.userRepo.findById(id);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+    return { data: user };
+  }
+
+  /**
+   * Tạo người dùng mới
+   */
+  async createUser(
+    createUserDto: CreateUserDto,
+    currentUser: JwtPayload,
+  ): Promise<{ data: UserDocument }> {
+    // Staff restrictions on role assignment
+    if (currentUser.role === 'staff' && createUserDto.role === 'admin') {
+      throw new NotFoundException('Staff không thể tạo admin user');
+    }
+
+    const user = await this.userRepo.create(createUserDto);
+    return { data: user };
+  }
+
+  /**
+   * Cập nhật toàn bộ thông tin người dùng
+   */
+  async updateFull(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    currentUser: JwtPayload,
+  ): Promise<{ data: UserDocument }> {
+    const existingUser = await this.userRepo.findById(id);
+    if (!existingUser) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    // Staff restrictions
+    if (currentUser.role === 'staff') {
+      // Cannot change role
+      if (updateUserDto.role && updateUserDto.role !== existingUser.role) {
+        throw new NotFoundException('Staff không thể thay đổi role');
+      }
+    }
+
+    const user = await this.userRepo.updateById(id, updateUserDto);
+    if (!user) {
+      throw new NotFoundException('Không thể cập nhật người dùng');
+    }
+    return { data: user };
+  }
+
+  /**
+   * Cập nhật một phần thông tin người dùng
+   */
+  async updatePartial(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    currentUser: JwtPayload,
+  ): Promise<{ data: UserDocument }> {
+    return this.updateFull(id, updateUserDto, currentUser);
+  }
+
+  /**
+   * Chuyển đổi trạng thái người dùng (khóa/mở khóa)
+   */
+  async toggleStatus(
+    id: string,
+    currentUser: JwtPayload,
+  ): Promise<{ data: UserDocument }> {
+    // Staff restrictions
+    if (currentUser.role === 'staff') {
+      // Add scope validation if needed
+    }
+
+    const user = await this.userRepo.findById(id);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    const isDeleted = !user.isDeleted;
+    const updatedUser = await this.userRepo.updateById(id, {
+      isDeleted,
+      deletedAt: isDeleted ? new Date() : null,
+    });
+
+    if (!updatedUser) {
+      throw new NotFoundException('Không thể cập nhật trạng thái người dùng');
+    }
+    return { data: updatedUser };
+  }
+
+  /**
+   * Xóa người dùng
+   */
+  async delete(
+    id: string,
+    currentUser: JwtPayload,
+  ): Promise<{ data: { message: string } }> {
+    // Staff restrictions
+    if (currentUser.role === 'staff') {
+      // Add scope validation if needed
+    }
+
+    const user = await this.userRepo.findById(id);
+    if (!user || user.isDeleted) {
+      throw new NotFoundException('Không tìm thấy tài khoản');
+    }
+
+    await this.userRepo.softDelete(id);
+    return { data: { message: 'Xóa người dùng thành công' } };
+  }
+
+  // ==================== AUTH SERVICE METHODS ====================
+
+  /**
+   * Tìm người dùng theo ID
+   */
+  async findById(id: string): Promise<UserDocument | null> {
+    return this.userRepo.findById(id);
   }
 
   /**
@@ -142,10 +200,10 @@ export class UsersService {
   }
 
   /**
-   * Tìm người dùng theo ID
+   * Tạo người dùng mới
    */
-  async findById(id: string): Promise<UserDocument | null> {
-    return this.userRepo.findById(id);
+  async create(createUserDto: CreateUserDto): Promise<UserDocument> {
+    return this.userRepo.create(createUserDto);
   }
 
   /**
@@ -184,191 +242,5 @@ export class UsersService {
     }
 
     await this.userRepo.softDelete(id);
-  }
-
-  /**
-   * Tìm kiếm người dùng với các bộ lọc từ DTO
-   */
-  async findAllWithFilters(query: QueryUserDto): Promise<{
-    users: UserDocument[];
-    meta: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
-  }> {
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      role,
-      sort,
-      select,
-      is_verified,
-      isDeleted,
-    } = query;
-
-    // Xây dựng bộ lọc
-    const filters: FilterQuery<UserDocument> = {};
-
-    // Thêm bộ lọc tìm kiếm nếu có
-    if (search) {
-      filters.$or = buildSearchFilter(search, ['name', 'email', 'phone']);
-    }
-
-    // Thêm bộ lọc theo vai trò nếu có
-    if (role) {
-      filters.role = Array.isArray(role) ? { $in: role } : role;
-    }
-
-    // Lọc theo trạng thái xác minh
-    if (is_verified !== undefined) {
-      filters.is_verified = is_verified;
-    }
-
-    // Lọc theo trạng thái xóa
-
-    // ======= FILTER CHUẨN cho isDeleted =======
-    if (
-      typeof isDeleted === 'string' &&
-      isDeleted !== '' &&
-      isDeleted !== 'all'
-    ) {
-      filters.isDeleted = isDeleted === 'true';
-    } else if (typeof isDeleted === 'boolean') {
-      filters.isDeleted = isDeleted;
-    }
-    // Nếu không truyền, hoặc truyền "all"/"" thì KHÔNG filter isDeleted => trả về tất cả
-    // Chuyển đổi chuỗi sort thành object
-    const sortOptions = parseSortString(sort);
-
-    // Gọi repository để lấy dữ liệu
-    return this.findAll(filters, {
-      page,
-      limit,
-      sort: sortOptions,
-      select,
-    });
-  }
-
-  /**
-   * Cập nhật thông tin người dùng
-   */
-  async updateUser(
-    id: string,
-    updateUserDto: UpdateUserDto,
-  ): Promise<UserDocument> {
-    const user = await this.userRepo.findById(id);
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    const updatedUser = await this.userRepo.updateById(id, updateUserDto);
-    if (!updatedUser) {
-      throw new NotFoundException('Không thể cập nhật thông tin người dùng');
-    }
-
-    return updatedUser;
-  }
-
-  /**
-   * Đếm số lượng người dùng
-   */
-  async countUsers(): Promise<number> {
-    // Chỉ đếm người dùng chưa bị xóa
-    return await this.userRepo.countUsers({ isDeleted: { $ne: true } });
-  }
-
-  /**
-   * Chuyển đổi trạng thái người dùng (khóa/mở khóa)
-   */
-  async toggleUserStatus(id: string): Promise<UserDocument> {
-    const user = await this.userRepo.findById(id);
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    // Đảo ngược trạng thái isDeleted
-    const isDeleted = !user.isDeleted;
-    const updateData: { isDeleted: boolean; deletedAt: Date | null } = {
-      isDeleted,
-      deletedAt: isDeleted ? new Date() : null,
-    };
-
-    const updatedUser = await this.userRepo.updateById(id, updateData);
-    if (!updatedUser) {
-      throw new NotFoundException('Không thể cập nhật trạng thái người dùng');
-    }
-
-    return updatedUser;
-  }
-
-  /**
-   * Cập nhật avatar của người dùng
-   */
-  async updateAvatar(
-    userId: string,
-    avatarUrl: string,
-  ): Promise<{ success: boolean; user: UserDocument }> {
-    const user = await this.userRepo.findById(userId);
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    if (user.isDeleted) {
-      throw new BadRequestException(
-        'Không thể cập nhật avatar cho tài khoản đã bị khóa',
-      );
-    }
-
-    const updatedUser = await this.userRepo.updateById(userId, {
-      avatar_url: avatarUrl,
-    });
-
-    if (!updatedUser) {
-      throw new BadRequestException('Không thể cập nhật avatar');
-    }
-
-    return {
-      success: true,
-      user: updatedUser,
-    };
-  }
-
-  /**
-   * Lấy thông tin avatar của người dùng
-   */
-  async getUserAvatar(userId: string): Promise<{ avatar_url: string | null }> {
-    const user = await this.userRepo.findById(userId);
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    return {
-      avatar_url: user.avatar_url || null,
-    };
-  }
-
-  /**
-   * Xóa avatar của người dùng
-   */
-  async removeAvatar(userId: string): Promise<{ success: boolean }> {
-    const user = await this.userRepo.findById(userId);
-    if (!user) {
-      throw new NotFoundException('Không tìm thấy người dùng');
-    }
-
-    if (user.isDeleted) {
-      throw new BadRequestException(
-        'Không thể thao tác với tài khoản đã bị khóa',
-      );
-    }
-
-    await this.userRepo.updateById(userId, {
-      avatar_url: null,
-    });
-
-    return { success: true };
   }
 }

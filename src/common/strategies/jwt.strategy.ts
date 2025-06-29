@@ -7,7 +7,6 @@ import {
   RbacService,
   CustomRoleResponse,
 } from '../../modules/auth/services/rbac.service';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -28,8 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<UserWithPermissions> {
-    const { _id, email, name, role, iss } = payload;
+  async validate(payload: JwtPayload): Promise<JwtPayload> {
+    const { _id, email, name, role } = payload;
 
     // Initialize with default arrays
     let permissions: string[] = [];
@@ -64,8 +63,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       _id,
       email,
       name,
-      role: role as 'guest' | 'staff' | 'admin',
-      iss,
+      role,
       permissions,
       customRoles,
     };

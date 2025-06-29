@@ -134,7 +134,7 @@ async findAll() {
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { Roles } from 'src/decorators/roles.decorator'; // Cho guest endpoints
 ```
 
@@ -291,7 +291,7 @@ export class BookingController {
 
 ```typescript
 // Trong service layer
-async updateBooking(id: string, user: UserWithPermissions) {
+async updateBooking(id: string, user: JwtPayload) {
   if (user.role === 'admin') {
     // Admin có thể làm mọi thứ
     return this.performUpdate(id);
@@ -345,6 +345,6 @@ Lệnh này sẽ tạo:
 ### JWT payload thiếu permissions
 
 - Kiểm tra `JwtStrategy.validate()` có load permissions không
-- Đảm bảo `UserWithPermissions` interface được sử dụng đúng
+- Đảm bảo `JwtPayload` interface được sử dụng đúng
 
 Hệ thống RBAC mới cung cấp khả năng phân quyền chi tiết và linh hoạt hơn nhiều so với hệ thống cũ, phù hợp với yêu cầu phát triển dài hạn của dự án! 🎉

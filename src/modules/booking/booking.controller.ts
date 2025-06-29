@@ -19,10 +19,9 @@ import { RequirePermission } from '../../decorators/require-permission.decorator
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from './schemas/booking.schema';
-import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
 import { Roles } from 'src/decorators/roles.decorator';
 import {
   ApiTags,
@@ -56,7 +55,7 @@ export class BookingController {
     }
     return this.bookingService.create(
       createBookingDto,
-      req.user as any as UserWithPermissions,
+      req.user as any as JwtPayload,
     );
   }
 
@@ -161,10 +160,7 @@ export class BookingController {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
-    return this.bookingService.findOne(
-      id,
-      req.user as any as UserWithPermissions,
-    );
+    return this.bookingService.findOne(id, req.user as any as JwtPayload);
   }
 
   @Patch(':id')
@@ -183,7 +179,7 @@ export class BookingController {
     return this.bookingService.update(
       id,
       updateBookingDto,
-      req.user as any as UserWithPermissions,
+      req.user as any as JwtPayload,
     );
   }
 
@@ -196,10 +192,7 @@ export class BookingController {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
-    return this.bookingService.remove(
-      id,
-      req.user as any as UserWithPermissions,
-    );
+    return this.bookingService.remove(id, req.user as any as JwtPayload);
   }
 
   @Patch(':id/confirm')
@@ -214,7 +207,7 @@ export class BookingController {
     return this.bookingService.update(
       id,
       { status: BookingStatus.CONFIRMED },
-      req.user as any as UserWithPermissions,
+      req.user as any as JwtPayload,
     );
   }
 }

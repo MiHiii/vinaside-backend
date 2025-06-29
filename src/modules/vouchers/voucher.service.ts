@@ -11,7 +11,7 @@ import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { QueryVoucherDto } from './dto/query-voucher.dto';
 import { VoucherRepo } from './voucher.repo';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 
 export interface PaginatedVouchers {
   data: Voucher[];
@@ -39,7 +39,7 @@ export class VoucherService {
    */
   async create(
     createVoucherDto: CreateVoucherDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Voucher> {
     const { code, room_ids, ...rest } = createVoucherDto;
 
@@ -149,7 +149,7 @@ export class VoucherService {
   async update(
     id: string,
     updateVoucherDto: UpdateVoucherDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Voucher> {
     const existingVoucher = await this.findOne(id);
 
@@ -217,10 +217,7 @@ export class VoucherService {
   /**
    * Xóa mềm voucher
    */
-  async remove(
-    id: string,
-    user: UserWithPermissions,
-  ): Promise<{ success: boolean }> {
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
     await this.findOne(id);
     await this.voucherRepo.softDelete(id, user._id);
     return { success: true };

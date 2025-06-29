@@ -10,7 +10,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { QueryServiceDto } from './dto/query-service.dto';
 import { ServicesRepo } from './services.repo';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { PaginatedServices } from './service.interface';
 
 @Injectable()
@@ -183,7 +183,7 @@ export class ServicesService {
    */
   async create(
     createServiceDto: CreateServiceDto,
-    user?: UserWithPermissions,
+    user?: JwtPayload,
   ): Promise<Service> {
     const { name, description, default_price, unit, ...rest } =
       createServiceDto;
@@ -247,7 +247,7 @@ export class ServicesService {
   async update(
     id: string,
     updateServiceDto: UpdateServiceDto,
-    user?: UserWithPermissions,
+    user?: JwtPayload,
   ): Promise<Service> {
     await this.findOne(id);
 
@@ -289,10 +289,7 @@ export class ServicesService {
   /**
    * Xóa mềm dịch vụ
    */
-  async remove(
-    id: string,
-    user?: UserWithPermissions,
-  ): Promise<{ success: boolean }> {
+  async remove(id: string, user?: JwtPayload): Promise<{ success: boolean }> {
     await this.findOne(id);
     if (user?._id) {
       await this.servicesRepo.softDelete(id, user._id);
@@ -334,7 +331,7 @@ export class ServicesService {
   /**
    * Thay đổi trạng thái hoạt động của dịch vụ
    */
-  async toggleStatus(id: string, user?: UserWithPermissions): Promise<Service> {
+  async toggleStatus(id: string, user?: JwtPayload): Promise<Service> {
     await this.findOne(id);
     const toggled = await this.servicesRepo.toggleServiceStatus(id, user?._id);
     if (!toggled) {
@@ -413,7 +410,7 @@ export class ServicesService {
   async bulkUpdateStatus(
     ids: string[],
     isActive: boolean,
-    user?: UserWithPermissions,
+    user?: JwtPayload,
   ): Promise<{
     acknowledged: boolean;
     modifiedCount: number;

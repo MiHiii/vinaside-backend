@@ -38,20 +38,22 @@ export class TransformInterceptor<T>
     return next.handle().pipe(
       map((data: unknown): ResponseData<T> => {
         // Safely check if data is an object with a message property
-        const isDataObject = data !== null && typeof data === 'object';
+        const isDataObject =
+          data !== null && typeof data === 'object' && !Array.isArray(data);
         const messageFromData =
           isDataObject && 'message' in data ? String(data.message) : undefined;
 
         // Prioritize message from controller, then from decorator
         const message = messageFromData ?? customMessage ?? '';
 
-        // Remove message from data if present
-        let cleanData: any = {};
-        if (isDataObject) {
+        // Only remove message from non-array objects
+        let cleanData: any;
+        if (isDataObject && 'message' in data) {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { message: _unused, ...rest } = data as Record<string, unknown>;
           cleanData = rest;
         } else {
+          // Preserve arrays and other data types as-is
           cleanData = data;
         }
 
