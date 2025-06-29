@@ -25,10 +25,10 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { Public } from '../../decorators/public.decorator';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @ApiTags('House Rules')

@@ -35,6 +35,7 @@ src/common/guards/
 
 src/interfaces/
 └── user-with-permissions.interface.ts # UserWithPermissions interface
+└── jwt-payload.interface.ts # JwtPayload interface
 ```
 
 ### 🎮 Services & Controllers

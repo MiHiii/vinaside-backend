@@ -11,7 +11,7 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { QueryListingDto } from './dto/query-listing.dto';
 import { ListingRepo } from './listing.repo';
 import { PropertyService } from '../properties/services/property.service';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -34,7 +34,7 @@ export class ListingService {
 
   private async checkListingPermission(
     listingId: string,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Listing> {
     const listing = await this.listingRepo.findById(listingId);
     if (!listing) {
@@ -66,7 +66,7 @@ export class ListingService {
 
   async create(
     createListingDto: CreateListingDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Listing> {
     const { propertyId } = createListingDto;
 
@@ -159,7 +159,7 @@ export class ListingService {
   async update(
     id: string,
     updateListingDto: UpdateListingDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Listing> {
     await this.checkListingPermission(id, user);
 
@@ -174,16 +174,13 @@ export class ListingService {
     return updatedListing;
   }
 
-  async remove(
-    id: string,
-    user: UserWithPermissions,
-  ): Promise<{ success: boolean }> {
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
     await this.checkListingPermission(id, user);
     await this.listingRepo.softDelete(id, user._id);
     return { success: true };
   }
 
-  async restore(id: string, user: UserWithPermissions): Promise<Listing> {
+  async restore(id: string, user: JwtPayload): Promise<Listing> {
     await this.checkListingPermission(id, user);
     const restoredListing = await this.listingRepo.restore(id);
     if (!restoredListing) {
@@ -195,7 +192,7 @@ export class ListingService {
   async updateStatus(
     id: string,
     status: ListingStatus,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Listing> {
     await this.checkListingPermission(id, user);
     const updatedListing = await this.listingRepo.updateStatus(

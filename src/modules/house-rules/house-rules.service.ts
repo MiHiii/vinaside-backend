@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { FilterQuery, Types } from 'mongoose';
 import { HouseRulesRepo } from './house-rules.repo';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
 import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
 import { QueryHouseRuleDto } from './dto/query-house-rule.dto';
@@ -29,7 +29,7 @@ export class HouseRulesService {
   /**
    * Kiểm tra quyền truy cập (chỉ admin và content_manager có thể quản lý)
    */
-  private validateManagePermission(user: UserWithPermissions): void {
+  private validateManagePermission(user: JwtPayload): void {
     if (
       user.role !== 'admin' &&
       !user.permissions?.includes('house_rule.manage')
@@ -52,7 +52,7 @@ export class HouseRulesService {
    */
   async create(
     createDto: CreateHouseRuleDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<HouseRule> {
     this.validateManagePermission(user);
 
@@ -161,7 +161,7 @@ export class HouseRulesService {
   async update(
     id: string,
     updateDto: UpdateHouseRuleDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<HouseRule> {
     this.validateManagePermission(user);
     this.validateObjectId(id);
@@ -194,10 +194,7 @@ export class HouseRulesService {
   /**
    * Xóa mềm quy tắc nhà
    */
-  async remove(
-    id: string,
-    user: UserWithPermissions,
-  ): Promise<{ success: boolean }> {
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
     this.validateManagePermission(user);
     this.validateObjectId(id);
 
@@ -224,7 +221,7 @@ export class HouseRulesService {
   /**
    * Khôi phục quy tắc nhà đã xóa
    */
-  async restore(id: string, user: UserWithPermissions): Promise<HouseRule> {
+  async restore(id: string, user: JwtPayload): Promise<HouseRule> {
     this.validateManagePermission(user);
     this.validateObjectId(id);
 
@@ -249,10 +246,7 @@ export class HouseRulesService {
   /**
    * Toggle trạng thái active/inactive
    */
-  async toggleStatus(
-    id: string,
-    user: UserWithPermissions,
-  ): Promise<HouseRule> {
+  async toggleStatus(id: string, user: JwtPayload): Promise<HouseRule> {
     this.validateManagePermission(user);
     this.validateObjectId(id);
 
@@ -321,7 +315,7 @@ export class HouseRulesService {
   /**
    * @deprecated Use remove() instead
    */
-  async softDelete(id: string, user: UserWithPermissions): Promise<HouseRule> {
+  async softDelete(id: string, user: JwtPayload): Promise<HouseRule> {
     await this.remove(id, user);
     return this.findOne(id);
   }

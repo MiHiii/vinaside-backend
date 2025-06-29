@@ -3,8 +3,18 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class AssignRoleDto {
   @ApiProperty({
-    description: 'Role key to assign',
-    example: 'reviewer',
+    description: 'Key của vai trò cần gán',
+    example: 'property_manager',
+  })
+  @IsString()
+  @IsNotEmpty()
+  roleKey: string;
+}
+
+export class AssignRoleToUserDto {
+  @ApiProperty({
+    description: 'Key của vai trò cần gán cho user',
+    example: 'property_manager',
   })
   @IsString()
   @IsNotEmpty()
@@ -13,8 +23,8 @@ export class AssignRoleDto {
 
 export class BulkAssignRolesDto {
   @ApiProperty({
-    description: 'Array of role keys to assign',
-    example: ['reviewer', 'support_staff'],
+    description: 'Danh sách keys của các vai trò cần gán',
+    example: ['property_manager', 'booking_manager'],
   })
   @IsArray()
   @IsString({ each: true })
@@ -24,8 +34,8 @@ export class BulkAssignRolesDto {
 
 export class AssignPermissionToRoleDto {
   @ApiProperty({
-    description: 'Permission key to assign',
-    example: 'listing.verify',
+    description: 'Key của quyền cần gán cho vai trò',
+    example: 'property.create',
   })
   @IsString()
   @IsNotEmpty()

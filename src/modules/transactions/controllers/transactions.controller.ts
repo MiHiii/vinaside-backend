@@ -25,10 +25,10 @@ import { TransactionsService } from '../services/transactions.service';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
-import { UserWithPermissions } from '../../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @ApiTags('Transactions')

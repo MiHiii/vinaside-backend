@@ -7,6 +7,7 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import { UploadRepository } from './repositories/upload.repository';
 
 @Module({
   imports: [
@@ -36,7 +37,7 @@ import * as path from 'path';
     }),
   ],
   controllers: [UploadController],
-  providers: [UploadService],
+  providers: [UploadService, UploadRepository],
   exports: [UploadService],
 })
 export class UploadModule {}

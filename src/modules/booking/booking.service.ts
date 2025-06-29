@@ -11,11 +11,10 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { parseSortString } from '../../utils/common.util';
-import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { BookingRepo } from './booking.repo';
 import { ListingService } from '../listing/listing.service';
 import { PropertyService } from '../properties/services/property.service';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
 import { MailService } from '../mail/mail.service';
 import { EmailQueueService } from '../mail/mail.queue';
 import { ReservationData } from '../mail/interfaces/reservation-data.interface';
@@ -47,7 +46,7 @@ export class BookingService {
    */
   async create(
     createBookingDto: CreateBookingDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Booking> {
     const { listingId, checkInDate, checkOutDate, guests } = createBookingDto;
 
@@ -121,7 +120,7 @@ export class BookingService {
       finalPayoutAmount,
       guestName: user.name,
       guestEmail: user.email,
-      guestPhone: user.phone || '',
+      guestPhone: '',
     };
 
     // BaseRepo.create expects a generic object, not a DTO with methods
@@ -188,7 +187,7 @@ export class BookingService {
   /**
    * Tìm một booking theo ID và trả về dữ liệu định dạng
    */
-  async findOne(id: string, user: UserWithPermissions): Promise<Booking> {
+  async findOne(id: string, user: JwtPayload): Promise<Booking> {
     await this.checkBookingPermission(id, user);
     const booking = await this.bookingRepo.findById(id, {
       populate: ['listingId', 'propertyId', 'guestId', 'ownerId'],
@@ -207,7 +206,7 @@ export class BookingService {
   async update(
     id: string,
     updateBookingDto: UpdateBookingDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Booking> {
     await this.checkBookingPermission(id, user);
     const updated = await this.bookingRepo.updateById(
@@ -225,10 +224,7 @@ export class BookingService {
   /**
    * Xóa mềm booking (soft delete) và trả về dữ liệu định dạng
    */
-  async remove(
-    id: string,
-    user: UserWithPermissions,
-  ): Promise<{ success: boolean }> {
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
     await this.checkBookingPermission(id, user);
     await this.bookingRepo.softDelete(id, user._id);
     return { success: true };
@@ -237,7 +233,7 @@ export class BookingService {
   /**
    * Khôi phục booking đã xóa và trả về dữ liệu định dạng
    */
-  async restore(id: string, user: UserWithPermissions): Promise<Booking> {
+  async restore(id: string, user: JwtPayload): Promise<Booking> {
     await this.checkBookingPermission(id, user);
     const restored = await this.bookingRepo.restore(id, user._id);
     if (!restored)
@@ -545,7 +541,7 @@ export class BookingService {
 
   private async checkBookingPermission(
     bookingId: string,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Booking> {
     const booking = await this.bookingRepo.findById(bookingId);
     if (!booking) {

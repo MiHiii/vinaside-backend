@@ -9,7 +9,7 @@ import { Property, PropertyDocument } from '../schemas/property.schema';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
-import { UserWithPermissions } from '../../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 
 export interface PaginatedProperties {
   data: Property[];
@@ -28,7 +28,7 @@ export class PropertyService {
 
   private checkPermission(
     property: Property,
-    user: UserWithPermissions,
+    user: JwtPayload,
     message: string = 'You do not have permission to perform this action',
   ) {
     if (user.role === 'admin') {
@@ -51,7 +51,7 @@ export class PropertyService {
 
   async create(
     createPropertyDto: CreatePropertyDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Property> {
     const propertyData = {
       ...createPropertyDto,
@@ -201,7 +201,7 @@ export class PropertyService {
   async update(
     id: string,
     updatePropertyDto: UpdatePropertyDto,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Property> {
     const property = await this.findOne(id);
     this.checkPermission(
@@ -232,7 +232,7 @@ export class PropertyService {
     return updatedProperty;
   }
 
-  async remove(id: string, user: UserWithPermissions): Promise<void> {
+  async remove(id: string, user: JwtPayload): Promise<void> {
     const property = await this.findOne(id);
     this.checkPermission(
       property,
@@ -246,7 +246,7 @@ export class PropertyService {
     });
   }
 
-  async restore(id: string, user: UserWithPermissions): Promise<Property> {
+  async restore(id: string, user: JwtPayload): Promise<Property> {
     // Only admin can restore
     if (user.role !== 'admin') {
       throw new ForbiddenException('Chỉ admin mới có thể khôi phục tài sản');
@@ -287,7 +287,7 @@ export class PropertyService {
   async updateStatus(
     id: string,
     status: string,
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Property> {
     const property = await this.findOne(id);
     this.checkPermission(property, user, 'You can only update property status');
@@ -307,7 +307,7 @@ export class PropertyService {
   async assignStaff(
     id: string,
     staffIds: string[],
-    user: UserWithPermissions,
+    user: JwtPayload,
   ): Promise<Property> {
     const property = await this.findOne(id);
     // Only owner or admin can assign staff
@@ -379,7 +379,7 @@ export class PropertyService {
    */
   async checkUserPermissionForProperty(
     propertyId: string,
-    user: UserWithPermissions,
+    user: JwtPayload,
     message: string = 'You do not have permission to perform this action',
   ): Promise<void> {
     const property = await this.findOne(propertyId);

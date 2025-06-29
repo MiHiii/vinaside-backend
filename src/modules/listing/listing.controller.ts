@@ -21,7 +21,7 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { QueryListingDto } from './dto/query-listing.dto';
 import { ListingService } from './listing.service';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { Public } from '../../decorators/public.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -46,7 +46,7 @@ export class ListingController {
   @ResponseMessage('Listing created successfully')
   create(
     @Body() createListingDto: CreateListingDto,
-    @Req() user: UserWithPermissions,
+    @Req() user: JwtPayload,
   ): Promise<Listing> {
     return this.listingService.create(createListingDto, user);
   }
@@ -62,7 +62,7 @@ export class ListingController {
   update(
     @Param('id') id: string,
     @Body() updateListingDto: UpdateListingDto,
-    @Req() user: UserWithPermissions,
+    @Req() user: JwtPayload,
   ): Promise<Listing> {
     return this.listingService.update(id, updateListingDto, user);
   }
@@ -72,7 +72,7 @@ export class ListingController {
   @ApiOperation({ summary: 'Xóa mềm listing' })
   @ApiResponse({ status: 200, description: 'Listing được xóa thành công.' })
   @ResponseMessage('Listing deleted successfully')
-  remove(@Param('id') id: string, @Req() user: UserWithPermissions) {
+  remove(@Param('id') id: string, @Req() user: JwtPayload) {
     return this.listingService.remove(id, user);
   }
 
@@ -84,10 +84,7 @@ export class ListingController {
     description: 'Listing được khôi phục thành công.',
   })
   @ResponseMessage('Listing restored successfully')
-  restore(
-    @Param('id') id: string,
-    @Req() user: UserWithPermissions,
-  ): Promise<Listing> {
+  restore(@Param('id') id: string, @Req() user: JwtPayload): Promise<Listing> {
     return this.listingService.restore(id, user);
   }
 
@@ -102,7 +99,7 @@ export class ListingController {
   updateStatus(
     @Param('id') id: string,
     @Body('status') status: ListingStatus,
-    @Req() user: UserWithPermissions,
+    @Req() user: JwtPayload,
   ): Promise<Listing> {
     return this.listingService.updateStatus(id, status, user);
   }

@@ -1,10 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSION_KEY } from '../../decorators/require-permission.decorator';
-import { UserWithPermissions } from '../../interfaces/user-with-permissions.interface';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @Injectable()
@@ -22,7 +22,7 @@ export class PermissionGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
-    const user: UserWithPermissions = request.user;
+    const user: JwtPayload = request.user;
 
     if (!user) {
       return false; // No user found

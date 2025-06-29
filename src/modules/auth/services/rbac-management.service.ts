@@ -15,12 +15,6 @@ export interface RoleAssignmentResult {
   status: string;
 }
 
-export interface ApiResponse<T> {
-  message: string;
-  data?: T;
-  [key: string]: any;
-}
-
 @Injectable()
 export class RbacManagementService {
   constructor(private rbacService: RbacService) {}
@@ -74,13 +68,9 @@ export class RbacManagementService {
     }
   }
 
-  async getUserPermissions(userId: string): Promise<ApiResponse<string[]>> {
+  async getUserPermissions(userId: string): Promise<string[]> {
     try {
-      const permissions = await this.rbacService.getUserPermissions(userId);
-      return {
-        message: 'User permissions fetched successfully',
-        permissions,
-      };
+      return await this.rbacService.getUserPermissions(userId);
     } catch {
       throw new HttpException(
         'Failed to fetch user permissions',
@@ -92,14 +82,10 @@ export class RbacManagementService {
   async assignRoleToUser(
     userId: string,
     assignRoleDto: AssignRoleDto,
-  ): Promise<ApiResponse<any>> {
+  ): Promise<{ success: boolean }> {
     try {
       await this.rbacService.assignRoleToUser(userId, assignRoleDto.roleKey);
-      return {
-        message: 'Role assigned successfully',
-        userId,
-        roleKey: assignRoleDto.roleKey,
-      };
+      return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -116,18 +102,14 @@ export class RbacManagementService {
   async bulkAssignRolesToUser(
     userId: string,
     bulkAssignDto: BulkAssignRolesDto,
-  ): Promise<ApiResponse<RoleAssignmentResult[]>> {
+  ): Promise<RoleAssignmentResult[]> {
     try {
       const results: RoleAssignmentResult[] = [];
       for (const roleKey of bulkAssignDto.roleKeys) {
         await this.rbacService.assignRoleToUser(userId, roleKey);
         results.push({ roleKey, status: 'assigned' });
       }
-      return {
-        message: 'Roles assigned successfully',
-        userId,
-        results,
-      };
+      return results;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -144,14 +126,10 @@ export class RbacManagementService {
   async removeRoleFromUser(
     userId: string,
     roleKey: string,
-  ): Promise<ApiResponse<any>> {
+  ): Promise<{ success: boolean }> {
     try {
       await this.rbacService.removeRoleFromUser(userId, roleKey);
-      return {
-        message: 'Role removed successfully',
-        userId,
-        roleKey,
-      };
+      return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -165,19 +143,13 @@ export class RbacManagementService {
     }
   }
 
-  async createCustomRole(
-    createRoleDto: CreateRoleDto,
-  ): Promise<ApiResponse<CustomRole>> {
+  async createCustomRole(createRoleDto: CreateRoleDto): Promise<CustomRole> {
     try {
-      const role = await this.rbacService.createCustomRole(
+      return await this.rbacService.createCustomRole(
         createRoleDto.key,
         createRoleDto.name,
         createRoleDto.description,
       );
-      return {
-        message: 'Role created successfully',
-        role,
-      };
     } catch (error) {
       if (
         error &&
@@ -199,18 +171,14 @@ export class RbacManagementService {
 
   async createPermission(
     createPermissionDto: CreatePermissionDto,
-  ): Promise<ApiResponse<Permission>> {
+  ): Promise<Permission> {
     try {
-      const permission = await this.rbacService.createPermission(
+      return await this.rbacService.createPermission(
         createPermissionDto.key,
         createPermissionDto.module,
         createPermissionDto.action,
         createPermissionDto.description,
       );
-      return {
-        message: 'Permission created successfully',
-        permission,
-      };
     } catch (error) {
       if (
         error &&
@@ -233,17 +201,13 @@ export class RbacManagementService {
   async assignPermissionToRole(
     roleKey: string,
     assignPermissionDto: AssignPermissionToRoleDto,
-  ): Promise<ApiResponse<any>> {
+  ): Promise<{ success: boolean }> {
     try {
       await this.rbacService.assignPermissionToRole(
         roleKey,
         assignPermissionDto.permissionKey,
       );
-      return {
-        message: 'Permission assigned to role successfully',
-        roleKey,
-        permissionKey: assignPermissionDto.permissionKey,
-      };
+      return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -260,14 +224,10 @@ export class RbacManagementService {
   async removePermissionFromRole(
     roleKey: string,
     permissionKey: string,
-  ): Promise<ApiResponse<any>> {
+  ): Promise<{ success: boolean }> {
     try {
       await this.rbacService.removePermissionFromRole(roleKey, permissionKey);
-      return {
-        message: 'Permission removed from role successfully',
-        roleKey,
-        permissionKey,
-      };
+      return { success: true };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -281,15 +241,9 @@ export class RbacManagementService {
     }
   }
 
-  async getUsersWithRole(roleKey: string): Promise<ApiResponse<string[]>> {
+  async getUsersWithRole(roleKey: string): Promise<string[]> {
     try {
-      const userIds = await this.rbacService.getUsersWithRole(roleKey);
-      return {
-        message: 'Users with role fetched successfully',
-        roleKey,
-        userIds,
-        count: userIds.length,
-      };
+      return await this.rbacService.getUsersWithRole(roleKey);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
@@ -306,18 +260,9 @@ export class RbacManagementService {
   async checkUserPermission(
     userId: string,
     permissionKey: string,
-  ): Promise<ApiResponse<boolean>> {
+  ): Promise<boolean> {
     try {
-      const hasPermission = await this.rbacService.userHasPermission(
-        userId,
-        permissionKey,
-      );
-      return {
-        message: 'Permission check completed',
-        userId,
-        permissionKey,
-        hasPermission,
-      };
+      return await this.rbacService.userHasPermission(userId, permissionKey);
     } catch {
       throw new HttpException(
         'Failed to check user permission',

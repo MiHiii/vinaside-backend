@@ -21,7 +21,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -30,7 +30,7 @@ import {
 } from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @ApiTags('Vouchers')

@@ -30,10 +30,10 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
-import { UserWithPermissions } from 'src/interfaces/user-with-permissions.interface';
+import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 
 interface RequestWithUser extends Request {
-  user: UserWithPermissions;
+  user: JwtPayload;
 }
 
 @ApiTags('Services')
