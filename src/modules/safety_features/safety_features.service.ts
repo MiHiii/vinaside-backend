@@ -1,144 +1,352 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
 import { UpdateSafetyFeatureDto } from './dto/update-safety_feature.dto';
+import { QuerySafetyFeatureDto } from './dto/query-safety_feature.dto';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { SafetyFeaturesRepo } from './safety_features.repo';
 import { Types } from 'mongoose';
+import {
+  ISafetyFeature,
+  ISafetyFeatureResponse,
+  ISafetyFeatureFilters,
+} from './safety_features.interface';
 
 @Injectable()
 export class SafetyFeaturesService {
+  private readonly logger = new Logger(SafetyFeaturesService.name);
+
   constructor(private readonly safetyFeaturesRepo: SafetyFeaturesRepo) {}
 
   /**
-   * Kiểm tra user có phải staff không
+   * Kiểm tra quyền manage safety_feature
    */
-  private validateStaff(user: JwtPayload): void {
-    if (user.role !== 'staff') {
+  private validateManagePermission(user: JwtPayload): void {
+    if (
+      user.role !== 'admin' &&
+      !user.permissions?.includes('safety_feature.manage')
+    ) {
       throw new ForbiddenException(
-        'Chỉ staff mới có thể thực hiện hành động này',
+        'Bạn không có quyền quản lý tính năng an toàn',
       );
     }
   }
 
   /**
-   * Tạo tính năng an toàn mới (chỉ staff)
+   * Validate MongoDB ObjectId
+   */
+  private validateObjectId(id: string): void {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
+    }
+  }
+
+  /**
+   * Tạo tính năng an toàn mới
    */
   async create(
-    createSafetyFeatureDto: CreateSafetyFeatureDto,
+    createDto: CreateSafetyFeatureDto,
     user: JwtPayload,
-  ) {
-    this.validateStaff(user);
+  ): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
 
-    const data = {
-      ...createSafetyFeatureDto,
-      room_id: new Types.ObjectId(createSafetyFeatureDto.room_id),
-      createdBy: new Types.ObjectId(user._id),
-    };
+    try {
+      const data = {
+        ...createDto,
+        createdBy: new Types.ObjectId(user._id),
+      };
 
-    return this.safetyFeaturesRepo.create(data);
+      const safetyFeature = await this.safetyFeaturesRepo.create(data);
+      this.logger.log(
+        `Safety feature created: ${String(safetyFeature._id)} by user: ${user._id}`,
+      );
+
+      return safetyFeature as unknown as ISafetyFeature;
+    } catch (error) {
+      this.logger.error(
+        'Error creating safety feature:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể tạo tính năng an toàn');
+    }
   }
 
   /**
-   * Lấy tất cả tính năng an toàn với context của user (staff hoặc guest)
+   * Lấy danh sách tính năng an toàn với phân trang và lọc
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async findAll(_query: Record<string, any>, _user?: JwtPayload): Promise<any> {
-    // Simple implementation - get all safety features
-    return await this.safetyFeaturesRepo.findAll({});
+  async findAll(
+    queryDto?: QuerySafetyFeatureDto,
+  ): Promise<ISafetyFeatureResponse> {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = false,
+        search,
+        ...filterFields
+      } = queryDto || {};
+
+      const filters: ISafetyFeatureFilters = {};
+
+      if (search) {
+        filters.search = search;
+      }
+
+      Object.keys(filterFields).forEach((key) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const value = filterFields[key];
+        if (value !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+          (filters as any)[key] = value;
+        }
+      });
+
+      const result = await this.safetyFeaturesRepo.findAllWithFilters(filters, {
+        page,
+        limit,
+        sort: { [sortBy]: sortOrder === 'asc' ? 1 : -1 },
+        includeDeleted,
+      });
+
+      return {
+        safetyFeatures: result.data as unknown as ISafetyFeature[],
+        meta: {
+          ...result.meta,
+          total: result.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error finding safety features:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException(
+        'Không thể lấy danh sách tính năng an toàn',
+      );
+    }
   }
 
   /**
-   * Lấy tính năng an toàn theo ID với context của user (staff hoặc guest)
+   * Lấy tính năng an toàn theo ID
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async findOne(id: string, _user?: JwtPayload) {
-    const safetyFeature = await this.safetyFeaturesRepo.findById(id);
+  async findOne(id: string): Promise<ISafetyFeature> {
+    this.validateObjectId(id);
+
+    const safetyFeature = await this.safetyFeaturesRepo.findActiveById(id);
     if (!safetyFeature) {
       throw new NotFoundException('Không tìm thấy tính năng an toàn');
     }
-    return safetyFeature;
+
+    return safetyFeature as unknown as ISafetyFeature;
   }
 
   /**
-   * Cập nhật tính năng an toàn (với kiểm tra ownership)
+   * Cập nhật tính năng an toàn
    */
   async update(
     id: string,
-    updateSafetyFeatureDto: UpdateSafetyFeatureDto,
+    updateDto: UpdateSafetyFeatureDto,
     user: JwtPayload,
-  ) {
-    this.validateStaff(user);
+  ): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
 
-    const updateData = {
-      ...updateSafetyFeatureDto,
-      updatedBy: new Types.ObjectId(user._id),
-    };
+    try {
+      const existingSafetyFeature =
+        await this.safetyFeaturesRepo.findActiveById(id);
+      if (!existingSafetyFeature) {
+        throw new NotFoundException('Không tìm thấy tính năng an toàn');
+      }
 
-    const updated = await this.safetyFeaturesRepo.updateById(id, updateData);
-    if (!updated) {
-      throw new NotFoundException(
-        'Không tìm thấy tính năng an toàn để cập nhật',
+      const updateData = {
+        ...updateDto,
+        updatedBy: new Types.ObjectId(user._id),
+      };
+
+      const updatedSafetyFeature = await this.safetyFeaturesRepo.updateById(
+        id,
+        updateData,
+      );
+      this.logger.log(`Safety feature updated: ${id} by user: ${user._id}`);
+
+      return updatedSafetyFeature! as unknown as ISafetyFeature;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error updating safety feature:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể cập nhật tính năng an toàn');
+    }
+  }
+
+  /**
+   * Xóa mềm tính năng an toàn
+   */
+  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    try {
+      const existingSafetyFeature =
+        await this.safetyFeaturesRepo.findActiveById(id);
+      if (!existingSafetyFeature) {
+        throw new NotFoundException('Không tìm thấy tính năng an toàn');
+      }
+
+      await this.safetyFeaturesRepo.softDelete(id, user._id);
+      this.logger.log(
+        `Safety feature soft deleted: ${id} by user: ${user._id}`,
+      );
+
+      return { success: true };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error deleting safety feature:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể xóa tính năng an toàn');
+    }
+  }
+
+  /**
+   * Khôi phục tính năng an toàn đã xóa
+   */
+  async restore(id: string, user: JwtPayload): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    try {
+      const restoredSafetyFeature = await this.safetyFeaturesRepo.restore(
+        id,
+        user._id,
+      );
+      if (!restoredSafetyFeature) {
+        throw new NotFoundException('Không thể khôi phục tính năng an toàn');
+      }
+
+      this.logger.log(`Safety feature restored: ${id} by user: ${user._id}`);
+      return restoredSafetyFeature as unknown as ISafetyFeature;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error restoring safety feature:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể khôi phục tính năng an toàn');
+    }
+  }
+
+  /**
+   * Toggle trạng thái active/inactive
+   */
+  async toggleStatus(id: string, user: JwtPayload): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    try {
+      const updatedSafetyFeature = await this.safetyFeaturesRepo.toggleStatus(
+        id,
+        user._id,
+      );
+      if (!updatedSafetyFeature) {
+        throw new NotFoundException('Không tìm thấy tính năng an toàn');
+      }
+
+      this.logger.log(
+        `Safety feature status toggled: ${id} to ${updatedSafetyFeature.is_active} by user: ${user._id}`,
+      );
+
+      return updatedSafetyFeature as unknown as ISafetyFeature;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error toggling safety feature status:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException(
+        'Không thể thay đổi trạng thái tính năng an toàn',
       );
     }
-    return updated;
   }
 
   /**
-   * Soft delete tính năng an toàn (với kiểm tra ownership)
+   * Toggle trạng thái default_checked
    */
-  async softDelete(id: string, user: JwtPayload) {
-    this.validateStaff(user);
+  async toggleDefaultChecked(
+    id: string,
+    user: JwtPayload,
+  ): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
 
-    const deleted = await this.safetyFeaturesRepo.softDelete(id, user._id);
-    if (!deleted) {
-      throw new NotFoundException('Không tìm thấy tính năng an toàn để xóa');
+    try {
+      const updatedSafetyFeature =
+        await this.safetyFeaturesRepo.toggleDefaultChecked(id, user._id);
+      if (!updatedSafetyFeature) {
+        throw new NotFoundException('Không tìm thấy tính năng an toàn');
+      }
+
+      this.logger.log(
+        `Safety feature default_checked toggled: ${id} to ${updatedSafetyFeature.default_checked} by user: ${user._id}`,
+      );
+
+      return updatedSafetyFeature as unknown as ISafetyFeature;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error toggling safety feature default_checked:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException(
+        'Không thể thay đổi trạng thái default_checked của tính năng an toàn',
+      );
     }
-    return deleted;
   }
 
   /**
-   * Khôi phục tính năng an toàn (với kiểm tra ownership)
+   * Tìm kiếm tính năng an toàn
    */
-  async restore(id: string, user: JwtPayload) {
-    this.validateStaff(user);
-
-    const restored = await this.safetyFeaturesRepo.restore(id, user._id);
-    if (!restored) {
-      throw new NotFoundException('Không thể khôi phục tính năng an toàn');
-    }
-    return restored;
-  }
-
-  /**
-   * Tìm kiếm tính năng an toàn với context của user (staff hoặc guest)
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async search(query: string, _user?: JwtPayload): Promise<any> {
-    // Simple search implementation
-    return await this.safetyFeaturesRepo.search(query);
-  }
-
-  /**
-   * Toggle trạng thái active/inactive của tính năng an toàn
-   */
-  async toggleStatus(id: string, user: JwtPayload) {
-    this.validateStaff(user);
-
-    const existingSafetyFeature = await this.safetyFeaturesRepo.findById(id);
-    if (!existingSafetyFeature) {
-      throw new NotFoundException('Không tìm thấy tính năng an toàn');
+  async search(
+    query: string,
+  ): Promise<{ data: ISafetyFeature[]; total: number }> {
+    if (!query || query.trim().length === 0) {
+      return { data: [], total: 0 };
     }
 
-    const newStatus = !existingSafetyFeature.is_active;
-    const updateData = {
-      is_active: newStatus,
-      updatedBy: user._id,
-    };
+    try {
+      const searchResult = await this.safetyFeaturesRepo.searchPublic(
+        query.trim(),
+      );
 
-    return this.safetyFeaturesRepo.updateById(id, updateData);
+      return {
+        data: searchResult.data as unknown as ISafetyFeature[],
+        total: searchResult.total,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error searching safety features:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể tìm kiếm tính năng an toàn');
+    }
+  }
+
+  // ==================== LEGACY METHODS FOR BACKWARD COMPATIBILITY ====================
+
+  /**
+   * @deprecated Use remove() instead
+   */
+  async softDelete(id: string, user: JwtPayload): Promise<ISafetyFeature> {
+    await this.remove(id, user);
+    return this.findOne(id);
   }
 }

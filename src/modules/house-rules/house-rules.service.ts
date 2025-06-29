@@ -281,6 +281,39 @@ export class HouseRulesService {
   }
 
   /**
+   * Toggle trạng thái default_checked
+   */
+  async toggleDefaultChecked(id: string, user: JwtPayload): Promise<HouseRule> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    try {
+      const updatedRule = await this.houseRulesRepo.toggleDefaultChecked(
+        id,
+        user._id,
+      );
+      if (!updatedRule) {
+        throw new NotFoundException('Không tìm thấy quy tắc nhà');
+      }
+
+      this.logger.log(
+        `House rule default_checked toggled: ${id} to ${updatedRule.default_checked} by user: ${user._id}`,
+      );
+
+      return updatedRule;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(
+        'Error toggling house rule default_checked:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException(
+        'Không thể thay đổi trạng thái default_checked của quy tắc nhà',
+      );
+    }
+  }
+
+  /**
    * Tìm kiếm quy tắc nhà
    */
   async search(query: string): Promise<{ data: IHouseRule[]; total: number }> {

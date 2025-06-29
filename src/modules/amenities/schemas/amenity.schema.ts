@@ -1,39 +1,87 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Types, Schema as MongooseSchema } from 'mongoose';
 
 export type AmenityDocument = Amenity & Document;
 
 @Schema({ timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } })
-export class Amenity {
-  @Prop({ required: true })
+export class Amenity extends Document {
+  @Prop({
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 100,
+    index: true,
+  })
   name: string;
 
-  @Prop()
+  @Prop({
+    type: String,
+    trim: true,
+    maxlength: 500,
+  })
   description?: string;
 
-  @Prop({ required: true })
-  icon_url: string;
+  @Prop({
+    type: String,
+    trim: true,
+  })
+  icon_url?: string;
 
-  @Prop({ required: true })
-  room_id: Types.ObjectId;
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  default_checked: boolean;
 
-  @Prop({ default: true })
+  @Prop({
+    type: Boolean,
+    default: true,
+    index: true,
+  })
   is_active: boolean;
 
-  @Prop({ default: false })
+  @Prop({
+    type: Boolean,
+    default: false,
+    index: true,
+  })
   isDeleted: boolean;
 
-  @Prop()
+  // Timestamps and user tracking
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  })
   createdBy: Types.ObjectId;
 
-  @Prop()
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+  })
   updatedBy?: Types.ObjectId;
 
-  @Prop()
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+  })
   deletedBy?: Types.ObjectId;
 
-  @Prop()
+  @Prop({ type: Date })
   deletedAt?: Date;
+
+  // Auto-generated timestamps
+  @Prop({ type: Date })
+  created_at: Date;
+
+  @Prop({ type: Date })
+  updated_at: Date;
 }
 
 export const AmenitySchema = SchemaFactory.createForClass(Amenity);
+
+// Compound indexes for better query performance
+AmenitySchema.index({ name: 1, isDeleted: 1 });
+AmenitySchema.index({ is_active: 1, isDeleted: 1 });
+AmenitySchema.index({ created_at: -1 });
+AmenitySchema.index({ name: 'text', description: 'text' }); // For text search
