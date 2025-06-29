@@ -63,7 +63,7 @@ export class SafetyFeaturesService {
 
       const safetyFeature = await this.safetyFeaturesRepo.create(data);
       this.logger.log(
-        `Safety feature created: ${safetyFeature._id} by user: ${user._id}`,
+        `Safety feature created: ${String(safetyFeature._id)} by user: ${user._id}`,
       );
 
       return safetyFeature as unknown as ISafetyFeature;
@@ -100,8 +100,11 @@ export class SafetyFeaturesService {
       }
 
       Object.keys(filterFields).forEach((key) => {
-        if (filterFields[key] !== undefined) {
-          filters[key] = filterFields[key];
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const value = filterFields[key];
+        if (value !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+          (filters as any)[key] = value;
         }
       });
 

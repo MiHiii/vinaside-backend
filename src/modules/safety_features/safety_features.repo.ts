@@ -271,9 +271,11 @@ export class SafetyFeaturesRepo {
    */
   async search(
     searchTerm: string,
-    searchFields: string[] = ['name', 'description'],
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _searchFields: string[] = ['name', 'description'],
     additionalFilters: FilterQuery<SafetyFeatureDocument> = {},
-    options: {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options: {
       page?: number;
       limit?: number;
       sort?: Record<string, 1 | -1>;
