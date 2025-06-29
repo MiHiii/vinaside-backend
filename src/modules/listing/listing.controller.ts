@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
   Patch,
-  Req,
+  Request,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,10 +28,16 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RequirePermission } from 'src/decorators/require-permission.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
+import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
+import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
+
+interface RequestWithUser extends Request {
+  user: JwtPayload;
+}
 
 @ApiTags('Listings')
 @Controller('listings')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class ListingController {
   constructor(private readonly listingService: ListingService) {}
@@ -40,19 +46,24 @@ export class ListingController {
 
   @Post()
   @RequirePermission('listing.create')
+  @RequirePropertyStaff({
+    propertyIdSource: 'body',
+    propertyIdParam: 'propertyId',
+  })
   @ApiOperation({ summary: 'Tạo listing mới' })
   @ApiResponse({ status: 201, description: 'Listing được tạo thành công.' })
   @ApiResponse({ status: 403, description: 'Bị cấm.' })
   @ResponseMessage('Listing created successfully')
   create(
     @Body() createListingDto: CreateListingDto,
-    @Req() user: JwtPayload,
+    @Request() req: RequestWithUser,
   ): Promise<Listing> {
-    return this.listingService.create(createListingDto, user);
+    return this.listingService.create(createListingDto, req.user);
   }
 
-  @Put(':id')
+  @Put('property/:propertyId/:id')
   @RequirePermission('listing.edit')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Cập nhật listing' })
   @ApiResponse({
     status: 200,
@@ -60,36 +71,47 @@ export class ListingController {
   })
   @ResponseMessage('Listing updated successfully')
   update(
+    @Param('propertyId') propertyId: string,
     @Param('id') id: string,
     @Body() updateListingDto: UpdateListingDto,
-    @Req() user: JwtPayload,
+    @Request() req: RequestWithUser,
   ): Promise<Listing> {
-    return this.listingService.update(id, updateListingDto, user);
+    return this.listingService.update(id, updateListingDto, req.user);
   }
 
-  @Delete(':id')
+  @Delete('property/:propertyId/:id')
   @RequirePermission('listing.delete')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Xóa mềm listing' })
   @ApiResponse({ status: 200, description: 'Listing được xóa thành công.' })
   @ResponseMessage('Listing deleted successfully')
-  remove(@Param('id') id: string, @Req() user: JwtPayload) {
-    return this.listingService.remove(id, user);
+  remove(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.listingService.remove(id, req.user);
   }
 
-  @Patch(':id/restore')
+  @Patch('property/:propertyId/:id/restore')
   @RequirePermission('listing.edit')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Khôi phục listing đã xóa mềm' })
   @ApiResponse({
     status: 200,
     description: 'Listing được khôi phục thành công.',
   })
   @ResponseMessage('Listing restored successfully')
-  restore(@Param('id') id: string, @Req() user: JwtPayload): Promise<Listing> {
-    return this.listingService.restore(id, user);
+  restore(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+  ): Promise<Listing> {
+    return this.listingService.restore(id);
   }
 
-  @Patch(':id/status')
+  @Patch('property/:propertyId/:id/status')
   @RequirePermission('listing.manage_status')
+  @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Cập nhật trạng thái listing' })
   @ApiResponse({
     status: 200,
@@ -97,11 +119,12 @@ export class ListingController {
   })
   @ResponseMessage('Listing status updated successfully')
   updateStatus(
+    @Param('propertyId') propertyId: string,
     @Param('id') id: string,
     @Body('status') status: ListingStatus,
-    @Req() user: JwtPayload,
+    @Request() req: RequestWithUser,
   ): Promise<Listing> {
-    return this.listingService.updateStatus(id, status, user);
+    return this.listingService.updateStatus(id, status, req.user);
   }
 
   // =================== PUBLIC ENDPOINTS ===================

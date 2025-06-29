@@ -15,7 +15,9 @@ import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
+import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
@@ -34,7 +36,7 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Reviews')
 @Controller('reviews')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
@@ -43,6 +45,7 @@ export class ReviewsController {
 
   @Post()
   @Roles('guest')
+  @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({ summary: 'Tạo đánh giá mới' })
   @ApiResponse({ status: 201, description: 'Đánh giá được tạo thành công' })
   @ResponseMessage('Tạo đánh giá thành công')
@@ -78,8 +81,8 @@ export class ReviewsController {
     return this.reviewsService.findRoomReviews(roomId, queryDto);
   }
 
+  @Public()
   @Get(':id')
-  @RequirePermission('review.view')
   @ApiOperation({ summary: 'Lấy chi tiết đánh giá' })
   @ApiResponse({ status: 200, description: 'Chi tiết đánh giá' })
   @ResponseMessage('Lấy chi tiết đánh giá thành công')
@@ -94,11 +97,8 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Tìm kiếm đánh giá (Admin)' })
   @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm đánh giá' })
   @ResponseMessage('Tìm kiếm đánh giá thành công')
-  searchForAdmin(
-    @Query() queryDto: QueryReviewDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.reviewsService.searchForAdmin(queryDto, req.user);
+  searchForAdmin(@Query() queryDto: QueryReviewDto) {
+    return this.reviewsService.searchForAdmin(queryDto);
   }
 
   @Get('admin/statistics')
@@ -106,8 +106,8 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Lấy thống kê đánh giá' })
   @ApiResponse({ status: 200, description: 'Thống kê đánh giá' })
   @ResponseMessage('Lấy thống kê đánh giá thành công')
-  getStatistics(@Request() req: RequestWithUser) {
-    return this.reviewsService.getStatistics(req.user);
+  getStatistics() {
+    return this.reviewsService.getStatistics();
   }
 
   @Get('admin/all')
@@ -115,20 +115,18 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Lấy tất cả đánh giá (Admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách tất cả đánh giá' })
   @ResponseMessage('Lấy tất cả đánh giá thành công')
-  findAllForAdmin(
-    @Query() queryDto: QueryReviewDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.reviewsService.findAllForAdmin(queryDto, req.user);
+  findAllForAdmin(@Query() queryDto: QueryReviewDto) {
+    return this.reviewsService.findAllForAdmin(queryDto);
   }
 
-  @Delete('admin/:id')
+  @Delete('property/:propertyId/admin/:id')
   @RequirePermission('review.delete')
+  @RequirePropertyStaff('propertyId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Xóa đánh giá vi phạm' })
   @ApiResponse({ status: 204, description: 'Đánh giá được xóa thành công' })
   @ResponseMessage('Xóa đánh giá thành công')
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.reviewsService.remove(id, req.user);
+  remove(@Param('propertyId') propertyId: string, @Param('id') id: string) {
+    return this.reviewsService.remove(id);
   }
 }

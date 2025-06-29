@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { FilterQuery, Types, SortOrder } from 'mongoose';
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { CreateListingDto } from './dto/create-listing.dto';
@@ -32,35 +27,14 @@ export class ListingService {
     private readonly propertyService: PropertyService,
   ) {}
 
-  private async checkListingPermission(
-    listingId: string,
-    user: JwtPayload,
-  ): Promise<Listing> {
+  private async checkListingPermission(listingId: string): Promise<Listing> {
     const listing = await this.listingRepo.findById(listingId);
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${listingId} not found`);
     }
 
-    interface PopulatedPropertyForPermission {
-      ownerId: { toString: () => string };
-      staffIds: { toString: () => string }[];
-    }
-
-    const property = (await this.propertyService.findOne(
-      listing.propertyId.toString(),
-    )) as unknown as PopulatedPropertyForPermission;
-
-    const isOwner = property.ownerId?.toString() === user._id;
-    const isStaff = property.staffIds?.some(
-      (staffId) => staffId?.toString() === user._id,
-    );
-
-    if (user.role !== 'admin' && !isOwner && !isStaff) {
-      throw new ForbiddenException(
-        'You do not have permission to modify this listing.',
-      );
-    }
-
+    // Staff permission checking is now handled by @RequirePropertyStaff decorator
+    // Admin check is handled by @RequirePermission decorator
     return listing;
   }
 
@@ -68,30 +42,16 @@ export class ListingService {
     createListingDto: CreateListingDto,
     user: JwtPayload,
   ): Promise<Listing> {
-    const { propertyId } = createListingDto;
-
-    interface PopulatedPropertyForCreate {
-      ownerId: { toString: () => string };
-    }
-
-    const property = (await this.propertyService.findOne(
-      propertyId,
-    )) as unknown as PopulatedPropertyForCreate;
-    const isOwner = property.ownerId.toString() === user._id;
-
-    if (user.role !== 'admin' && !isOwner) {
-      throw new ForbiddenException(
-        `You do not have permission to add listings to property ID ${propertyId}.`,
-      );
-    }
-
+    // Permission checking is now handled by decorators:
+    // - @RequirePermission('listing.create') for permission check
+    // - @RequirePropertyStaff for staff validation
     return this.listingRepo.create(createListingDto, user._id);
   }
 
   async findOne(id: string): Promise<Listing> {
     const listing = await this.listingRepo.findById(id, {
       path: 'propertyId',
-      select: 'name type location ownerId staffIds',
+      select: 'name type location staffIds',
     });
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${id} not found.`);
@@ -161,7 +121,7 @@ export class ListingService {
     updateListingDto: UpdateListingDto,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id, user);
+    await this.checkListingPermission(id);
 
     const updatedListing = await this.listingRepo.updateById(
       id,
@@ -175,13 +135,13 @@ export class ListingService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    await this.checkListingPermission(id, user);
+    await this.checkListingPermission(id);
     await this.listingRepo.softDelete(id, user._id);
     return { success: true };
   }
 
-  async restore(id: string, user: JwtPayload): Promise<Listing> {
-    await this.checkListingPermission(id, user);
+  async restore(id: string): Promise<Listing> {
+    await this.checkListingPermission(id);
     const restoredListing = await this.listingRepo.restore(id);
     if (!restoredListing) {
       throw new NotFoundException(`Could not restore listing with ID ${id}.`);
@@ -194,7 +154,7 @@ export class ListingService {
     status: ListingStatus,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id, user);
+    await this.checkListingPermission(id);
     const updatedListing = await this.listingRepo.updateStatus(
       id,
       status,

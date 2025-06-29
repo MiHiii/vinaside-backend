@@ -9,6 +9,7 @@ import { TransactionsService } from './services/transactions.service';
 import { TransactionLogsService } from './services/transaction-logs.service';
 import { TransactionsController } from './controllers/transactions.controller';
 import { TransactionLogsController } from './controllers/transaction-logs.controller';
+import { PropertyModule } from '../properties/property.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { TransactionLogsController } from './controllers/transaction-logs.contro
       { name: Transaction.name, schema: TransactionSchema },
       { name: TransactionLog.name, schema: TransactionLogSchema },
     ]),
+    PropertyModule,
   ],
   controllers: [TransactionsController, TransactionLogsController],
   providers: [TransactionsService, TransactionLogsService],

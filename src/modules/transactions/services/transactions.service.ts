@@ -45,6 +45,9 @@ export class TransactionsService {
       ...createTransactionDto,
       reference_id: new Types.ObjectId(createTransactionDto.reference_id),
       user_id: new Types.ObjectId(createTransactionDto.user_id),
+      propertyId: createTransactionDto.propertyId
+        ? new Types.ObjectId(createTransactionDto.propertyId)
+        : undefined,
       created_by: createTransactionDto.created_by
         ? new Types.ObjectId(createTransactionDto.created_by)
         : undefined,
@@ -104,6 +107,10 @@ export class TransactionsService {
 
     if (filters.user_id) {
       filterConditions.user_id = new Types.ObjectId(filters.user_id);
+    }
+
+    if (filters.propertyId) {
+      filterConditions.propertyId = new Types.ObjectId(filters.propertyId);
     }
 
     if (filters.type) {

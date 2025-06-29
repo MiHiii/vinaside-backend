@@ -3,7 +3,6 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
@@ -91,142 +90,60 @@ export class ReviewsService {
 
   /**
    * Admin/Staff: Lấy tất cả reviews với filter
+   * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
-  async findAllForAdmin(queryDto: QueryReviewDto, user: JwtPayload) {
-    if (user.role === 'admin') {
-      // Admin có thể xem tất cả
-      const result = await this.findAllWithFilters(queryDto);
-      const { page = 1, limit = 10 } = queryDto;
+  async findAllForAdmin(queryDto: QueryReviewDto) {
+    const result = await this.findAllWithFilters(queryDto);
+    const { page = 1, limit = 10 } = queryDto;
 
-      return {
-        reviews: result.data,
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
-        },
-      };
-    } else if (user.role === 'staff') {
-      // Staff chỉ xem reviews của properties họ quản lý
-      const staffPropertyIds = await this.getStaffPropertyIds(user._id);
-      if (staffPropertyIds.length === 0) {
-        return {
-          reviews: [],
-          meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
-        };
-      }
-
-      // Filter reviews theo property của staff
-      const modifiedQuery = {
-        ...queryDto,
-        propertyIds: staffPropertyIds,
-      };
-      const result = await this.findAllWithFilters(modifiedQuery);
-      const { page = 1, limit = 10 } = queryDto;
-
-      return {
-        reviews: result.data,
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
-        },
-      };
-    } else {
-      throw new ForbiddenException(
-        'Chỉ admin và staff mới có quyền truy cập tính năng này',
-      );
-    }
+    return {
+      reviews: result.data,
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit) || 1,
+      },
+    };
   }
 
   /**
    * Admin/Staff: Tìm kiếm reviews
+   * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
-  async searchForAdmin(queryDto: QueryReviewDto, user: JwtPayload) {
+  async searchForAdmin(queryDto: QueryReviewDto) {
     if (!queryDto.keyword) {
       throw new BadRequestException('Từ khóa tìm kiếm không được để trống');
     }
 
-    if (user.role === 'admin') {
-      // Admin có thể search tất cả
-      const result = await this.searchReviews(queryDto.keyword, queryDto);
-      const { page = 1, limit = 10 } = queryDto;
+    const result = await this.searchReviews(queryDto.keyword, queryDto);
+    const { page = 1, limit = 10 } = queryDto;
 
-      return {
-        reviews: result.data,
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
-        },
-      };
-    } else if (user.role === 'staff') {
-      // Staff chỉ search trong properties họ quản lý
-      const staffPropertyIds = await this.getStaffPropertyIds(user._id);
-      if (staffPropertyIds.length === 0) {
-        return {
-          reviews: [],
-          meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
-        };
-      }
-
-      const modifiedQuery = {
-        ...queryDto,
-        propertyIds: staffPropertyIds,
-      };
-      const result = await this.searchReviews(queryDto.keyword, modifiedQuery);
-      const { page = 1, limit = 10 } = queryDto;
-
-      return {
-        reviews: result.data,
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
-        },
-      };
-    } else {
-      throw new ForbiddenException(
-        'Chỉ admin và staff mới có quyền truy cập tính năng này',
-      );
-    }
+    return {
+      reviews: result.data,
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit) || 1,
+      },
+    };
   }
 
   /**
    * Admin/Staff: Lấy thống kê reviews
+   * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
-  async getStatistics(user: JwtPayload) {
-    if (user.role === 'admin') {
-      const statistics = await this.reviewsRepo.getStatistics();
-      return { statistics };
-    } else if (user.role === 'staff') {
-      // Staff chỉ xem thống kê của properties họ quản lý
-      // TODO: Implement staff-specific statistics filtering
-      // For now, return general statistics (to be enhanced later)
-      const statistics = await this.reviewsRepo.getStatistics();
-      return {
-        statistics,
-        note: 'Staff-specific filtering will be implemented in future version',
-      };
-    } else {
-      throw new ForbiddenException(
-        'Chỉ admin và staff mới có quyền truy cập tính năng này',
-      );
-    }
+  async getStatistics() {
+    const statistics = await this.reviewsRepo.getStatistics();
+    return { statistics };
   }
 
   /**
-   * Admin: Xóa cứng review (chỉ admin)
+   * Admin/Staff: Xóa review
+   * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
-  async remove(id: string, user: JwtPayload) {
-    if (user.role !== 'admin') {
-      throw new ForbiddenException('Chỉ admin mới có quyền xóa review');
-    }
-
+  async remove(id: string) {
     await this.deleteReview(id);
     return { success: true };
   }
@@ -406,66 +323,5 @@ export class ReviewsService {
     }
 
     this.logger.log(`Review ${id} deleted successfully`);
-  }
-
-  /**
-   * Kiểm tra staff có quyền truy cập review của property không
-   */
-  private async checkStaffPermissionForReview(
-    reviewId: string,
-    staffId: string,
-  ): Promise<boolean> {
-    const review = await this.reviewsRepo.findById(reviewId, [
-      { path: 'room_id', select: 'propertyId' },
-    ]);
-
-    if (!review) {
-      return false;
-    }
-
-    interface PopulatedListing {
-      propertyId: Types.ObjectId;
-    }
-
-    const listing = review.room_id as unknown as PopulatedListing;
-    if (!listing?.propertyId) {
-      return false;
-    }
-
-    try {
-      const property = await this.propertyService.findOne(
-        listing.propertyId.toString(),
-      );
-      interface PropertyWithStaff {
-        staffIds?: Types.ObjectId[];
-      }
-      const propertyWithStaff = property as unknown as PropertyWithStaff;
-      return (
-        propertyWithStaff.staffIds?.some((id) => id.toString() === staffId) ||
-        false
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Lọc reviews theo properties mà staff được gán quản lý
-   */
-  private async getStaffPropertyIds(staffId: string): Promise<string[]> {
-    try {
-      const staffProperties = await this.propertyService.findByStaff(
-        staffId,
-        {},
-      );
-      interface PropertyWithId {
-        _id: Types.ObjectId;
-      }
-      return staffProperties.data.map((prop) =>
-        (prop as unknown as PropertyWithId)._id.toString(),
-      );
-    } catch {
-      return [];
-    }
   }
 }

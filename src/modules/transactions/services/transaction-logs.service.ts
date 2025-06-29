@@ -6,7 +6,7 @@ import {
   TransactionLogDocument,
   ChangedBy,
 } from '../schemas/transaction-log.schema';
-import { TransactionStatus } from '../schemas/transaction.schema';
+import { Transaction, TransactionStatus } from '../schemas/transaction.schema';
 
 interface DateRangeFilter {
   $gte?: Date;
@@ -18,6 +18,8 @@ export class TransactionLogsService {
   constructor(
     @InjectModel(TransactionLog.name)
     private readonly transactionLogModel: Model<TransactionLogDocument>,
+    @InjectModel(Transaction.name)
+    private readonly transactionModel: Model<Transaction>,
   ) {}
 
   async createLog(
@@ -29,8 +31,14 @@ export class TransactionLogsService {
     note?: string,
     metadata?: Record<string, any>,
   ): Promise<TransactionLogDocument> {
+    const transaction = await this.transactionModel
+      .findById(transactionId)
+      .select('propertyId')
+      .exec();
+
     const log = new this.transactionLogModel({
       transaction_id: new Types.ObjectId(transactionId),
+      propertyId: transaction?.propertyId || undefined,
       from_status: fromStatus,
       to_status: toStatus,
       changed_by: changedBy,
@@ -195,5 +203,34 @@ export class TransactionLogsService {
       changesByActor: stats,
       statusTransitions,
     };
+  }
+
+  async getLogsByProperty(
+    propertyId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<TransactionLogDocument[]> {
+    const filter: FilterQuery<TransactionLogDocument> = {
+      propertyId: new Types.ObjectId(propertyId),
+      isDeleted: false,
+    };
+
+    if (startDate || endDate) {
+      const timestampFilter: DateRangeFilter = {};
+      if (startDate) {
+        timestampFilter.$gte = startDate;
+      }
+      if (endDate) {
+        timestampFilter.$lte = endDate;
+      }
+      filter.timestamp = timestampFilter;
+    }
+
+    return this.transactionLogModel
+      .find(filter)
+      .sort({ timestamp: -1 })
+      .populate('changed_by_user', 'email fullName')
+      .populate('transaction_id')
+      .exec();
   }
 }

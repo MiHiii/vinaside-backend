@@ -190,7 +190,7 @@ export class BookingService {
   async findOne(id: string, user: JwtPayload): Promise<Booking> {
     await this.checkBookingPermission(id, user);
     const booking = await this.bookingRepo.findById(id, {
-      populate: ['listingId', 'propertyId', 'guestId', 'ownerId'],
+      populate: ['listingId', 'propertyId', 'guestId'],
     });
 
     if (!booking) {
@@ -339,35 +339,9 @@ export class BookingService {
   /**
    * Tìm danh sách booking của một listing
    */
-  async findByListing(
-    listingId: string,
-    queryDto: QueryBookingDto,
-    user?: JwtPayload,
-  ) {
-    // Kiểm tra quyền - chỉ host của listing hoặc admin mới được xem
-    if (user && user.role !== 'admin') {
-      // Kiểm tra xem user có phải là host của listing này không
-      const listingResponse = await this.listingService.findOne(listingId);
-      if (!listingResponse) {
-        throw new NotFoundException(
-          `Không tìm thấy listing với ID ${listingId}`,
-        );
-      }
-
-      interface PopulatedListingWithProperty {
-        propertyId: {
-          ownerId: { toString: () => string };
-        };
-      }
-
-      const populatedListing =
-        listingResponse as unknown as PopulatedListingWithProperty;
-      if (populatedListing.propertyId.ownerId.toString() !== user._id) {
-        throw new ForbiddenException(
-          'Bạn chỉ có thể xem booking của listing của mình',
-        );
-      }
-    }
+  async findByListing(listingId: string, queryDto: QueryBookingDto) {
+    // Staff permission checking is now handled by @RequirePropertyStaff decorator
+    // at controller level, so we can proceed directly to query
 
     const result = await this.findBookingsByListing(listingId, queryDto);
     const { page = 1, limit = 10 } = queryDto;
@@ -554,30 +528,13 @@ export class BookingService {
       return booking;
     }
 
+    // Guest can access their own bookings
     if (booking.guestId.toString() === user._id) {
       return booking;
     }
 
-    interface PopulatedPropertyForBooking {
-      _id: Types.ObjectId;
-      staffIds?: Types.ObjectId[];
-    }
-    const property = (await this.propertyService.findOne(
-      booking.propertyId.toString(),
-    )) as unknown as PopulatedPropertyForBooking;
-
-    if (!property) {
-      throw new NotFoundException(
-        `Không tìm thấy property liên quan đến booking ${bookingId}.`,
-      );
-    }
-
-    const isStaff = property.staffIds?.some((id) => id.toString() === user._id);
-
-    if (!isStaff) {
-      throw new ForbiddenException('Bạn không có quyền truy cập booking này.');
-    }
-
+    // Staff permission checking is now handled by @RequirePropertyStaff decorator
+    // If we reach here and user is not guest or admin, they should be authorized staff
     return booking;
   }
 
@@ -633,22 +590,55 @@ export class BookingService {
   }
 
   /**
-   * Tìm các booking của một property
+   * Tìm các booking của một property (cho staff quản lý property đó)
    */
-  private findBookingsByProperty(
+  private async findBookingsByProperty(
     propertyId: string,
     queryDto: QueryBookingDto,
   ) {
-    const { page = 1, limit = 10 } = queryDto;
-    // Simplified: Return empty since we removed owners
-    // This method can be updated later if needed for staff-based filtering
-    return {
-      data: [],
-      total: 0,
-      page,
-      limit,
-      totalPages: 0,
-    };
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = false,
+        ...filters
+      } = queryDto;
+
+      // Xây dựng query với propertyId
+      const propertyObjectId = new Types.ObjectId(propertyId);
+      const query: FilterQuery<Booking> = {
+        propertyId: propertyObjectId,
+        isDeleted: includeDeleted,
+      };
+
+      // Thêm các bộ lọc khác
+      if (filters.status) query.status = filters.status;
+      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+
+      // Tính toán skip cho phân trang
+      const skip = (page - 1) * limit;
+
+      // Xây dựng sort
+      const sort = parseSortString(`${sortBy}:${sortOrder}`);
+
+      // Thực hiện query
+      return await this.bookingRepo.findAll(query, {
+        sort,
+        skip,
+        limit,
+        populate: [
+          {
+            path: 'listingId',
+            select: 'title address images price_per_night',
+          },
+          { path: 'guestId', select: 'name avatar email phone' },
+        ],
+      });
+    } catch (error) {
+      this.handleError(error, 'Tìm bookings theo property');
+    }
   }
 
   /**

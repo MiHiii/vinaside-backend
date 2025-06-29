@@ -47,10 +47,6 @@ export class QueryBookingDto {
   guestId?: string;
 
   @IsOptional()
-  @IsMongoId()
-  ownerId?: string;
-
-  @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
 
