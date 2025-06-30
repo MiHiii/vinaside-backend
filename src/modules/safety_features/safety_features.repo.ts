@@ -497,7 +497,15 @@ export class SafetyFeaturesRepo {
   /**
    * Lấy tất cả safety features cho public endpoints (chỉ is_active=true và default_checked=true)
    */
-  async findAllForPublic(queryDto: any = {}): Promise<{
+  async findAllForPublic(
+    queryDto: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+    } = {},
+  ): Promise<{
     data: SafetyFeatureDocument[];
     total: number;
     meta: {

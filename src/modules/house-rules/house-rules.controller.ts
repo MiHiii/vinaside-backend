@@ -10,12 +10,7 @@ import {
   Put,
   Request,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { HouseRulesService } from './house-rules.service';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
 import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
@@ -29,6 +24,13 @@ import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+}
+
+interface SearchFilters {
+  is_active?: boolean;
+  default_checked?: boolean;
+  includeDeleted?: boolean;
+  isDeleted?: boolean;
 }
 
 @ApiTags('House Rules')
@@ -75,7 +77,7 @@ export class HouseRulesController {
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
   search(
     @Query('query') query: string,
-    @Query() filters: any,
+    @Query() filters: SearchFilters,
     @Request() req: RequestWithUser,
   ) {
     return this.houseRulesService.searchAdmin(query, req.user, filters);

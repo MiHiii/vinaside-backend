@@ -20,15 +20,17 @@ import { RequirePermission } from '../../decorators/require-permission.decorator
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { Public } from '../../decorators/public.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+}
+
+interface SearchFilters {
+  is_active?: boolean;
+  default_checked?: boolean;
+  includeDeleted?: boolean;
+  isDeleted?: boolean;
 }
 
 @ApiTags('Amenities')
@@ -72,7 +74,7 @@ export class AmenitiesController {
   @ResponseMessage('Tìm kiếm tiện ích thành công')
   search(
     @Query('query') query: string,
-    @Query() filters: any,
+    @Query() filters: SearchFilters,
     @Request() req: RequestWithUser,
   ) {
     return this.amenitiesService.searchAdmin(query, req.user, filters);

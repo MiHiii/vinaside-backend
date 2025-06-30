@@ -5,7 +5,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { FilterQuery, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { HouseRulesRepo } from './house-rules.repo';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';

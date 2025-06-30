@@ -26,6 +26,13 @@ interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+interface SearchFilters {
+  is_active?: boolean;
+  default_checked?: boolean;
+  includeDeleted?: boolean;
+  isDeleted?: boolean;
+}
+
 @ApiTags('Safety Features')
 @Controller('safety-features')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -70,7 +77,7 @@ export class SafetyFeaturesController {
   @ResponseMessage('Tìm kiếm tính năng an toàn thành công')
   search(
     @Query('query') query: string,
-    @Query() filters: any,
+    @Query() filters: SearchFilters,
     @Request() req: RequestWithUser,
   ) {
     return this.safetyFeaturesService.searchAdmin(query, req.user, filters);

@@ -14,7 +14,6 @@ import { Types } from 'mongoose';
 import {
   ISafetyFeature,
   ISafetyFeatureResponse,
-  ISafetyFeatureFilters,
 } from './safety_features.interface';
 
 @Injectable()
