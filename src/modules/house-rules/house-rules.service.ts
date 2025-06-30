@@ -5,7 +5,7 @@ import {
   Logger,
   BadRequestException,
 } from '@nestjs/common';
-import { FilterQuery, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { HouseRulesRepo } from './house-rules.repo';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
@@ -78,7 +78,7 @@ export class HouseRulesService {
   }
 
   /**
-   * Lấy tất cả quy tắc nhà với filter và pagination
+   * Lấy tất cả quy tắc nhà cho public (chỉ is_active: true)
    */
   async findAll(queryDto?: QueryHouseRuleDto): Promise<IHouseRuleResponse> {
     try {
@@ -87,49 +87,22 @@ export class HouseRulesService {
         limit = 10,
         sortBy = 'created_at',
         sortOrder = 'desc',
-        includeDeleted = false,
         search,
-        is_active,
       } = queryDto || {};
 
-      const query: FilterQuery<HouseRule> = {
-        isDeleted: includeDeleted ? { $in: [true, false] } : false,
-      };
-
-      // Apply is_active filter if provided
-      if (typeof is_active === 'boolean') {
-        query.is_active = is_active;
-      }
-
-      // Text search
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-        ];
-      }
-
-      // Build sort object
-      const sort: Record<string, 1 | -1> = {
-        [sortBy]: sortOrder === 'asc' ? 1 : -1,
-      };
-
-      const result = await this.houseRulesRepo.findAll(query, {
-        sort,
-        limit,
+      const result = await this.houseRulesRepo.findAllForPublic({
         page,
-        includeDeleted,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
       });
 
       return {
         houseRules: result.data as unknown as IHouseRule[],
         meta: {
+          ...result.meta,
           total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / (limit || 1)),
-          hasNext: page < Math.ceil(result.total / (limit || 1)),
-          hasPrevious: page > 1,
         },
       };
     } catch (error) {
@@ -142,13 +115,108 @@ export class HouseRulesService {
   }
 
   /**
-   * Lấy quy tắc nhà theo ID
+   * Lấy tất cả quy tắc nhà cho admin (mặc định bao gồm cả đã xóa)
    */
-  async findOne(id: string): Promise<HouseRule> {
+  async findAllAdmin(
+    queryDto?: QueryHouseRuleDto,
+    user?: JwtPayload,
+  ): Promise<IHouseRuleResponse> {
+    if (user) {
+      this.validateManagePermission(user);
+    }
+
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = true, // Mặc định admin lấy tất cả
+        search,
+        is_active,
+        default_checked,
+        isDeleted,
+      } = queryDto || {};
+
+      const result = await this.houseRulesRepo.findAllForAdmin({
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        is_active,
+        default_checked,
+        includeDeleted,
+        isDeleted,
+      });
+
+      return {
+        houseRules: result.data as unknown as IHouseRule[],
+        meta: {
+          ...result.meta,
+          total: result.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error finding house rules for admin:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể lấy danh sách quy tắc nhà');
+    }
+  }
+
+  /**
+   * Lấy tất cả quy tắc nhà cho public (alias for findAll)
+   */
+  async findAllPublic(
+    queryDto?: QueryHouseRuleDto,
+  ): Promise<IHouseRuleResponse> {
+    return this.findAll(queryDto);
+  }
+
+  /**
+   * Lấy quy tắc nhà theo ID (Public - chỉ active và default_checked)
+   */
+  async findOnePublic(id: string): Promise<HouseRule> {
     this.validateObjectId(id);
 
-    const houseRule = await this.houseRulesRepo.findById(id);
-    if (!houseRule || houseRule.isDeleted) {
+    const houseRule = await this.houseRulesRepo.findActiveById(id);
+    if (!houseRule) {
+      throw new NotFoundException('Không tìm thấy quy tắc nhà');
+    }
+
+    // Kiểm tra thêm default_checked cho public
+    if (!houseRule.default_checked) {
+      throw new NotFoundException('Không tìm thấy quy tắc nhà');
+    }
+
+    return houseRule;
+  }
+
+  /**
+   * @deprecated Use findOnePublic() instead
+   */
+  async findOne(id: string): Promise<HouseRule> {
+    return this.findOnePublic(id);
+  }
+
+  /**
+   * Lấy quy tắc nhà theo ID cho admin (mặc định lấy tất cả trạng thái)
+   */
+  async findOneAdmin(
+    id: string,
+    user: JwtPayload,
+    includeDeleted = true,
+  ): Promise<HouseRule> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    const houseRule = await this.houseRulesRepo.findByIdForAdmin(
+      id,
+      includeDeleted,
+    );
+    if (!houseRule) {
       throw new NotFoundException('Không tìm thấy quy tắc nhà');
     }
 
@@ -251,23 +319,16 @@ export class HouseRulesService {
     this.validateObjectId(id);
 
     try {
-      const existingRule = await this.houseRulesRepo.findById(id);
-      if (!existingRule || existingRule.isDeleted) {
+      const updatedRule = await this.houseRulesRepo.toggleStatus(id, user._id);
+      if (!updatedRule) {
         throw new NotFoundException('Không tìm thấy quy tắc nhà');
       }
 
-      const newStatus = !existingRule.is_active;
-      const updateData = {
-        is_active: newStatus,
-        updatedBy: new Types.ObjectId(user._id),
-      };
-
-      const updatedRule = await this.houseRulesRepo.updateById(id, updateData);
       this.logger.log(
-        `House rule status toggled: ${id} to ${newStatus} by user: ${user._id}`,
+        `House rule status toggled: ${id} to ${updatedRule.is_active} by user: ${user._id}`,
       );
 
-      return updatedRule!;
+      return updatedRule;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       this.logger.error(
@@ -314,20 +375,30 @@ export class HouseRulesService {
   }
 
   /**
-   * Tìm kiếm quy tắc nhà
+   * Tìm kiếm quy tắc nhà cho admin (mặc định search tất cả trạng thái)
    */
-  async search(query: string): Promise<{ data: IHouseRule[]; total: number }> {
-    if (!query || query.trim().length === 0) {
-      return { data: [], total: 0 };
-    }
+  async searchAdmin(
+    query: string,
+    user: JwtPayload,
+    filters?: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    },
+  ): Promise<{ data: IHouseRule[]; total: number }> {
+    this.validateManagePermission(user);
 
     try {
-      const searchResult = await this.houseRulesRepo.search(
-        query.trim(),
-        ['name', 'description'],
-        {
-          isDeleted: false,
-        },
+      // Mặc định admin search tất cả trạng thái nếu không specify includeDeleted
+      const defaultFilters = {
+        includeDeleted: true,
+        ...filters,
+      };
+
+      const searchResult = await this.houseRulesRepo.searchAdmin(
+        query,
+        defaultFilters,
       );
 
       return {
@@ -336,7 +407,7 @@ export class HouseRulesService {
       };
     } catch (error) {
       this.logger.error(
-        'Error searching house rules:',
+        'Error searching house rules for admin:',
         error instanceof Error ? error.message : String(error),
       );
       throw new BadRequestException('Không thể tìm kiếm quy tắc nhà');

@@ -9,6 +9,15 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
+// Helper function để transform boolean values
+const transformBoolean = ({ value }: { value: any }): boolean | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') {
+    return value === 'true';
+  }
+  return Boolean(value);
+};
+
 export class QueryAmenityDto {
   @ApiPropertyOptional({
     description: 'Số trang',
@@ -63,13 +72,17 @@ export class QueryAmenityDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'Include deleted phải là boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value === 'true';
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   includeDeleted?: boolean = false;
+
+  @ApiPropertyOptional({
+    description: 'Lọc theo trạng thái xóa (true=đã xóa, false=chưa xóa)',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'isDeleted phải là boolean' })
+  @Transform(transformBoolean)
+  isDeleted?: boolean;
 
   @ApiPropertyOptional({
     description: 'Từ khóa tìm kiếm trong tên và mô tả',
@@ -85,11 +98,15 @@ export class QueryAmenityDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value === 'true';
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   is_active?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái mặc định được chọn',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Trạng thái default_checked phải là boolean' })
+  @Transform(transformBoolean)
+  default_checked?: boolean;
 }

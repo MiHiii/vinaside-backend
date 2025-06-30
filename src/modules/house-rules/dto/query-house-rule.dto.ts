@@ -9,6 +9,18 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
+// Helper function để transform boolean từ query params
+const transformBoolean = ({ value }: { value: any }) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'string') {
+    const lowercaseValue = value.toLowerCase().trim();
+    return lowercaseValue === 'true' || lowercaseValue === '1';
+  }
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  return undefined;
+};
+
 export class QueryHouseRuleDto {
   @ApiPropertyOptional({
     description: 'Số trang',
@@ -57,19 +69,13 @@ export class QueryHouseRuleDto {
   sortOrder?: 'asc' | 'desc' = 'desc';
 
   @ApiPropertyOptional({
-    description: 'Có bao gồm các item đã xóa hay không',
+    description: 'Có bao gồm các item đã xóa hay không (admin mặc định true)',
     example: false,
-    default: false,
   })
   @IsOptional()
   @IsBoolean({ message: 'Include deleted phải là boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value === 'true';
-    }
-    return Boolean(value);
-  })
-  includeDeleted?: boolean = false;
+  @Transform(transformBoolean)
+  includeDeleted?: boolean;
 
   @ApiPropertyOptional({
     description: 'Từ khóa tìm kiếm trong tên và mô tả',
@@ -85,11 +91,24 @@ export class QueryHouseRuleDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value === 'true';
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   is_active?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái được chọn mặc định',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Trạng thái default_checked phải là boolean' })
+  @Transform(transformBoolean)
+  default_checked?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái đã bị xóa (chỉ dành cho admin)',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Trạng thái isDeleted phải là boolean' })
+  @Transform(transformBoolean)
+  isDeleted?: boolean;
 }

@@ -14,7 +14,6 @@ import { Types } from 'mongoose';
 import {
   ISafetyFeature,
   ISafetyFeatureResponse,
-  ISafetyFeatureFilters,
 } from './safety_features.interface';
 
 @Injectable()
@@ -77,43 +76,15 @@ export class SafetyFeaturesService {
   }
 
   /**
-   * Lấy danh sách tính năng an toàn với phân trang và lọc
+   * Lấy danh sách tính năng an toàn với phân trang và lọc (Public - chỉ is_active=true và default_checked=true)
    */
   async findAll(
     queryDto?: QuerySafetyFeatureDto,
   ): Promise<ISafetyFeatureResponse> {
     try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'created_at',
-        sortOrder = 'desc',
-        includeDeleted = false,
-        search,
-        ...filterFields
-      } = queryDto || {};
-
-      const filters: ISafetyFeatureFilters = {};
-
-      if (search) {
-        filters.search = search;
-      }
-
-      Object.keys(filterFields).forEach((key) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const value = filterFields[key];
-        if (value !== undefined) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-          (filters as any)[key] = value;
-        }
-      });
-
-      const result = await this.safetyFeaturesRepo.findAllWithFilters(filters, {
-        page,
-        limit,
-        sort: { [sortBy]: sortOrder === 'asc' ? 1 : -1 },
-        includeDeleted,
-      });
+      const result = await this.safetyFeaturesRepo.findAllForPublic(
+        queryDto || {},
+      );
 
       return {
         safetyFeatures: result.data as unknown as ISafetyFeature[],
@@ -134,12 +105,111 @@ export class SafetyFeaturesService {
   }
 
   /**
-   * Lấy tính năng an toàn theo ID
+   * Lấy tất cả tính năng an toàn cho admin (mặc định bao gồm cả đã xóa)
    */
-  async findOne(id: string): Promise<ISafetyFeature> {
+  async findAllAdmin(
+    queryDto?: QuerySafetyFeatureDto,
+    user?: JwtPayload,
+  ): Promise<ISafetyFeatureResponse> {
+    if (user) {
+      this.validateManagePermission(user);
+    }
+
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = true, // Mặc định admin lấy tất cả
+        search,
+        is_active,
+        default_checked,
+        isDeleted,
+        ...filterFields
+      } = queryDto || {};
+
+      const result = await this.safetyFeaturesRepo.findAllForAdmin({
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        is_active,
+        default_checked,
+        includeDeleted,
+        isDeleted,
+        ...filterFields,
+      });
+
+      return {
+        safetyFeatures: result.data as unknown as ISafetyFeature[],
+        meta: {
+          ...result.meta,
+          total: result.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error finding safety features for admin:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException(
+        'Không thể lấy danh sách tính năng an toàn',
+      );
+    }
+  }
+
+  /**
+   * Lấy tất cả tính năng an toàn cho public (alias for findAll)
+   */
+  async findAllPublic(
+    queryDto?: QuerySafetyFeatureDto,
+  ): Promise<ISafetyFeatureResponse> {
+    return this.findAll(queryDto);
+  }
+
+  /**
+   * Lấy tính năng an toàn theo ID (Public - chỉ is_active=true và default_checked=true)
+   */
+  async findOnePublic(id: string): Promise<ISafetyFeature> {
     this.validateObjectId(id);
 
     const safetyFeature = await this.safetyFeaturesRepo.findActiveById(id);
+    if (!safetyFeature) {
+      throw new NotFoundException('Không tìm thấy tính năng an toàn');
+    }
+
+    // Kiểm tra thêm default_checked cho public
+    if (!safetyFeature.default_checked) {
+      throw new NotFoundException('Không tìm thấy tính năng an toàn');
+    }
+
+    return safetyFeature as unknown as ISafetyFeature;
+  }
+
+  /**
+   * @deprecated Use findOnePublic() instead
+   */
+  async findOne(id: string): Promise<ISafetyFeature> {
+    return this.findOnePublic(id);
+  }
+
+  /**
+   * Lấy tính năng an toàn theo ID cho admin (mặc định lấy tất cả trạng thái)
+   */
+  async findOneAdmin(
+    id: string,
+    user: JwtPayload,
+    includeDeleted = true,
+  ): Promise<ISafetyFeature> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    const safetyFeature = await this.safetyFeaturesRepo.findByIdForAdmin(
+      id,
+      includeDeleted,
+    );
     if (!safetyFeature) {
       throw new NotFoundException('Không tìm thấy tính năng an toàn');
     }
@@ -313,18 +383,30 @@ export class SafetyFeaturesService {
   }
 
   /**
-   * Tìm kiếm tính năng an toàn
+   * Tìm kiếm tính năng an toàn cho admin (mặc định search tất cả trạng thái)
    */
-  async search(
+  async searchAdmin(
     query: string,
+    user: JwtPayload,
+    filters?: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    },
   ): Promise<{ data: ISafetyFeature[]; total: number }> {
-    if (!query || query.trim().length === 0) {
-      return { data: [], total: 0 };
-    }
+    this.validateManagePermission(user);
 
     try {
-      const searchResult = await this.safetyFeaturesRepo.searchPublic(
-        query.trim(),
+      // Mặc định admin search tất cả trạng thái nếu không specify includeDeleted
+      const defaultFilters = {
+        includeDeleted: true,
+        ...filters,
+      };
+
+      const searchResult = await this.safetyFeaturesRepo.searchAdmin(
+        query,
+        defaultFilters,
       );
 
       return {
@@ -333,7 +415,7 @@ export class SafetyFeaturesService {
       };
     } catch (error) {
       this.logger.error(
-        'Error searching safety features:',
+        'Error searching safety features for admin:',
         error instanceof Error ? error.message : String(error),
       );
       throw new BadRequestException('Không thể tìm kiếm tính năng an toàn');

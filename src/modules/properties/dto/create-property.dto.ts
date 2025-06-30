@@ -8,6 +8,7 @@ import {
   IsPhoneNumber,
   ValidateNested,
   IsNumber,
+  IsBoolean,
   Min,
   Max,
 } from 'class-validator';
@@ -123,4 +124,17 @@ export class CreatePropertyDto {
   @IsArray()
   @IsString({ each: true })
   staffIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Property status',
+    enum: ['active', 'inactive', 'pending'],
+  })
+  @IsOptional()
+  @IsEnum(['active', 'inactive', 'pending'])
+  status?: string;
+
+  @ApiPropertyOptional({ description: 'Is verified by admin' })
+  @IsOptional()
+  @IsBoolean()
+  isVerified?: boolean;
 }

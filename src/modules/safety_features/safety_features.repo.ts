@@ -313,4 +313,248 @@ export class SafetyFeaturesRepo {
   async count(filter: FilterQuery<SafetyFeature> = {}): Promise<number> {
     return this.safetyFeatureModel.countDocuments(filter).exec();
   }
+
+  // ==================== ADMIN METHODS ====================
+
+  /**
+   * Lấy tất cả safety features cho admin với filter nâng cao
+   */
+  async findAllForAdmin(queryDto: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    search?: string;
+    is_active?: boolean;
+    default_checked?: boolean;
+    includeDeleted?: boolean;
+    isDeleted?: boolean;
+    name?: string;
+    description?: string;
+  }): Promise<{
+    data: SafetyFeatureDocument[];
+    total: number;
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      includeDeleted = true, // Mặc định admin lấy tất cả
+      search,
+      is_active,
+      default_checked,
+      isDeleted,
+      name,
+      description,
+    } = queryDto;
+
+    // Build query
+    const query: FilterQuery<SafetyFeature> = {};
+
+    // Handle isDeleted filter logic
+    if (typeof isDeleted === 'boolean') {
+      query.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Không filter gì - lấy tất cả
+    } else {
+      query.isDeleted = { $ne: true };
+    }
+
+    // Apply filters
+    if (typeof is_active === 'boolean') {
+      query.is_active = is_active;
+    }
+    if (typeof default_checked === 'boolean') {
+      query.default_checked = default_checked;
+    }
+    if (name) {
+      query.name = { $regex: name, $options: 'i' };
+    }
+    if (description) {
+      query.description = { $regex: description, $options: 'i' };
+    }
+
+    // Text search
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    const result = await this.findAllWithFilters(query, {
+      sort,
+      limit,
+      page,
+      includeDeleted: true, // Force includeDeleted for admin
+    });
+
+    return {
+      ...result,
+      meta: {
+        ...result.meta,
+        total: result.total,
+      },
+    };
+  }
+
+  /**
+   * Tìm safety feature theo ID cho admin
+   */
+  async findByIdForAdmin(
+    id: string,
+    includeDeleted = true,
+  ): Promise<SafetyFeatureDocument | null> {
+    const query: FilterQuery<SafetyFeatureDocument> = { _id: id };
+
+    if (!includeDeleted) {
+      query.isDeleted = { $ne: true };
+    }
+
+    return this.safetyFeatureModel.findOne(query).exec();
+  }
+
+  /**
+   * Tìm kiếm safety features cho admin với filter nâng cao
+   */
+  async searchAdmin(
+    searchTerm: string,
+    filters: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    } = {},
+  ): Promise<{
+    data: SafetyFeatureDocument[];
+    total: number;
+  }> {
+    if (!searchTerm || searchTerm.trim() === '') {
+      return { data: [], total: 0 };
+    }
+
+    const {
+      is_active,
+      default_checked,
+      includeDeleted = true,
+      isDeleted,
+    } = filters;
+
+    // Build query
+    const query: FilterQuery<SafetyFeatureDocument> = {
+      $or: [
+        { name: { $regex: searchTerm.trim(), $options: 'i' } },
+        { description: { $regex: searchTerm.trim(), $options: 'i' } },
+      ],
+    };
+
+    // Handle isDeleted filter logic
+    if (typeof isDeleted === 'boolean') {
+      query.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Không filter gì - lấy tất cả
+    } else {
+      query.isDeleted = { $ne: true };
+    }
+
+    // Apply filters
+    if (typeof is_active === 'boolean') {
+      query.is_active = is_active;
+    }
+    if (typeof default_checked === 'boolean') {
+      query.default_checked = default_checked;
+    }
+
+    // Đếm tổng số bản ghi
+    const total = await this.safetyFeatureModel.countDocuments(query);
+
+    // Thực thi query
+    const data = await this.safetyFeatureModel
+      .find(query)
+      .sort({ created_at: -1 })
+      .exec();
+
+    return {
+      data,
+      total,
+    };
+  }
+
+  /**
+   * Lấy tất cả safety features cho public endpoints (chỉ is_active=true và default_checked=true)
+   */
+  async findAllForPublic(
+    queryDto: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+    } = {},
+  ): Promise<{
+    data: SafetyFeatureDocument[];
+    total: number;
+    meta: {
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      search,
+    } = queryDto;
+
+    // Build query cho public - chỉ lấy items active và default_checked
+    const query: FilterQuery<SafetyFeature> = {
+      isDeleted: { $ne: true },
+      is_active: true,
+      default_checked: true,
+    };
+
+    // Text search
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    const result = await this.findAllWithFilters(query, {
+      sort,
+      limit,
+      page,
+      includeDeleted: false,
+    });
+
+    return {
+      data: result.data,
+      total: result.total,
+      meta: result.meta,
+    };
+  }
 }
