@@ -84,6 +84,48 @@ export class HouseRulesRepo {
   }
 
   /**
+   * Tìm house rule theo ID chỉ khi active và không bị xóa
+   */
+  async findActiveById(id: string): Promise<HouseRuleDocument | null> {
+    return this.houseRuleModel
+      .findOne({
+        _id: id,
+        is_active: true,
+        isDeleted: false,
+      })
+      .exec();
+  }
+
+  /**
+   * Tìm house rule đã bị xóa theo ID
+   */
+  async findDeletedById(id: string): Promise<HouseRuleDocument | null> {
+    return this.houseRuleModel
+      .findOne({
+        _id: id,
+        isDeleted: true,
+      })
+      .exec();
+  }
+
+  /**
+   * Toggle trạng thái is_active
+   */
+  async toggleStatus(
+    id: string,
+    updatedBy: string | Types.ObjectId,
+  ): Promise<HouseRuleDocument | null> {
+    const houseRule = await this.findById(id);
+    if (!houseRule || houseRule.isDeleted) return null;
+
+    const newStatus = !houseRule.is_active;
+    return this.updateById(id, {
+      is_active: newStatus,
+      updatedBy: new Types.ObjectId(updatedBy.toString()),
+    });
+  }
+
+  /**
    * Toggle trạng thái default_checked
    */
   async toggleDefaultChecked(
@@ -228,5 +270,267 @@ export class HouseRulesRepo {
    */
   async count(filter: FilterQuery<HouseRule> = {}): Promise<number> {
     return this.houseRuleModel.countDocuments(filter).exec();
+  }
+
+  /**
+   * Lấy house rules cho public (chỉ is_active=true, default_checked=true và isDeleted=false)
+   */
+  async findAllForPublic(
+    options: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+    } = {},
+  ): Promise<{
+    data: HouseRuleDocument[];
+    total: number;
+    meta: {
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      search,
+    } = options;
+    const skip = (page - 1) * limit;
+
+    // Base query cho public: chỉ lấy active, default_checked và không bị xóa
+    const query: FilterQuery<HouseRuleDocument> = {
+      is_active: true,
+      default_checked: true,
+      isDeleted: false,
+    };
+
+    // Thêm search nếu có
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    // Count và execute query
+    const total = await this.houseRuleModel.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
+
+    const data = await this.houseRuleModel
+      .find(query)
+      .limit(limit)
+      .skip(skip)
+      .sort(sort)
+      .exec();
+
+    return {
+      data,
+      total,
+      meta: {
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Lấy house rules cho admin (có thể filter theo is_active, default_checked, includeDeleted)
+   */
+  async findAllForAdmin(
+    options: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    } = {},
+  ): Promise<{
+    data: HouseRuleDocument[];
+    total: number;
+    meta: {
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      search,
+      is_active,
+      default_checked,
+      includeDeleted = false,
+      isDeleted,
+    } = options;
+    const skip = (page - 1) * limit;
+
+    // Base query cho admin
+    const query: FilterQuery<HouseRuleDocument> = {};
+
+    // Logic cho isDeleted filter
+    if (typeof isDeleted === 'boolean') {
+      // Nếu isDeleted được chỉ định cụ thể, filter theo giá trị đó
+      query.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
+      // Không thêm filter isDeleted
+    } else {
+      // Mặc định chỉ lấy những item chưa bị xóa
+      query.isDeleted = false;
+    }
+
+    // Filter theo is_active nếu được chỉ định
+    if (typeof is_active === 'boolean') {
+      query.is_active = is_active;
+    }
+
+    // Filter theo default_checked nếu được chỉ định
+    if (typeof default_checked === 'boolean') {
+      query.default_checked = default_checked;
+    }
+
+    // Thêm search nếu có
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    // Count và execute query
+    const total = await this.houseRuleModel.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
+
+    const data = await this.houseRuleModel
+      .find(query)
+      .limit(limit)
+      .skip(skip)
+      .sort(sort)
+      .exec();
+
+    return {
+      data,
+      total,
+      meta: {
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Tìm kiếm house rules cho admin (mặc định search tất cả trạng thái)
+   */
+  async searchAdmin(
+    searchTerm: string,
+    options: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    } = {},
+  ): Promise<{
+    data: HouseRuleDocument[];
+    total: number;
+  }> {
+    if (!searchTerm || searchTerm.trim().length === 0) {
+      return { data: [], total: 0 };
+    }
+
+    const {
+      is_active,
+      default_checked,
+      includeDeleted = true,
+      isDeleted,
+    } = options;
+
+    const searchQuery = {
+      $or: [
+        { name: { $regex: searchTerm.trim(), $options: 'i' } },
+        { description: { $regex: searchTerm.trim(), $options: 'i' } },
+      ],
+    };
+
+    const finalQuery: FilterQuery<HouseRuleDocument> = {
+      ...searchQuery,
+    };
+
+    // Logic cho isDeleted filter
+    if (typeof isDeleted === 'boolean') {
+      // Nếu isDeleted được chỉ định cụ thể, filter theo giá trị đó
+      finalQuery.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
+      // Không thêm filter isDeleted
+    } else {
+      // Mặc định chỉ lấy những item chưa bị xóa
+      finalQuery.isDeleted = false;
+    }
+
+    // Filter theo is_active nếu được chỉ định
+    if (typeof is_active === 'boolean') {
+      finalQuery.is_active = is_active;
+    }
+
+    // Filter theo default_checked nếu được chỉ định
+    if (typeof default_checked === 'boolean') {
+      finalQuery.default_checked = default_checked;
+    }
+
+    const total = await this.houseRuleModel.countDocuments(finalQuery);
+    const data = await this.houseRuleModel
+      .find(finalQuery)
+      .sort({ created_at: -1 })
+      .exec();
+
+    return { data, total };
+  }
+
+  /**
+   * Tìm house rule theo ID cho admin (mặc định lấy tất cả trạng thái)
+   */
+  async findByIdForAdmin(
+    id: string,
+    includeDeleted = true,
+  ): Promise<HouseRuleDocument | null> {
+    const query: FilterQuery<HouseRuleDocument> = {
+      _id: id,
+    };
+
+    if (!includeDeleted) {
+      query.isDeleted = false;
+    }
+
+    return this.houseRuleModel.findOne(query).exec();
   }
 }

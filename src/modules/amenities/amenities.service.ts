@@ -69,13 +69,11 @@ export class AmenitiesService {
   }
 
   /**
-   * Lấy tất cả tiện ích với filter và pagination
+   * Lấy tất cả tiện ích với filter và pagination (Public - chỉ is_active=true và default_checked=true)
    */
   async findAll(queryDto?: QueryAmenityDto): Promise<IAmenityResponse> {
     try {
-      const result = await this.amenitiesRepo.findAllWithFilters(
-        queryDto || {},
-      );
+      const result = await this.amenitiesRepo.findAllForPublic(queryDto || {});
 
       return {
         amenities: result.data as unknown as IAmenity[],
@@ -91,9 +89,68 @@ export class AmenitiesService {
   }
 
   /**
-   * Lấy tiện ích theo ID
+   * Lấy tất cả tiện ích cho admin (mặc định bao gồm cả đã xóa)
    */
-  async findOne(id: string): Promise<any> {
+  async findAllAdmin(
+    queryDto?: QueryAmenityDto,
+    user?: JwtPayload,
+  ): Promise<IAmenityResponse> {
+    if (user) {
+      this.validateManagePermission(user);
+    }
+
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'created_at',
+        sortOrder = 'desc',
+        includeDeleted = true, // ✅ Mặc định admin lấy tất cả như house-rules
+        search,
+        is_active,
+        default_checked,
+        isDeleted,
+      } = queryDto || {};
+
+      const result = await this.amenitiesRepo.findAllForAdmin({
+        page,
+        limit,
+        sortBy,
+        sortOrder,
+        search,
+        is_active,
+        default_checked,
+        includeDeleted, // ✅ Pass đúng giá trị includeDeleted
+        isDeleted,
+      });
+
+      return {
+        amenities: result.data as unknown as IAmenity[],
+        meta: {
+          ...result.meta,
+          total: result.total,
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error finding amenities for admin:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể lấy danh sách tiện ích');
+    }
+  }
+
+  /**
+   * Lấy tất cả tiện ích cho public (alias for findAll)
+   */
+  async findAllPublic(queryDto?: QueryAmenityDto): Promise<IAmenityResponse> {
+    return this.findAll(queryDto);
+  }
+
+  /**
+   * Lấy tiện ích theo ID (Public - chỉ is_active=true và default_checked=true)
+   */
+  async findOnePublic(id: string): Promise<any> {
     this.validateObjectId(id);
 
     const amenity = await this.amenitiesRepo.findActiveById(id);
@@ -101,7 +158,41 @@ export class AmenitiesService {
       throw new NotFoundException('Không tìm thấy tiện ích');
     }
 
+    // Kiểm tra thêm default_checked cho public
+    if (!amenity.default_checked) {
+      throw new NotFoundException('Không tìm thấy tiện ích');
+    }
+
     return amenity.toJSON();
+  }
+
+  /**
+   * @deprecated Use findOnePublic() instead
+   */
+  async findOne(id: string): Promise<any> {
+    return this.findOnePublic(id);
+  }
+
+  /**
+   * Lấy tiện ích theo ID cho admin (mặc định lấy tất cả trạng thái)
+   */
+  async findOneAdmin(
+    id: string,
+    user: JwtPayload,
+    includeDeleted = true,
+  ): Promise<Amenity> {
+    this.validateManagePermission(user);
+    this.validateObjectId(id);
+
+    const amenity = await this.amenitiesRepo.findByIdForAdmin(
+      id,
+      includeDeleted,
+    );
+    if (!amenity) {
+      throw new NotFoundException('Không tìm thấy tiện ích');
+    }
+
+    return amenity;
   }
 
   /**
@@ -257,26 +348,49 @@ export class AmenitiesService {
   }
 
   /**
-   * Tìm kiếm tiện ích theo từ khóa
+   * Tìm kiếm tiện ích cho admin (mặc định search tất cả trạng thái)
    */
-  async search(query: string): Promise<{ data: IAmenity[]; total: number }> {
+  async searchAdmin(
+    query: string,
+    user: JwtPayload,
+    filters?: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    },
+  ): Promise<{ data: IAmenity[]; total: number }> {
+    this.validateManagePermission(user);
+
     try {
-      const result = await this.amenitiesRepo.searchPublic(query);
+      // ✅ Mặc định admin search tất cả trạng thái nếu không specify includeDeleted
+      const defaultFilters = {
+        includeDeleted: true, // ✅ Mặc định admin search TẤT CẢ
+        ...filters,
+      };
+
+      const searchResult = await this.amenitiesRepo.searchAdmin(
+        query,
+        defaultFilters,
+      );
+
       return {
-        data: result.data as unknown as IAmenity[],
-        total: result.total,
+        data: searchResult.data as unknown as IAmenity[],
+        total: searchResult.total,
       };
     } catch (error) {
       this.logger.error(
-        'Error searching amenities:',
+        'Error searching amenities for admin:',
         error instanceof Error ? error.message : String(error),
       );
       throw new BadRequestException('Không thể tìm kiếm tiện ích');
     }
   }
 
+  // ==================== LEGACY METHODS FOR BACKWARD COMPATIBILITY ====================
+
   /**
-   * Soft delete method alias for backward compatibility
+   * @deprecated Use remove() instead
    */
   async softDelete(id: string, user: JwtPayload): Promise<Amenity> {
     this.validateManagePermission(user);

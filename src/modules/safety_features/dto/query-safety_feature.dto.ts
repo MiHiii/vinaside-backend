@@ -10,6 +10,15 @@ import {
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
+// Helper function để transform boolean values
+const transformBoolean = ({ value }: { value: any }): boolean | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') {
+    return value === 'true';
+  }
+  return Boolean(value);
+};
+
 export class QuerySafetyFeatureDto {
   @ApiPropertyOptional({
     description: 'Số trang (bắt đầu từ 1)',
@@ -59,14 +68,17 @@ export class QuerySafetyFeatureDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'includeDeleted phải là giá trị boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   includeDeleted?: boolean = false;
+
+  @ApiPropertyOptional({
+    description: 'Lọc theo trạng thái xóa (true=đã xóa, false=chưa xóa)',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'isDeleted phải là boolean' })
+  @Transform(transformBoolean)
+  isDeleted?: boolean;
 
   @ApiPropertyOptional({
     description: 'Lọc theo tên tính năng an toàn',
@@ -92,13 +104,7 @@ export class QuerySafetyFeatureDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'is_active phải là giá trị boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   is_active?: boolean;
 
   @ApiPropertyOptional({
@@ -107,13 +113,7 @@ export class QuerySafetyFeatureDto {
   })
   @IsOptional()
   @IsBoolean({ message: 'default_checked phải là giá trị boolean' })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-    }
-    return Boolean(value);
-  })
+  @Transform(transformBoolean)
   default_checked?: boolean;
 
   @ApiPropertyOptional({

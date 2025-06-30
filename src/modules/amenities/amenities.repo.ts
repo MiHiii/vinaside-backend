@@ -265,6 +265,69 @@ export class AmenitiesRepo {
   }
 
   /**
+   * Lấy tất cả amenities cho public endpoints (chỉ is_active=true và default_checked=true)
+   */
+  async findAllForPublic(queryDto: QueryAmenityDto = {}): Promise<{
+    data: AmenityDocument[];
+    total: number;
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      search,
+    } = queryDto;
+
+    // Build query cho public - chỉ lấy items active và default_checked
+    const query: FilterQuery<Amenity> = {
+      isDeleted: { $ne: true },
+      is_active: true,
+      default_checked: true,
+    };
+
+    // Text search
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    const result = await this.findAll(query, {
+      sort,
+      limit,
+      page,
+      includeDeleted: false,
+    });
+
+    return {
+      ...result,
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / (limit || 1)),
+        hasNext: page < Math.ceil(result.total / (limit || 1)),
+        hasPrevious: page > 1,
+      },
+    };
+  }
+
+  /**
    * Tìm kiếm amenities cho public endpoints
    */
   async searchPublic(query: string): Promise<{
@@ -353,5 +416,198 @@ export class AmenitiesRepo {
    */
   async count(filter: FilterQuery<Amenity> = {}): Promise<number> {
     return this.amenityModel.countDocuments(filter).exec();
+  }
+
+  // ==================== ADMIN METHODS ====================
+
+  /**
+   * Lấy tất cả amenities cho admin với filter nâng cao
+   */
+  async findAllForAdmin(
+    options: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      search?: string;
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    } = {},
+  ): Promise<{
+    data: AmenityDocument[];
+    total: number;
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      hasNext: boolean;
+      hasPrevious: boolean;
+    };
+  }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      search,
+      is_active,
+      default_checked,
+      includeDeleted = false, // ✅ Mặc định false như house-rules repo
+      isDeleted,
+    } = options;
+    const skip = (page - 1) * limit;
+
+    // ✅ Base query cho admin - THEO PATTERN HOUSE-RULES
+    const query: FilterQuery<AmenityDocument> = {};
+
+    // ✅ Logic cho isDeleted filter - COPY TỪ HOUSE-RULES
+    if (typeof isDeleted === 'boolean') {
+      // Nếu isDeleted được chỉ định cụ thể, filter theo giá trị đó
+      query.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
+      // Không thêm filter isDeleted
+    } else {
+      // Mặc định chỉ lấy những item chưa bị xóa
+      query.isDeleted = false;
+    }
+
+    // Filter theo is_active nếu được chỉ định
+    if (typeof is_active === 'boolean') {
+      query.is_active = is_active;
+    }
+
+    // Filter theo default_checked nếu được chỉ định
+    if (typeof default_checked === 'boolean') {
+      query.default_checked = default_checked;
+    }
+
+    // Thêm search nếu có
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Build sort object
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    // ✅ Count và execute query - TRỰC TIẾP NHU HOUSE-RULES
+    const total = await this.amenityModel.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
+
+    const data = await this.amenityModel
+      .find(query)
+      .limit(limit)
+      .skip(skip)
+      .sort(sort)
+      .exec();
+
+    return {
+      data,
+      total,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1,
+      },
+    };
+  }
+
+  /**
+   * Tìm amenity theo ID cho admin
+   */
+  async findByIdForAdmin(
+    id: string,
+    includeDeleted = true,
+  ): Promise<AmenityDocument | null> {
+    const query: FilterQuery<AmenityDocument> = { _id: id };
+
+    if (!includeDeleted) {
+      query.isDeleted = { $ne: true };
+    }
+
+    return this.amenityModel.findOne(query).exec();
+  }
+
+  /**
+   * Tìm kiếm amenities cho admin (mặc định search tất cả trạng thái)
+   */
+  async searchAdmin(
+    searchTerm: string,
+    options: {
+      is_active?: boolean;
+      default_checked?: boolean;
+      includeDeleted?: boolean;
+      isDeleted?: boolean;
+    } = {},
+  ): Promise<{
+    data: AmenityDocument[];
+    total: number;
+  }> {
+    if (!searchTerm || searchTerm.trim().length === 0) {
+      return { data: [], total: 0 };
+    }
+
+    const {
+      is_active,
+      default_checked,
+      includeDeleted = true, // ✅ Mặc định admin search tất cả như house-rules
+      isDeleted,
+    } = options;
+
+    const searchQuery = {
+      $or: [
+        { name: { $regex: searchTerm.trim(), $options: 'i' } },
+        { description: { $regex: searchTerm.trim(), $options: 'i' } },
+      ],
+    };
+
+    const finalQuery: FilterQuery<AmenityDocument> = {
+      ...searchQuery,
+    };
+
+    // ✅ Logic cho isDeleted filter - COPY TỪ HOUSE-RULES
+    if (typeof isDeleted === 'boolean') {
+      finalQuery.isDeleted = isDeleted;
+    } else if (includeDeleted) {
+      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
+    } else {
+      // Mặc định chỉ lấy những item chưa bị xóa
+      finalQuery.isDeleted = false;
+    }
+
+    // Filter theo is_active nếu được chỉ định
+    if (typeof is_active === 'boolean') {
+      finalQuery.is_active = is_active;
+    }
+
+    // Filter theo default_checked nếu được chỉ định
+    if (typeof default_checked === 'boolean') {
+      finalQuery.default_checked = default_checked;
+    }
+
+    // Đếm tổng số bản ghi
+    const total = await this.amenityModel.countDocuments(finalQuery);
+
+    // Thực thi query
+    const data = await this.amenityModel
+      .find(finalQuery)
+      .sort({ created_at: -1 })
+      .exec();
+
+    return {
+      data,
+      total,
+    };
   }
 }

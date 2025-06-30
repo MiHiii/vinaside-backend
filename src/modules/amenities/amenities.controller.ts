@@ -38,69 +38,81 @@ interface RequestWithUser extends Request {
 export class AmenitiesController {
   constructor(private readonly amenitiesService: AmenitiesService) {}
 
-  @Post()
-  @RequirePermission('amenity.manage')
-  @ApiOperation({ summary: 'Tạo tiện ích mới' })
-  @ApiResponse({ status: 201, description: 'Tiện ích được tạo thành công' })
-  @ApiResponse({ status: 403, description: 'Không có quyền truy cập' })
-  @ResponseMessage('Tạo tiện ích thành công')
-  create(
-    @Body() createAmenityDto: CreateAmenityDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.amenitiesService.create(createAmenityDto, req.user);
+  // =================== PUBLIC ENDPOINTS (MUST BE FIRST) ===================
+
+  @Public()
+  @Get('public')
+  @ApiOperation({ summary: 'Lấy danh sách tiện ích (Public)' })
+  @ResponseMessage('Lấy danh sách thành công')
+  findAllPublic(@Query() queryDto: QueryAmenityDto) {
+    return this.amenitiesService.findAllPublic(queryDto);
   }
 
-  @Get()
   @Public()
-  @ApiOperation({ summary: 'Lấy danh sách tất cả tiện ích' })
-  @ApiResponse({ status: 200, description: 'Danh sách tiện ích' })
+  @Get('public/:id')
+  @ApiOperation({ summary: 'Lấy chi tiết tiện ích (Public)' })
+  @ResponseMessage('Lấy chi tiết thành công')
+  findOnePublic(@Param('id') id: string) {
+    return this.amenitiesService.findOnePublic(id);
+  }
+
+  // =================== PROTECTED ENDPOINTS ===================
+
+  @Get()
+  @RequirePermission('amenity.manage')
+  @ApiOperation({ summary: 'Lấy danh sách tiện ích' })
   @ResponseMessage('Lấy danh sách tiện ích thành công')
-  findAll(@Query() queryDto: QueryAmenityDto) {
-    return this.amenitiesService.findAll(queryDto);
+  findAll(@Query() queryDto: QueryAmenityDto, @Request() req: RequestWithUser) {
+    return this.amenitiesService.findAllAdmin(queryDto, req.user);
   }
 
   @Get('search')
-  @Public()
-  @ApiOperation({ summary: 'Tìm kiếm tiện ích theo từ khóa' })
-  @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm tiện ích' })
+  @RequirePermission('amenity.manage')
+  @ApiOperation({ summary: 'Tìm kiếm tiện ích' })
   @ResponseMessage('Tìm kiếm tiện ích thành công')
-  search(@Query('query') query: string) {
-    return this.amenitiesService.search(query);
+  search(
+    @Query('query') query: string,
+    @Query() filters: any,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.amenitiesService.searchAdmin(query, req.user, filters);
   }
 
   @Get(':id')
-  @Public()
-  @ApiOperation({ summary: 'Lấy thông tin chi tiết tiện ích' })
-  @ApiResponse({ status: 200, description: 'Thông tin tiện ích' })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tiện ích' })
+  @RequirePermission('amenity.manage')
+  @ApiOperation({ summary: 'Lấy chi tiết tiện ích' })
   @ResponseMessage('Lấy tiện ích thành công')
-  findOne(@Param('id') id: string) {
-    return this.amenitiesService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @Query('includeDeleted') includeDeleted: boolean = true,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.amenitiesService.findOneAdmin(id, req.user, includeDeleted);
+  }
+
+  @Post()
+  @RequirePermission('amenity.manage')
+  @ApiOperation({ summary: 'Tạo tiện ích mới' })
+  @ResponseMessage('Tạo tiện ích thành công')
+  create(@Body() createDto: CreateAmenityDto, @Request() req: RequestWithUser) {
+    return this.amenitiesService.create(createDto, req.user);
   }
 
   @Put(':id')
   @RequirePermission('amenity.manage')
-  @ApiOperation({ summary: 'Cập nhật thông tin tiện ích' })
-  @ApiResponse({
-    status: 200,
-    description: 'Tiện ích được cập nhật thành công',
-  })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tiện ích' })
+  @ApiOperation({ summary: 'Cập nhật tiện ích' })
   @ResponseMessage('Cập nhật tiện ích thành công')
   update(
     @Param('id') id: string,
-    @Body() updateAmenityDto: UpdateAmenityDto,
+    @Body() updateDto: UpdateAmenityDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.amenitiesService.update(id, updateAmenityDto, req.user);
+    return this.amenitiesService.update(id, updateDto, req.user);
   }
 
   @Delete(':id')
   @RequirePermission('amenity.manage')
-  @ApiOperation({ summary: 'Xóa tiện ích (soft delete)' })
-  @ApiResponse({ status: 200, description: 'Tiện ích được xóa thành công' })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tiện ích' })
+  @ApiOperation({ summary: 'Xóa tiện ích' })
   @ResponseMessage('Xóa tiện ích thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.amenitiesService.remove(id, req.user);
@@ -108,11 +120,7 @@ export class AmenitiesController {
 
   @Put(':id/restore')
   @RequirePermission('amenity.manage')
-  @ApiOperation({ summary: 'Khôi phục tiện ích đã xóa' })
-  @ApiResponse({
-    status: 200,
-    description: 'Tiện ích được khôi phục thành công',
-  })
+  @ApiOperation({ summary: 'Khôi phục tiện ích' })
   @ResponseMessage('Khôi phục tiện ích thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.amenitiesService.restore(id, req.user);
@@ -120,28 +128,16 @@ export class AmenitiesController {
 
   @Put(':id/toggle-status')
   @RequirePermission('amenity.manage')
-  @ApiOperation({
-    summary: 'Thay đổi trạng thái tiện ích (active/inactive)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Trạng thái tiện ích được thay đổi',
-  })
-  @ResponseMessage('Cập nhật trạng thái tiện ích thành công')
+  @ApiOperation({ summary: 'Toggle trạng thái active/inactive' })
+  @ResponseMessage('Toggle trạng thái thành công')
   toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.amenitiesService.toggleStatus(id, req.user);
   }
 
   @Put(':id/toggle-default')
   @RequirePermission('amenity.manage')
-  @ApiOperation({
-    summary: 'Thay đổi trạng thái default_checked (có được chọn mặc định)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Trạng thái default_checked được thay đổi',
-  })
-  @ResponseMessage('Cập nhật trạng thái default_checked thành công')
+  @ApiOperation({ summary: 'Toggle trạng thái default_checked' })
+  @ResponseMessage('Toggle default_checked thành công')
   toggleDefaultChecked(
     @Param('id') id: string,
     @Request() req: RequestWithUser,

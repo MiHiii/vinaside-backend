@@ -6,26 +6,21 @@ import {
   Param,
   Delete,
   Query,
-  Put,
   Request,
   UseGuards,
+  Put,
 } from '@nestjs/common';
 import { SafetyFeaturesService } from './safety_features.service';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
 import { UpdateSafetyFeatureDto } from './dto/update-safety_feature.dto';
 import { QuerySafetyFeatureDto } from './dto/query-safety_feature.dto';
-import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
-import { RequirePermission } from '../../decorators/require-permission.decorator';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { ResponseMessage } from 'src/decorators/response-message.decorator';
-import { Public } from 'src/decorators/public.decorator';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-} from '@nestjs/swagger';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { ResponseMessage } from '../../decorators/response-message.decorator';
+import { Public } from '../../decorators/public.decorator';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -38,53 +33,91 @@ interface RequestWithUser extends Request {
 export class SafetyFeaturesController {
   constructor(private readonly safetyFeaturesService: SafetyFeaturesService) {}
 
+  // =================== PUBLIC ENDPOINTS (MUST BE FIRST) ===================
+
+  @Public()
+  @Get('public')
+  @ApiOperation({ summary: 'Lấy danh sách tính năng an toàn (Public)' })
+  @ResponseMessage('Lấy danh sách thành công')
+  findAllPublic(@Query() queryDto: QuerySafetyFeatureDto) {
+    return this.safetyFeaturesService.findAllPublic(queryDto);
+  }
+
+  @Public()
+  @Get('public/:id')
+  @ApiOperation({ summary: 'Lấy chi tiết tính năng an toàn (Public)' })
+  @ResponseMessage('Lấy chi tiết thành công')
+  findOnePublic(@Param('id') id: string) {
+    return this.safetyFeaturesService.findOnePublic(id);
+  }
+
   // =================== PROTECTED ENDPOINTS ===================
+
+  @Get()
+  @RequirePermission('safety_feature.manage')
+  @ApiOperation({ summary: 'Lấy danh sách tính năng an toàn' })
+  @ResponseMessage('Lấy danh sách tính năng an toàn thành công')
+  findAll(
+    @Query() queryDto: QuerySafetyFeatureDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.safetyFeaturesService.findAllAdmin(queryDto, req.user);
+  }
+
+  @Get('search')
+  @RequirePermission('safety_feature.manage')
+  @ApiOperation({ summary: 'Tìm kiếm tính năng an toàn' })
+  @ResponseMessage('Tìm kiếm tính năng an toàn thành công')
+  search(
+    @Query('query') query: string,
+    @Query() filters: any,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.safetyFeaturesService.searchAdmin(query, req.user, filters);
+  }
+
+  @Get(':id')
+  @RequirePermission('safety_feature.manage')
+  @ApiOperation({ summary: 'Lấy chi tiết tính năng an toàn' })
+  @ResponseMessage('Lấy tính năng an toàn thành công')
+  findOne(
+    @Param('id') id: string,
+    @Query('includeDeleted') includeDeleted: boolean = true,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.safetyFeaturesService.findOneAdmin(
+      id,
+      req.user,
+      includeDeleted,
+    );
+  }
 
   @Post()
   @RequirePermission('safety_feature.manage')
   @ApiOperation({ summary: 'Tạo tính năng an toàn mới' })
-  @ApiResponse({
-    status: 201,
-    description: 'Tính năng an toàn được tạo thành công',
-  })
-  @ApiResponse({ status: 403, description: 'Không có quyền truy cập' })
   @ResponseMessage('Tạo tính năng an toàn thành công')
   create(
-    @Body() createSafetyFeatureDto: CreateSafetyFeatureDto,
+    @Body() createDto: CreateSafetyFeatureDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.safetyFeaturesService.create(createSafetyFeatureDto, req.user);
+    return this.safetyFeaturesService.create(createDto, req.user);
   }
 
   @Put(':id')
   @RequirePermission('safety_feature.manage')
-  @ApiOperation({ summary: 'Cập nhật thông tin tính năng an toàn' })
-  @ApiResponse({
-    status: 200,
-    description: 'Tính năng an toàn được cập nhật thành công',
-  })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tính năng an toàn' })
+  @ApiOperation({ summary: 'Cập nhật tính năng an toàn' })
   @ResponseMessage('Cập nhật tính năng an toàn thành công')
   update(
     @Param('id') id: string,
-    @Body() updateSafetyFeatureDto: UpdateSafetyFeatureDto,
+    @Body() updateDto: UpdateSafetyFeatureDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.safetyFeaturesService.update(
-      id,
-      updateSafetyFeatureDto,
-      req.user,
-    );
+    return this.safetyFeaturesService.update(id, updateDto, req.user);
   }
 
   @Delete(':id')
   @RequirePermission('safety_feature.manage')
-  @ApiOperation({ summary: 'Xóa tính năng an toàn (soft delete)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Tính năng an toàn được xóa thành công',
-  })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tính năng an toàn' })
+  @ApiOperation({ summary: 'Xóa tính năng an toàn' })
   @ResponseMessage('Xóa tính năng an toàn thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.safetyFeaturesService.remove(id, req.user);
@@ -92,11 +125,7 @@ export class SafetyFeaturesController {
 
   @Put(':id/restore')
   @RequirePermission('safety_feature.manage')
-  @ApiOperation({ summary: 'Khôi phục tính năng an toàn đã xóa' })
-  @ApiResponse({
-    status: 200,
-    description: 'Tính năng an toàn được khôi phục thành công',
-  })
+  @ApiOperation({ summary: 'Khôi phục tính năng an toàn' })
   @ResponseMessage('Khôi phục tính năng an toàn thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.safetyFeaturesService.restore(id, req.user);
@@ -104,65 +133,20 @@ export class SafetyFeaturesController {
 
   @Put(':id/toggle-status')
   @RequirePermission('safety_feature.manage')
-  @ApiOperation({
-    summary: 'Thay đổi trạng thái tính năng an toàn (active/inactive)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Trạng thái tính năng an toàn được thay đổi',
-  })
-  @ResponseMessage('Cập nhật trạng thái tính năng an toàn thành công')
+  @ApiOperation({ summary: 'Toggle trạng thái active/inactive' })
+  @ResponseMessage('Toggle trạng thái thành công')
   toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.safetyFeaturesService.toggleStatus(id, req.user);
   }
 
   @Put(':id/toggle-default')
   @RequirePermission('safety_feature.manage')
-  @ApiOperation({
-    summary: 'Thay đổi trạng thái default_checked (có được chọn mặc định)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Trạng thái default_checked được thay đổi',
-  })
-  @ResponseMessage('Cập nhật trạng thái default_checked thành công')
+  @ApiOperation({ summary: 'Toggle trạng thái default_checked' })
+  @ResponseMessage('Toggle default_checked thành công')
   toggleDefaultChecked(
     @Param('id') id: string,
     @Request() req: RequestWithUser,
   ) {
     return this.safetyFeaturesService.toggleDefaultChecked(id, req.user);
-  }
-
-  // =================== PUBLIC ENDPOINTS ===================
-
-  @Public()
-  @Get()
-  @ApiOperation({ summary: 'Lấy danh sách tất cả tính năng an toàn' })
-  @ApiResponse({ status: 200, description: 'Danh sách tính năng an toàn' })
-  @ResponseMessage('Lấy danh sách tính năng an toàn thành công')
-  findAll(@Query() queryDto: QuerySafetyFeatureDto) {
-    return this.safetyFeaturesService.findAll(queryDto);
-  }
-
-  @Public()
-  @Get('search')
-  @ApiOperation({ summary: 'Tìm kiếm tính năng an toàn theo từ khóa' })
-  @ApiResponse({
-    status: 200,
-    description: 'Kết quả tìm kiếm tính năng an toàn',
-  })
-  @ResponseMessage('Tìm kiếm tính năng an toàn thành công')
-  search(@Query('query') query: string) {
-    return this.safetyFeaturesService.search(query);
-  }
-
-  @Public()
-  @Get(':id')
-  @ApiOperation({ summary: 'Lấy thông tin chi tiết tính năng an toàn' })
-  @ApiResponse({ status: 200, description: 'Thông tin tính năng an toàn' })
-  @ApiResponse({ status: 404, description: 'Không tìm thấy tính năng an toàn' })
-  @ResponseMessage('Lấy tính năng an toàn thành công')
-  findOne(@Param('id') id: string) {
-    return this.safetyFeaturesService.findOne(id);
   }
 }
