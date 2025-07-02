@@ -32,38 +32,6 @@ export class ListingService {
     private readonly propertyService: PropertyService,
   ) {}
 
-  private async checkListingPermission(
-    listingId: string,
-    user: JwtPayload,
-  ): Promise<Listing> {
-    const listing = await this.listingRepo.findById(listingId);
-    if (!listing) {
-      throw new NotFoundException(`Listing with ID ${listingId} not found`);
-    }
-
-    interface PopulatedPropertyForPermission {
-      ownerId: { toString: () => string };
-      staffIds: { toString: () => string }[];
-    }
-
-    const property = (await this.propertyService.findOne(
-      listing.propertyId.toString(),
-    )) as unknown as PopulatedPropertyForPermission;
-
-    const isOwner = property.ownerId?.toString() === user._id;
-    const isStaff = property.staffIds?.some(
-      (staffId) => staffId?.toString() === user._id,
-    );
-
-    if (user.role !== 'admin' && !isOwner && !isStaff) {
-      throw new ForbiddenException(
-        'You do not have permission to modify this listing.',
-      );
-    }
-
-    return listing;
-  }
-
   async create(
     createListingDto: CreateListingDto,
     user: JwtPayload,
@@ -143,24 +111,25 @@ export class ListingService {
     }
 
     // Filter theo title (nếu có trường này)
-    if (
-      filters.title &&
-      typeof filters.title === 'string' &&
-      filters.title.trim()
-    ) {
-      query.title = { $regex: filters.title, $options: 'i' };
+    if (filters.title && typeof filters.title === 'string') {
+      const titleValue = filters.title as string;
+      if (titleValue.trim()) {
+        query.title = { $regex: titleValue, $options: 'i' };
+      }
     }
 
     // Tìm kiếm gần đúng theo keyword cho cả title và description
-    if (filters.keyword) {
+    if (filters.keyword && typeof filters.keyword === 'string') {
+      const keywordValue = filters.keyword as string;
       query.$or = [
-        { title: { $regex: filters.keyword, $options: 'i' } },
-        { description: { $regex: filters.keyword, $options: 'i' } },
+        { title: { $regex: keywordValue, $options: 'i' } },
+        { description: { $regex: keywordValue, $options: 'i' } },
       ];
     }
 
-    if (filters.search) {
-      query.title = { $regex: filters.search, $options: 'i' };
+    if (filters.search && typeof filters.search === 'string') {
+      const searchValue = filters.search as string;
+      query.title = { $regex: searchValue, $options: 'i' };
     }
 
     const sort: Record<string, SortOrder> = {
@@ -190,8 +159,6 @@ export class ListingService {
     updateListingDto: UpdateListingDto,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id, user);
-
     const updatedListing = await this.listingRepo.updateById(
       id,
       updateListingDto,
@@ -204,13 +171,11 @@ export class ListingService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    await this.checkListingPermission(id, user);
     await this.listingRepo.softDelete(id, user._id);
     return { success: true };
   }
 
-  async restore(id: string, user: JwtPayload): Promise<Listing> {
-    await this.checkListingPermission(id, user);
+  async restore(id: string): Promise<Listing> {
     const restoredListing = await this.listingRepo.restore(id);
     if (!restoredListing) {
       throw new NotFoundException(`Could not restore listing with ID ${id}.`);
@@ -223,7 +188,6 @@ export class ListingService {
     status: ListingStatus,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id, user);
     const updatedListing = await this.listingRepo.updateStatus(
       id,
       status,

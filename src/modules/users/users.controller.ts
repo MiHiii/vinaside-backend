@@ -57,6 +57,25 @@ export class UsersController {
   }
 
   @RequirePermission('user.view')
+  @Get('staff')
+  @ApiOperation({ summary: 'Lấy danh sách tất cả nhân viên (staff)' })
+  @ApiResponse({ status: 200, description: 'Danh sách nhân viên' })
+  @ResponseMessage('Lấy danh sách nhân viên thành công.')
+  findAllStaff(
+    @Query() query: Omit<QueryUserDto, 'role'>,
+    @Request() req: RequestWithUser,
+  ): Promise<any> {
+    // Force role to be 'staff' and include common fields
+    const staffQuery: QueryUserDto = {
+      ...query,
+      role: 'staff',
+      isDeleted: false, // Only active staff
+      select: 'name email phone avatar createdAt isVerified',
+    };
+    return this.usersService.findAllWithFilters(staffQuery, req.user);
+  }
+
+  @RequirePermission('user.view')
   @Get('count/total')
   @ApiOperation({ summary: 'Đếm tổng số người dùng' })
   @ApiResponse({ status: 200, description: 'Số lượng người dùng' })
