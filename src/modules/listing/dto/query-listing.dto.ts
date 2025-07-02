@@ -100,4 +100,16 @@ export class QueryListingDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   isDeleted?: boolean;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

@@ -83,4 +83,8 @@ export class UpdateListingDto {
   @IsBoolean()
   @IsOptional()
   is_verified?: boolean;
+
+  @IsMongoId()
+  @IsOptional()
+  propertyId?: string;
 }

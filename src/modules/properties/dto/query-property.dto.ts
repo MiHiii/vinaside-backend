@@ -97,4 +97,18 @@ export class QueryPropertyDto {
   @Type(() => Number)
   @IsNumber()
   radius?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Property name (for exact or fuzzy search)',
+  })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({
+    description: 'Property title (for exact or fuzzy search)',
+  })
+  @IsOptional()
+  @IsString()
+  title?: string;
 }
