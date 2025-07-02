@@ -107,8 +107,9 @@ export class ListingController {
   restore(
     @Param('propertyId') propertyId: string,
     @Param('id') id: string,
+    @Request() req: RequestWithUser,
   ): Promise<Listing> {
-    return this.listingService.restore(id);
+    return this.listingService.restore(id, req.user);
   }
 
   @Patch('property/:propertyId/:id/status')

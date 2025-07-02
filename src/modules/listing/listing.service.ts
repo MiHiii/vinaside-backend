@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { FilterQuery, Types, SortOrder } from 'mongoose';
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { CreateListingDto } from './dto/create-listing.dto';
@@ -27,14 +32,35 @@ export class ListingService {
     private readonly propertyService: PropertyService,
   ) {}
 
-  private async checkListingPermission(listingId: string): Promise<Listing> {
+  private async checkListingPermission(
+    listingId: string,
+    user: JwtPayload,
+  ): Promise<Listing> {
     const listing = await this.listingRepo.findById(listingId);
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${listingId} not found`);
     }
 
-    // Staff permission checking is now handled by @RequirePropertyStaff decorator
-    // Admin check is handled by @RequirePermission decorator
+    interface PopulatedPropertyForPermission {
+      ownerId: { toString: () => string };
+      staffIds: { toString: () => string }[];
+    }
+
+    const property = (await this.propertyService.findOne(
+      listing.propertyId.toString(),
+    )) as unknown as PopulatedPropertyForPermission;
+
+    const isOwner = property.ownerId?.toString() === user._id;
+    const isStaff = property.staffIds?.some(
+      (staffId) => staffId?.toString() === user._id,
+    );
+
+    if (user.role !== 'admin' && !isOwner && !isStaff) {
+      throw new ForbiddenException(
+        'You do not have permission to modify this listing.',
+      );
+    }
+
     return listing;
   }
 
@@ -42,16 +68,38 @@ export class ListingService {
     createListingDto: CreateListingDto,
     user: JwtPayload,
   ): Promise<Listing> {
-    // Permission checking is now handled by decorators:
-    // - @RequirePermission('listing.create') for permission check
-    // - @RequirePropertyStaff for staff validation
+    const { propertyId } = createListingDto;
+
+    interface PopulatedPropertyForCreate {
+      createdBy: { toString: () => string };
+    }
+
+    const property = (await this.propertyService.findOne(
+      propertyId,
+    )) as unknown as PopulatedPropertyForCreate;
+    if (!property || !property.createdBy) {
+      throw new ForbiddenException(
+        'Property does not exist or does not have an owner.',
+      );
+    }
+    // const isOwner = property.createdBy.toString() === user._id;
+
+    // Kiểm tra quyền tạo listing:
+    // - Nếu là admin: luôn được phép tạo listing cho bất kỳ property nào
+    // - Nếu không phải admin: chỉ được phép tạo listing cho property mình sở hữu (createdBy === user._id)
+    // if (user.role !== 'admin' && !isOwner) {
+    //   throw new ForbiddenException(
+    //     `You do not have permission to add listings to property ID ${propertyId}.`,
+    //   );
+    // }
+
     return this.listingRepo.create(createListingDto, user._id);
   }
 
   async findOne(id: string): Promise<Listing> {
     const listing = await this.listingRepo.findById(id, {
       path: 'propertyId',
-      select: 'name type location staffIds',
+      select: 'name type location ownerId staffIds',
     });
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${id} not found.`);
@@ -94,6 +142,27 @@ export class ListingService {
       query.is_verified = filters.is_verified;
     }
 
+    // Filter theo title (nếu có trường này)
+    if (
+      filters.title &&
+      typeof filters.title === 'string' &&
+      filters.title.trim()
+    ) {
+      query.title = { $regex: filters.title, $options: 'i' };
+    }
+
+    // Tìm kiếm gần đúng theo keyword cho cả title và description
+    if (filters.keyword) {
+      query.$or = [
+        { title: { $regex: filters.keyword, $options: 'i' } },
+        { description: { $regex: filters.keyword, $options: 'i' } },
+      ];
+    }
+
+    if (filters.search) {
+      query.title = { $regex: filters.search, $options: 'i' };
+    }
+
     const sort: Record<string, SortOrder> = {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
@@ -121,7 +190,7 @@ export class ListingService {
     updateListingDto: UpdateListingDto,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id);
+    await this.checkListingPermission(id, user);
 
     const updatedListing = await this.listingRepo.updateById(
       id,
@@ -135,13 +204,13 @@ export class ListingService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    await this.checkListingPermission(id);
+    await this.checkListingPermission(id, user);
     await this.listingRepo.softDelete(id, user._id);
     return { success: true };
   }
 
-  async restore(id: string): Promise<Listing> {
-    await this.checkListingPermission(id);
+  async restore(id: string, user: JwtPayload): Promise<Listing> {
+    await this.checkListingPermission(id, user);
     const restoredListing = await this.listingRepo.restore(id);
     if (!restoredListing) {
       throw new NotFoundException(`Could not restore listing with ID ${id}.`);
@@ -154,7 +223,7 @@ export class ListingService {
     status: ListingStatus,
     user: JwtPayload,
   ): Promise<Listing> {
-    await this.checkListingPermission(id);
+    await this.checkListingPermission(id, user);
     const updatedListing = await this.listingRepo.updateStatus(
       id,
       status,
