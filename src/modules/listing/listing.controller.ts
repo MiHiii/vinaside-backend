@@ -58,8 +58,6 @@ export class ListingController {
     @Body() createListingDto: CreateListingDto,
     @Request() req: RequestWithUser,
   ): Promise<Listing> {
-    console.log(createListingDto);
-    console.log(req.user);
     return this.listingService.create(createListingDto, req.user);
   }
 
@@ -96,20 +94,16 @@ export class ListingController {
   }
 
   @Patch('property/:propertyId/:id/restore')
-  @RequirePermission('listing.edit')
+  @RequirePermission('listing.restore')
   @RequirePropertyStaff('propertyId')
-  @ApiOperation({ summary: 'Khôi phục listing đã xóa mềm' })
+  @ApiOperation({ summary: 'Khôi phục listing đã xóa' })
   @ApiResponse({
     status: 200,
-    description: 'Listing được khôi phục thành công.',
+    description: 'Listing được khôi phục thành công',
   })
   @ResponseMessage('Listing restored successfully')
-  restore(
-    @Param('propertyId') propertyId: string,
-    @Param('id') id: string,
-    @Request() req: RequestWithUser,
-  ): Promise<Listing> {
-    return this.listingService.restore(id, req.user);
+  restore(@Param('propertyId') propertyId: string, @Param('id') id: string) {
+    return this.listingService.restore(id);
   }
 
   @Patch('property/:propertyId/:id/status')

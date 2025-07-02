@@ -1,64 +1,62 @@
 import {
+  Injectable,
   CanActivate,
   ExecutionContext,
-  Injectable,
   ForbiddenException,
-  BadRequestException,
-  NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { Request } from 'express';
+import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import { PropertyService } from '../../modules/properties/services/property.service';
 import {
   PROPERTY_STAFF_KEY,
   PropertyStaffOptions,
 } from '../../decorators/require-property-staff.decorator';
-import { JwtPayload } from '../../interfaces/jwt-payload.interface';
-import { PropertyService } from '../../modules/properties/services/property.service';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
-  params: any;
-  body: any;
 }
 
 @Injectable()
 export class PropertyStaffGuard implements CanActivate {
-  constructor(
-    private reflector: Reflector,
-    private propertyService: PropertyService,
-  ) {}
+  constructor(private readonly propertyService: PropertyService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const options = this.reflector.get<PropertyStaffOptions>(
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
+
+    // Get decorator options
+    const reflector = new Reflector();
+    const options = reflector.get<PropertyStaffOptions>(
       PROPERTY_STAFF_KEY,
       context.getHandler(),
     );
 
+    // If no decorator applied, allow access
     if (!options) {
-      return true; // No staff check required
-    }
-
-    const request = context.switchToHttp().getRequest<RequestWithUser>();
-    const user: JwtPayload = request.user;
-
-    if (!user) {
-      throw new ForbiddenException('User không được xác thực');
-    }
-
-    // ✅ Bypass if admin
-    if (user.role === 'admin') {
       return true;
     }
 
     try {
+      // Check if user exists
+      if (!user) {
+        throw new UnauthorizedException('No user found');
+      }
+
+      // Admin bypass - admin can access any property
+      if (user.role === 'admin') {
+        return true;
+      }
+
+      // Extract propertyId from request
       const propertyId = this.extractPropertyId(request, options);
 
       if (!propertyId) {
-        throw new BadRequestException(
-          'Không tìm thấy propertyId trong request',
-        );
+        throw new ForbiddenException('Property ID not found');
       }
 
-      // Kiểm tra user có phải staff của property không
+      // Check if user is staff of the property
       const isStaff = await this.propertyService.isUserStaffOfProperty(
         propertyId,
         user._id,
@@ -66,20 +64,21 @@ export class PropertyStaffGuard implements CanActivate {
 
       if (!isStaff) {
         throw new ForbiddenException(
-          'Bạn không có quyền truy cập resource này. Chỉ staff được gán cho property này mới có quyền.',
+          'You do not have permission to access this property.',
         );
       }
 
       return true;
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       if (
-        error instanceof ForbiddenException ||
-        error instanceof BadRequestException ||
-        error instanceof NotFoundException
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException
       ) {
         throw error;
       }
-      throw new ForbiddenException('Lỗi khi kiểm tra quyền staff');
+      throw new ForbiddenException(`Access denied: ${errorMessage}`);
     }
   }
 
@@ -91,15 +90,15 @@ export class PropertyStaffGuard implements CanActivate {
 
     switch (propertyIdSource) {
       case 'param': {
-        const params = request.params as Record<string, string>;
+        const params = request.params;
         const paramKey = propertyIdParam || 'propertyId';
         return params?.[paramKey] || null;
       }
 
       case 'body': {
-        const body = request.body as Record<string, string>;
+        const body = request.body as Record<string, any>;
         const bodyKey = propertyIdParam || 'propertyId';
-        return body?.[bodyKey] || null;
+        return (body?.[bodyKey] as string) || null;
       }
 
       default:

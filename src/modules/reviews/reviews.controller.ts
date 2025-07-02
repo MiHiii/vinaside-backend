@@ -44,16 +44,12 @@ export class ReviewsController {
   // =========================== MAIN ROUTES ===========================
 
   @Post()
-  @Roles('guest')
-  @RequirePropertyStaff({ propertyIdSource: 'body' })
-  @ApiOperation({ summary: 'Tạo đánh giá mới' })
   @ApiResponse({ status: 201, description: 'Đánh giá được tạo thành công' })
   @ResponseMessage('Tạo đánh giá thành công')
   create(
     @Body() createReviewDto: CreateReviewDto,
     @Request() req: RequestWithUser,
   ) {
-    console.log(createReviewDto);
     return this.reviewsService.create(createReviewDto, req.user);
   }
 

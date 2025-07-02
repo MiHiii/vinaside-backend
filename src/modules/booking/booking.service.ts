@@ -187,8 +187,7 @@ export class BookingService {
   /**
    * Tìm một booking theo ID và trả về dữ liệu định dạng
    */
-  async findOne(id: string, user: JwtPayload): Promise<Booking> {
-    await this.checkBookingPermission(id, user);
+  async findOne(id: string): Promise<Booking> {
     const booking = await this.bookingRepo.findById(id, {
       populate: ['listingId', 'propertyId', 'guestId'],
     });
@@ -208,7 +207,6 @@ export class BookingService {
     updateBookingDto: UpdateBookingDto,
     user: JwtPayload,
   ): Promise<Booking> {
-    await this.checkBookingPermission(id, user);
     const updated = await this.bookingRepo.updateById(
       id,
       updateBookingDto,
@@ -222,11 +220,12 @@ export class BookingService {
   }
 
   /**
-   * Xóa mềm booking (soft delete) và trả về dữ liệu định dạng
+   * Xóa mềm booking và trả về dữ liệu định dạng
    */
   async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    await this.checkBookingPermission(id, user);
-    await this.bookingRepo.softDelete(id, user._id);
+    const deleted = await this.bookingRepo.softDelete(id, user._id);
+    if (!deleted)
+      throw new NotFoundException('Không tìm thấy booking hoặc không thể xóa.');
     return { success: true };
   }
 
@@ -234,7 +233,6 @@ export class BookingService {
    * Khôi phục booking đã xóa và trả về dữ liệu định dạng
    */
   async restore(id: string, user: JwtPayload): Promise<Booking> {
-    await this.checkBookingPermission(id, user);
     const restored = await this.bookingRepo.restore(id, user._id);
     if (!restored)
       throw new NotFoundException(
@@ -512,31 +510,6 @@ export class BookingService {
   }
 
   // ====================== INTERNAL METHODS ======================
-
-  private async checkBookingPermission(
-    bookingId: string,
-    user: JwtPayload,
-  ): Promise<Booking> {
-    const booking = await this.bookingRepo.findById(bookingId);
-    if (!booking) {
-      throw new NotFoundException(
-        `Không tìm thấy booking với ID ${bookingId}.`,
-      );
-    }
-
-    if (user.role === 'admin') {
-      return booking;
-    }
-
-    // Guest can access their own bookings
-    if (booking.guestId.toString() === user._id) {
-      return booking;
-    }
-
-    // Staff permission checking is now handled by @RequirePropertyStaff decorator
-    // If we reach here and user is not guest or admin, they should be authorized staff
-    return booking;
-  }
 
   /**
    * Tìm các booking của một guest

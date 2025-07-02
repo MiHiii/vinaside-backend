@@ -45,7 +45,6 @@ export class BookingController {
 
   @Post()
   @Roles('guest')
-  @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({ summary: 'Tạo booking mới' })
   @ApiResponse({ status: 201, description: 'Booking được tạo thành công' })
   @ResponseMessage('Tạo booking thành công')
@@ -161,15 +160,8 @@ export class BookingController {
   @ApiOperation({ summary: 'Lấy thông tin chi tiết booking' })
   @ApiResponse({ status: 200, description: 'Thông tin booking' })
   @ResponseMessage('Lấy thông tin booking thành công')
-  findOne(
-    @Param('propertyId') propertyId: string,
-    @Param('id') id: string,
-    @Request() req: RequestWithUser,
-  ) {
-    if (!req.user.role) {
-      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
-    }
-    return this.bookingService.findOne(id, req.user as any as JwtPayload);
+  findOne(@Param('propertyId') propertyId: string, @Param('id') id: string) {
+    return this.bookingService.findOne(id);
   }
 
   @Patch('property/:propertyId/:id')

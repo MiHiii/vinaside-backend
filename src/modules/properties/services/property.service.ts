@@ -26,29 +26,6 @@ export class PropertyService {
     private propertyModel: Model<PropertyDocument>,
   ) {}
 
-  private checkPermission(
-    property: Property,
-    user: JwtPayload,
-    message: string = 'You do not have permission to perform this action',
-  ) {
-    if (user.role === 'admin') {
-      return;
-    }
-
-    // Staff-based permission only
-    interface PopulatedProperty {
-      staffIds: { toString: () => string }[];
-    }
-
-    const p = property as unknown as PopulatedProperty;
-    const isStaff =
-      p.staffIds && p.staffIds.some((id) => id?.toString() === user._id);
-
-    if (!isStaff) {
-      throw new ForbiddenException(message);
-    }
-  }
-
   async create(
     createPropertyDto: CreatePropertyDto,
     user: JwtPayload,
@@ -101,8 +78,11 @@ export class PropertyService {
       filterQuery['location.district'] = new RegExp(filters.district, 'i');
     }
 
-    if (typeof filters.name === 'string' && filters.name.trim()) {
-      filterQuery.name = { $regex: filters.name, $options: 'i' };
+    if (filters.name && typeof filters.name === 'string') {
+      const nameStr = String(filters.name);
+      if (nameStr.trim()) {
+        filterQuery.name = { $regex: nameStr, $options: 'i' };
+      }
     }
 
     // Geospatial search
@@ -205,15 +185,7 @@ export class PropertyService {
   async update(
     id: string,
     updatePropertyDto: UpdatePropertyDto,
-    user: JwtPayload,
   ): Promise<Property> {
-    const property = await this.findOne(id);
-    this.checkPermission(
-      property,
-      user,
-      'You can only update your own properties',
-    );
-
     // Create a mutable update object
     const updateData: { [key: string]: any } = { ...updatePropertyDto };
 
@@ -236,14 +208,7 @@ export class PropertyService {
     return updatedProperty;
   }
 
-  async remove(id: string, user: JwtPayload): Promise<void> {
-    const property = await this.findOne(id);
-    this.checkPermission(
-      property,
-      user,
-      'You can only delete your own properties',
-    );
-
+  async remove(id: string): Promise<void> {
     await this.propertyModel.findByIdAndUpdate(id, {
       isDeleted: true,
       deletedAt: new Date(),
@@ -288,14 +253,7 @@ export class PropertyService {
     return property;
   }
 
-  async updateStatus(
-    id: string,
-    status: string,
-    user: JwtPayload,
-  ): Promise<Property> {
-    const property = await this.findOne(id);
-    this.checkPermission(property, user, 'You can only update property status');
-
+  async updateStatus(id: string, status: string): Promise<Property> {
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, { status }, { new: true })
       .populate('staffIds', 'name email')
@@ -308,19 +266,7 @@ export class PropertyService {
     return updatedProperty;
   }
 
-  async assignStaff(
-    id: string,
-    staffIds: string[],
-    user: JwtPayload,
-  ): Promise<Property> {
-    const property = await this.findOne(id);
-    // Only owner or admin can assign staff
-    this.checkPermission(
-      property,
-      user,
-      'You can only manage your own properties',
-    );
-
+  async assignStaff(id: string, staffIds: string[]): Promise<Property> {
     const objectIdStaffIds = staffIds.map((id) => new Types.ObjectId(id));
 
     const updatedProperty = await this.propertyModel
@@ -379,18 +325,6 @@ export class PropertyService {
   // ================== PUBLIC UTILITY METHODS FOR OTHER SERVICES ==================
 
   /**
-   * Public method để các service khác có thể sử dụng cho permission checking
-   */
-  async checkUserPermissionForProperty(
-    propertyId: string,
-    user: JwtPayload,
-    message: string = 'You do not have permission to perform this action',
-  ): Promise<void> {
-    const property = await this.findOne(propertyId);
-    this.checkPermission(property, user, message);
-  }
-
-  /**
    * Kiểm tra user có phải staff của property không
    */
   async isUserStaffOfProperty(
@@ -399,13 +333,29 @@ export class PropertyService {
   ): Promise<boolean> {
     try {
       const property = await this.findOne(propertyId);
+
+      interface PopulatedStaff {
+        _id?: Types.ObjectId;
+        toString?: () => string;
+      }
+
       interface PopulatedProperty {
-        staffIds: { toString: () => string }[];
+        staffIds: PopulatedStaff[];
       }
       const p = property as unknown as PopulatedProperty;
-      return (
-        p.staffIds?.some((staffId) => staffId?.toString() === userId) || false
-      );
+
+      const isStaff =
+        p.staffIds?.some((staff) => {
+          // Handle both populated objects and ObjectIds
+          const staffIdStr = staff?._id
+            ? staff._id.toString()
+            : staff && typeof staff.toString === 'function'
+              ? staff.toString()
+              : '';
+          return staffIdStr === userId;
+        }) || false;
+
+      return isStaff;
     } catch {
       return false;
     }
