@@ -79,9 +79,9 @@ export class PropertyService {
     }
 
     if (filters.name && typeof filters.name === 'string') {
-      const nameValue = filters.name as string;
-      if (nameValue.trim()) {
-        filterQuery.name = { $regex: nameValue, $options: 'i' };
+      const nameStr = String(filters.name);
+      if (nameStr.trim()) {
+        filterQuery.name = { $regex: nameStr, $options: 'i' };
       }
     }
 

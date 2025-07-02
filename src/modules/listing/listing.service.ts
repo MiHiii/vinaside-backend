@@ -112,24 +112,24 @@ export class ListingService {
 
     // Filter theo title (nếu có trường này)
     if (filters.title && typeof filters.title === 'string') {
-      const titleValue = filters.title as string;
-      if (titleValue.trim()) {
-        query.title = { $regex: titleValue, $options: 'i' };
+      const titleStr = String(filters.title);
+      if (titleStr.trim()) {
+        query.title = { $regex: titleStr, $options: 'i' };
       }
     }
 
     // Tìm kiếm gần đúng theo keyword cho cả title và description
     if (filters.keyword && typeof filters.keyword === 'string') {
-      const keywordValue = filters.keyword as string;
+      const keywordStr = String(filters.keyword);
       query.$or = [
-        { title: { $regex: keywordValue, $options: 'i' } },
-        { description: { $regex: keywordValue, $options: 'i' } },
+        { title: { $regex: keywordStr, $options: 'i' } },
+        { description: { $regex: keywordStr, $options: 'i' } },
       ];
     }
 
     if (filters.search && typeof filters.search === 'string') {
-      const searchValue = filters.search as string;
-      query.title = { $regex: searchValue, $options: 'i' };
+      const searchStr = String(filters.search);
+      query.title = { $regex: searchStr, $options: 'i' };
     }
 
     const sort: Record<string, SortOrder> = {
