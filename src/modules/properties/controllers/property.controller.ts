@@ -98,6 +98,15 @@ export class PropertyController {
     return this.propertyService.getStats();
   }
 
+  @Get(':id/statistics')
+  @RequirePermission('property.view')
+  @ApiOperation({ summary: 'Lấy thống kê chi tiết của một tài sản' })
+  @ApiResponse({ status: 200, description: 'Thống kê chi tiết tài sản' })
+  @ResponseMessage('Property detailed statistics fetched successfully')
+  getPropertyStatistics(@Param('id') id: string) {
+    return this.propertyService.getPropertyStatistics(id);
+  }
+
   @Get('my-properties')
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại' })

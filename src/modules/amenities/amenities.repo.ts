@@ -455,32 +455,23 @@ export class AmenitiesRepo {
       search,
       is_active,
       default_checked,
-      includeDeleted = false, // ✅ Mặc định false như house-rules repo
+      includeDeleted = true,
       isDeleted,
     } = options;
     const skip = (page - 1) * limit;
 
-    // ✅ Base query cho admin - THEO PATTERN HOUSE-RULES
     const query: FilterQuery<AmenityDocument> = {};
-
-    // ✅ Logic cho isDeleted filter - COPY TỪ HOUSE-RULES
     if (typeof isDeleted === 'boolean') {
-      // Nếu isDeleted được chỉ định cụ thể, filter theo giá trị đó
       query.isDeleted = isDeleted;
     } else if (includeDeleted) {
-      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
-      // Không thêm filter isDeleted
     } else {
-      // Mặc định chỉ lấy những item chưa bị xóa
       query.isDeleted = false;
     }
 
-    // Filter theo is_active nếu được chỉ định
     if (typeof is_active === 'boolean') {
       query.is_active = is_active;
     }
 
-    // Filter theo default_checked nếu được chỉ định
     if (typeof default_checked === 'boolean') {
       query.default_checked = default_checked;
     }
@@ -498,7 +489,6 @@ export class AmenitiesRepo {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
 
-    // ✅ Count và execute query - TRỰC TIẾP NHU HOUSE-RULES
     const total = await this.amenityModel.countDocuments(query);
     const totalPages = Math.ceil(total / limit);
 
@@ -561,7 +551,7 @@ export class AmenitiesRepo {
     const {
       is_active,
       default_checked,
-      includeDeleted = true, // ✅ Mặc định admin search tất cả như house-rules
+      includeDeleted = true,
       isDeleted,
     } = options;
 
