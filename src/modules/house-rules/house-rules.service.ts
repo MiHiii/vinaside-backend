@@ -15,6 +15,7 @@ import { HouseRule } from './schemas/house-rule.schema';
 import {
   IHouseRuleResponse,
   IHouseRule,
+  IHouseRuleStatistics,
 } from './interfaces/house-rule.interface';
 
 // Using interface from interfaces folder
@@ -411,6 +412,35 @@ export class HouseRulesService {
         error instanceof Error ? error.message : String(error),
       );
       throw new BadRequestException('Không thể tìm kiếm quy tắc nhà');
+    }
+  }
+
+  /**
+   * Lấy thống kê tổng quan về house rules
+   */
+  async getStatistics(user: JwtPayload) {
+    this.validateManagePermission(user);
+
+    try {
+      const stats = await this.houseRulesRepo.getStatistics({
+        period: 'month',
+        includeDeleted: false,
+        includeRecentActivity: true,
+        includeTopCreators: true,
+      });
+
+      this.logger.log('House rules statistics retrieved');
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error getting house rules statistics:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể lấy thống kê quy tắc nhà');
     }
   }
 

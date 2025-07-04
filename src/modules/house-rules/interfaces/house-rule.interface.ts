@@ -38,3 +38,37 @@ export interface IHouseRuleSort {
   field: 'name' | 'created_at' | 'updated_at' | 'is_active';
   order: 'asc' | 'desc';
 }
+
+export interface IHouseRuleStatistics {
+  total: number;
+  active: number;
+  inactive: number;
+  defaultChecked: number;
+  deleted: number;
+  createdToday: number;
+  createdThisWeek: number;
+  createdThisMonth: number;
+  byStatus: {
+    active: number;
+    inactive: number;
+  };
+  byDefaultStatus: {
+    defaultChecked: number;
+    notDefaultChecked: number;
+  };
+  recentActivity: {
+    date: string;
+    count: number;
+  }[];
+  topCreators: {
+    userId: string;
+    count: number;
+  }[];
+}
+
+export interface IHouseRuleStatsQuery {
+  period?: 'day' | 'week' | 'month' | 'year';
+  includeDeleted?: boolean;
+  includeRecentActivity?: boolean;
+  includeTopCreators?: boolean;
+}

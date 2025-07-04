@@ -340,4 +340,26 @@ export class VoucherService {
       message: `Voucher này áp dụng cho ${roomIds.length} phòng cụ thể`,
     };
   }
+
+  /**
+   * Lấy thống kê tổng quan về vouchers (Admin only)
+   */
+  async getStatistics() {
+    try {
+      const stats = await this.voucherRepo.getStatistics();
+
+      this.logger.log('Voucher statistics retrieved successfully');
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error getting voucher statistics:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể lấy thống kê voucher');
+    }
+  }
 }

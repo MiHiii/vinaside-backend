@@ -15,7 +15,6 @@ import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
-import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -115,14 +114,13 @@ export class ReviewsController {
     return this.reviewsService.findAllForAdmin(queryDto);
   }
 
-  @Delete('property/:propertyId/admin/:id')
+  @Delete('admin/:id')
   @RequirePermission('review.delete')
-  @RequirePropertyStaff('propertyId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Xóa đánh giá vi phạm' })
   @ApiResponse({ status: 204, description: 'Đánh giá được xóa thành công' })
   @ResponseMessage('Xóa đánh giá thành công')
-  remove(@Param('propertyId') propertyId: string, @Param('id') id: string) {
+  remove(@Param('id') id: string) {
     return this.reviewsService.remove(id);
   }
 }

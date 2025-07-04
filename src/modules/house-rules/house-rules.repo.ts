@@ -533,4 +533,185 @@ export class HouseRulesRepo {
 
     return this.houseRuleModel.findOne(query).exec();
   }
+
+  /**
+   * Lấy thống kê tổng quan house rules
+   */
+  async getStatistics(
+    options: {
+      period?: 'day' | 'week' | 'month' | 'year';
+      includeDeleted?: boolean;
+      includeRecentActivity?: boolean;
+      includeTopCreators?: boolean;
+    } = {},
+  ): Promise<{
+    total: number;
+    active: number;
+    inactive: number;
+    defaultChecked: number;
+    deleted: number;
+    createdToday: number;
+    createdThisWeek: number;
+    createdThisMonth: number;
+    byStatus: { active: number; inactive: number };
+    byDefaultStatus: { defaultChecked: number; notDefaultChecked: number };
+    recentActivity: { date: string; count: number }[];
+    topCreators: { userId: string; count: number }[];
+  }> {
+    const {
+      period = 'month',
+      includeDeleted = false,
+      includeRecentActivity = true,
+      includeTopCreators = true,
+    } = options;
+
+    // Base filter
+    const baseFilter: FilterQuery<HouseRuleDocument> = includeDeleted
+      ? {}
+      : { isDeleted: { $ne: true } };
+
+    // Các thời điểm reference
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Aggregation pipeline cho basic stats
+    const basicStats = await this.houseRuleModel.aggregate([
+      { $match: baseFilter },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: {
+            $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
+          },
+          inactive: {
+            $sum: { $cond: [{ $eq: ['$is_active', false] }, 1, 0] },
+          },
+          defaultChecked: {
+            $sum: { $cond: [{ $eq: ['$default_checked', true] }, 1, 0] },
+          },
+          notDefaultChecked: {
+            $sum: { $cond: [{ $eq: ['$default_checked', false] }, 1, 0] },
+          },
+          deleted: {
+            $sum: { $cond: [{ $eq: ['$isDeleted', true] }, 1, 0] },
+          },
+          createdToday: {
+            $sum: {
+              $cond: [{ $gte: ['$created_at', today] }, 1, 0],
+            },
+          },
+          createdThisWeek: {
+            $sum: {
+              $cond: [{ $gte: ['$created_at', thisWeek] }, 1, 0],
+            },
+          },
+          createdThisMonth: {
+            $sum: {
+              $cond: [{ $gte: ['$created_at', thisMonth] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    const stats = basicStats[0] || {
+      total: 0,
+      active: 0,
+      inactive: 0,
+      defaultChecked: 0,
+      notDefaultChecked: 0,
+      deleted: 0,
+      createdToday: 0,
+      createdThisWeek: 0,
+      createdThisMonth: 0,
+    };
+
+    // Recent Activity (chart data)
+    let recentActivity: { date: string; count: number }[] = [];
+    if (includeRecentActivity) {
+      let periodDays = 30; // default month
+      if (period === 'day') periodDays = 1;
+      if (period === 'week') periodDays = 7;
+      if (period === 'year') periodDays = 365;
+
+      const startDate = new Date(
+        now.getTime() - periodDays * 24 * 60 * 60 * 1000,
+      );
+
+      recentActivity = await this.houseRuleModel.aggregate([
+        {
+          $match: {
+            ...baseFilter,
+            created_at: { $gte: startDate },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$created_at',
+              },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+        {
+          $project: {
+            date: '$_id',
+            count: 1,
+            _id: 0,
+          },
+        },
+      ]);
+    }
+
+    // Top Creators
+    let topCreators: { userId: string; count: number }[] = [];
+    if (includeTopCreators) {
+      topCreators = await this.houseRuleModel.aggregate([
+        { $match: baseFilter },
+        {
+          $group: {
+            _id: '$createdBy',
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+        {
+          $project: {
+            userId: { $toString: '$_id' },
+            count: 1,
+            _id: 0,
+          },
+        },
+      ]);
+    }
+
+    return {
+      total: stats.total,
+      active: stats.active,
+      inactive: stats.inactive,
+      defaultChecked: stats.defaultChecked,
+      deleted: stats.deleted,
+      createdToday: stats.createdToday,
+      createdThisWeek: stats.createdThisWeek,
+      createdThisMonth: stats.createdThisMonth,
+      byStatus: {
+        active: stats.active,
+        inactive: stats.inactive,
+      },
+      byDefaultStatus: {
+        defaultChecked: stats.defaultChecked,
+        notDefaultChecked: stats.notDefaultChecked,
+      },
+      recentActivity,
+      topCreators,
+    };
+  }
 }

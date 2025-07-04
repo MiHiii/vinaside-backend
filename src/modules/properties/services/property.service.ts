@@ -12,6 +12,7 @@ import {
   BookingStatus,
   PaymentStatus,
 } from '../../booking/schemas/booking.schema';
+import { Review } from '../../reviews/schemas/review.schema';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
@@ -34,6 +35,8 @@ export class PropertyService {
     private listingModel: Model<Listing>,
     @InjectModel(Booking.name)
     private bookingModel: Model<Booking>,
+    @InjectModel(Review.name)
+    private reviewModel: Model<Review>,
   ) {}
 
   async create(
@@ -571,13 +574,112 @@ export class PropertyService {
     const returnCustomerRate =
       uniqueCustomers > 0 ? (returnCustomers / uniqueCustomers) * 100 : 0;
 
+    // 6. Thống kê đánh giá (Reviews)
+    const allReviews = await this.reviewModel.find({
+      room_id: { $in: listingIds },
+    });
+
+    const totalReviews = allReviews.length;
+    const averagePropertyRating =
+      totalReviews > 0
+        ? allReviews.reduce((sum, review) => sum + review.rating, 0) /
+          totalReviews
+        : 0;
+
+    // Rating distribution cho toàn bộ property (array format for charts)
+    const ratingDistribution = [
+      { rating: 1, count: allReviews.filter((r) => r.rating === 1).length },
+      { rating: 2, count: allReviews.filter((r) => r.rating === 2).length },
+      { rating: 3, count: allReviews.filter((r) => r.rating === 3).length },
+      { rating: 4, count: allReviews.filter((r) => r.rating === 4).length },
+      { rating: 5, count: allReviews.filter((r) => r.rating === 5).length },
+    ];
+
+    // Reviews by room
+    const reviewsByRoom = await this.reviewModel.aggregate([
+      {
+        $match: {
+          room_id: { $in: listingIds },
+        },
+      },
+      {
+        $group: {
+          _id: '$room_id',
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+          ratings: { $push: '$rating' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      {
+        $unwind: '$listing',
+      },
+      {
+        $project: {
+          listingId: '$_id',
+          listingTitle: '$listing.title',
+          totalReviews: 1,
+          averageRating: { $round: ['$averageRating', 1] },
+          ratingCounts: {
+            1: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 1] } },
+              },
+            },
+            2: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 2] } },
+              },
+            },
+            3: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 3] } },
+              },
+            },
+            4: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 4] } },
+              },
+            },
+            5: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 5] } },
+              },
+            },
+          },
+        },
+      },
+      {
+        $sort: { averageRating: -1 },
+      },
+    ]);
+
+    // Recent reviews
+    const recentReviews = await this.reviewModel
+      .find({
+        room_id: { $in: listingIds },
+      })
+      .populate('user_id', 'name avatar')
+      .populate('room_id', 'title')
+      .sort({ created_at: -1 })
+      .limit(10);
+
     return {
       propertyInfo: {
         id: propertyId,
         name: property.name,
-        type: property.type,
-        status: property.status,
-        isVerified: property.isVerified,
+        description: property.description,
+        thumbnail: property.thumbnail,
+        images: property.images || [],
+        location: property.location,
+        createdAt: (property as any).createdAt, // Timestamps field from Mongoose
       },
 
       // 1. Tổng quan phòng
@@ -598,7 +700,9 @@ export class PropertyService {
         cancellationRate: Math.round(cancellationRate * 100) / 100,
         averageOccupancyRate: Math.round(averageOccupancyRate * 100) / 100,
         successRate:
-          totalBookings > 0 ? (successfulBookings / totalBookings) * 100 : 0,
+          totalBookings > 0
+            ? Math.round((successfulBookings / totalBookings) * 100 * 100) / 100
+            : null,
       },
 
       // 3. Doanh thu và giá
@@ -607,6 +711,7 @@ export class PropertyService {
         monthlyRevenue: monthlyRevenue.map((m) => ({
           year: m._id.year,
           month: m._id.month,
+          monthKey: `${m._id.year}-${m._id.month.toString().padStart(2, '0')}`, // "2025-07" format
           revenue: Math.round(m.revenue),
           bookings: m.bookings,
         })),
@@ -626,7 +731,11 @@ export class PropertyService {
       timeStatistics: {
         earliestBookingDate,
         latestBookingDate,
-        averageStayDuration: Math.round(averageStayDuration * 100) / 100,
+        averageStayDuration: Math.round(averageStayDuration * 10) / 10, // 1 chữ số thập phân
+        averageStayDurationText:
+          averageStayDuration > 0
+            ? `${Math.round(averageStayDuration * 10) / 10} nights`
+            : null,
         peakBookingDays: bookingsByDate.map((d) => ({
           date: d._id,
           bookingCount: d.count,
@@ -643,6 +752,51 @@ export class PropertyService {
           uniqueCustomers > 0
             ? Math.round((totalBookings / uniqueCustomers) * 100) / 100
             : 0,
+      },
+
+      // 6. Thống kê đánh giá
+      reviewStatistics: {
+        totalReviews,
+        averagePropertyRating: Math.round(averagePropertyRating * 10) / 10,
+        ratingDistribution,
+        reviewsByRoom: reviewsByRoom.map((room) => ({
+          listingId: room.listingId,
+          listingTitle: room.listingTitle,
+          totalReviews: room.totalReviews,
+          averageRating: room.averageRating,
+          ratingDistribution: [
+            { rating: 1, count: room.ratingCounts[1] || 0 },
+            { rating: 2, count: room.ratingCounts[2] || 0 },
+            { rating: 3, count: room.ratingCounts[3] || 0 },
+            { rating: 4, count: room.ratingCounts[4] || 0 },
+            { rating: 5, count: room.ratingCounts[5] || 0 },
+          ],
+        })),
+        recentReviews: recentReviews.map((review) => ({
+          id: review._id,
+          rating: review.rating,
+          comment: review.comment,
+          createdAt: review.created_at,
+          // Flattened user info
+          userName: (review.user_id as any)?.name || 'Unknown',
+          userAvatar: (review.user_id as any)?.avatar || null,
+          // Flattened listing info
+          listingId: (review.room_id as any)?._id,
+          listingTitle: (review.room_id as any)?.title || 'Unknown Room',
+          // Nested structure vẫn có (optional cho flexibility)
+          user: {
+            name: (review.user_id as any)?.name || 'Unknown',
+            avatar: (review.user_id as any)?.avatar || null,
+          },
+          listing: {
+            id: (review.room_id as any)?._id,
+            title: (review.room_id as any)?.title || 'Unknown Room',
+          },
+        })),
+        roomsWithReviews: reviewsByRoom.length,
+        roomsWithoutReviews: totalRooms - reviewsByRoom.length,
+        reviewCoverage:
+          totalRooms > 0 ? (reviewsByRoom.length / totalRooms) * 100 : 0,
       },
     };
   }
