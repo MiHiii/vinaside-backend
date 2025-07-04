@@ -15,7 +15,6 @@ import { HouseRule } from './schemas/house-rule.schema';
 import {
   IHouseRuleResponse,
   IHouseRule,
-  IHouseRuleStatistics,
 } from './interfaces/house-rule.interface';
 
 // Using interface from interfaces folder

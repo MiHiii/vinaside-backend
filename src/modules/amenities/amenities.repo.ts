@@ -464,6 +464,7 @@ export class AmenitiesRepo {
     if (typeof isDeleted === 'boolean') {
       query.isDeleted = isDeleted;
     } else if (includeDeleted) {
+      // Nếu includeDeleted = true, lấy tất cả (không filter theo isDeleted)
     } else {
       query.isDeleted = false;
     }

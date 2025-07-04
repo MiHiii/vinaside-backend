@@ -617,6 +617,7 @@ export class HouseRulesRepo {
       },
     ]);
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const stats = basicStats[0] || {
       total: 0,
       active: 0,
@@ -694,21 +695,33 @@ export class HouseRulesRepo {
     }
 
     return {
-      total: stats.total,
-      active: stats.active,
-      inactive: stats.inactive,
-      defaultChecked: stats.defaultChecked,
-      deleted: stats.deleted,
-      createdToday: stats.createdToday,
-      createdThisWeek: stats.createdThisWeek,
-      createdThisMonth: stats.createdThisMonth,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      total: stats.total as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      active: stats.active as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      inactive: stats.inactive as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      defaultChecked: stats.defaultChecked as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      deleted: stats.deleted as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      createdToday: stats.createdToday as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      createdThisWeek: stats.createdThisWeek as number,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      createdThisMonth: stats.createdThisMonth as number,
       byStatus: {
-        active: stats.active,
-        inactive: stats.inactive,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        active: stats.active as number,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        inactive: stats.inactive as number,
       },
       byDefaultStatus: {
-        defaultChecked: stats.defaultChecked,
-        notDefaultChecked: stats.notDefaultChecked,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        defaultChecked: stats.defaultChecked as number,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        notDefaultChecked: stats.notDefaultChecked as number,
       },
       recentActivity,
       topCreators,

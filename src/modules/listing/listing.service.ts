@@ -238,7 +238,6 @@ export class ListingService {
     }
 
     // Import động để tránh circular dependency
-    const { Model } = await import('mongoose');
     const mongoose = await import('mongoose');
     const ReviewModel = mongoose.model('Review');
 
@@ -288,10 +287,20 @@ export class ListingService {
       };
     }
 
-    const { total, averageRating, ratings } = stats[0];
+    const { total, averageRating, ratings } = stats[0] as {
+      total: number;
+      averageRating: number;
+      ratings: number[];
+    };
 
     // Tính phân bố rating
-    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const ratingDistribution: { [key: number]: number } = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+    };
     ratings.forEach((rating: number) => {
       ratingDistribution[rating]++;
     });
@@ -334,7 +343,11 @@ export class ListingService {
           },
         ]);
 
-        const { averageRating = 0, reviewsCount = 0 } = stats[0] || {};
+        const { averageRating = 0, reviewsCount = 0 } =
+          (stats[0] as {
+            averageRating?: number;
+            reviewsCount?: number;
+          }) || {};
 
         // Cập nhật listing trực tiếp qua model
         const mongoose = await import('mongoose');
@@ -348,7 +361,7 @@ export class ListingService {
         updatedCount++;
       } catch (error) {
         this.logger.error(
-          `Error updating rating for listing ${listing._id}: ${error.message}`,
+          `Error updating rating for listing ${String(listing._id)}: ${(error as Error).message}`,
         );
       }
     }
