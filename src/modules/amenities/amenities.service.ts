@@ -105,7 +105,7 @@ export class AmenitiesService {
         limit = 10,
         sortBy = 'created_at',
         sortOrder = 'desc',
-        includeDeleted = true, // ✅ Mặc định admin lấy tất cả như house-rules
+        includeDeleted = true, // ✅ Mặc định admin lấy tất cả
         search,
         is_active,
         default_checked,

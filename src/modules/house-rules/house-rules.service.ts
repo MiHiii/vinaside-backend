@@ -414,6 +414,35 @@ export class HouseRulesService {
     }
   }
 
+  /**
+   * Lấy thống kê tổng quan về house rules
+   */
+  async getStatistics(user: JwtPayload) {
+    this.validateManagePermission(user);
+
+    try {
+      const stats = await this.houseRulesRepo.getStatistics({
+        period: 'month',
+        includeDeleted: false,
+        includeRecentActivity: true,
+        includeTopCreators: true,
+      });
+
+      this.logger.log('House rules statistics retrieved');
+
+      return {
+        success: true,
+        data: stats,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Error getting house rules statistics:',
+        error instanceof Error ? error.message : String(error),
+      );
+      throw new BadRequestException('Không thể lấy thống kê quy tắc nhà');
+    }
+  }
+
   // ==================== LEGACY METHODS FOR BACKWARD COMPATIBILITY ====================
 
   /**

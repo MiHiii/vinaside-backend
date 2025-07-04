@@ -4,6 +4,8 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { QueryReviewDto } from './dto/query-review.dto';
 import { Review } from './schemas/review.schema';
@@ -12,6 +14,8 @@ import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { parseSortString } from '../../utils/common.util';
 import { FilterQuery, Types } from 'mongoose';
 import { PropertyService } from '../properties/services/property.service';
+import { ListingService } from '../listing/listing.service';
+import { Listing } from '../listing/schemas/listing.schema';
 
 @Injectable()
 export class ReviewsService {
@@ -20,6 +24,8 @@ export class ReviewsService {
   constructor(
     private readonly reviewsRepo: ReviewsRepo,
     private readonly propertyService: PropertyService,
+    private readonly listingService: ListingService,
+    @InjectModel(Listing.name) private readonly listingModel: Model<Listing>,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -112,22 +118,24 @@ export class ReviewsService {
    * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
   async searchForAdmin(queryDto: QueryReviewDto) {
-    if (!queryDto.keyword) {
-      throw new BadRequestException('Từ khóa tìm kiếm không được để trống');
+    // Nếu có keyword thì search, nếu không thì chỉ filter
+    if (queryDto.keyword) {
+      const result = await this.searchReviews(queryDto.keyword, queryDto);
+      const { page = 1, limit = 10 } = queryDto;
+
+      return {
+        reviews: result.data,
+        meta: {
+          total: result.total,
+          page,
+          limit,
+          totalPages: Math.ceil(result.total / limit) || 1,
+        },
+      };
+    } else {
+      // Nếu không có keyword, dùng filter như findAllForAdmin
+      return this.findAllForAdmin(queryDto);
     }
-
-    const result = await this.searchReviews(queryDto.keyword, queryDto);
-    const { page = 1, limit = 10 } = queryDto;
-
-    return {
-      reviews: result.data,
-      meta: {
-        total: result.total,
-        page,
-        limit,
-        totalPages: Math.ceil(result.total / limit) || 1,
-      },
-    };
   }
 
   /**
@@ -172,6 +180,9 @@ export class ReviewsService {
       if (!populatedReview) {
         throw new Error('Không thể tải thông tin review sau khi tạo');
       }
+
+      // Cập nhật rating của listing sau khi tạo review
+      await this.updateListingRating(createReviewDto.room_id);
 
       this.logger.log(`Review created successfully by user ${user._id}`);
       return populatedReview;
@@ -315,13 +326,43 @@ export class ReviewsService {
    * Xóa review (private)
    */
   private async deleteReview(id: string): Promise<void> {
-    await this.findReviewById(id); // Kiểm tra tồn tại
+    const review = await this.findReviewById(id); // Kiểm tra tồn tại và lấy room_id
+    const roomId = review.room_id.toString();
 
     const success = await this.reviewsRepo.deleteById(id);
     if (!success) {
       throw new BadRequestException('Không thể xóa review. Vui lòng thử lại.');
     }
 
+    // Cập nhật rating của listing sau khi xóa review
+    await this.updateListingRating(roomId);
+
     this.logger.log(`Review ${id} deleted successfully`);
+  }
+
+  /**
+   * Cập nhật average_rating và reviews_count của listing
+   */
+  private async updateListingRating(roomId: string): Promise<void> {
+    try {
+      // Tính toán rating trung bình và số lượng reviews
+      const stats = await this.reviewsRepo.getRoomRatingStats(roomId);
+
+      // Cập nhật listing sử dụng model trực tiếp
+      await this.listingModel.findByIdAndUpdate(roomId, {
+        average_rating: Math.round(stats.averageRating * 10) / 10,
+        reviews_count: stats.totalReviews,
+      });
+
+      this.logger.log(
+        `Updated listing ${roomId} - rating: ${stats.averageRating}, count: ${stats.totalReviews}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error updating listing rating for room ${roomId}:`,
+        error,
+      );
+      // Không throw error để không ảnh hưởng đến flow chính
+    }
   }
 }

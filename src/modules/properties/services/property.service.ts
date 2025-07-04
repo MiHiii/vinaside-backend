@@ -6,6 +6,13 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
 import { Property, PropertyDocument } from '../schemas/property.schema';
+import { Listing, ListingStatus } from '../../listing/schemas/listing.schema';
+import {
+  Booking,
+  BookingStatus,
+  PaymentStatus,
+} from '../../booking/schemas/booking.schema';
+import { Review } from '../../reviews/schemas/review.schema';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
@@ -24,6 +31,12 @@ export class PropertyService {
   constructor(
     @InjectModel(Property.name)
     private propertyModel: Model<PropertyDocument>,
+    @InjectModel(Listing.name)
+    private listingModel: Model<Listing>,
+    @InjectModel(Booking.name)
+    private bookingModel: Model<Booking>,
+    @InjectModel(Review.name)
+    private reviewModel: Model<Review>,
   ) {}
 
   async create(
@@ -319,6 +332,493 @@ export class PropertyService {
         },
         {} as { [key: string]: number },
       ),
+    };
+  }
+
+  /**
+   * Lấy thống kê chi tiết cho một property cụ thể
+   */
+
+  async getPropertyStatistics(propertyId: string) {
+    // Validate property exists
+    const property = await this.findOne(propertyId);
+
+    // Get all listings for this property
+    const allListings = await this.listingModel.find({
+      propertyId: new Types.ObjectId(propertyId),
+      isDeleted: false,
+    });
+
+    const listingIds = allListings.map((listing) => listing._id);
+
+    // Get all bookings for this property
+    const allBookings = await this.bookingModel
+      .find({
+        propertyId: new Types.ObjectId(propertyId),
+        isDeleted: false,
+      })
+      .sort({ checkInDate: 1 });
+
+    // 1. Tổng quan phòng (listings)
+    const totalRooms = allListings.length;
+    const activeRooms = allListings.filter(
+      (l) =>
+        l.status === ListingStatus.ACTIVE ||
+        l.status === ListingStatus.VERIFIED,
+    ).length;
+
+    // Rooms with at least 1 booking
+    const bookedRoomIds = [
+      ...new Set(allBookings.map((b) => b.listingId.toString())),
+    ];
+    const roomsWithBookings = bookedRoomIds.length;
+    const roomsWithoutBookings = totalRooms - roomsWithBookings;
+
+    // 2. Hiệu suất đặt phòng
+    const totalBookings = allBookings.length;
+    const successfulBookings = allBookings.filter(
+      (b) =>
+        b.status === BookingStatus.CONFIRMED ||
+        b.status === BookingStatus.COMPLETED,
+    ).length;
+    const cancelledBookings = allBookings.filter(
+      (b) => b.status === BookingStatus.CANCELLED,
+    ).length;
+    const cancellationRate =
+      totalBookings > 0 ? (cancelledBookings / totalBookings) * 100 : 0;
+
+    // Calculate occupancy rate
+    const today = new Date();
+    const currentDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const confirmedBookings = allBookings.filter(
+      (b) =>
+        b.status === BookingStatus.CONFIRMED ||
+        b.status === BookingStatus.COMPLETED,
+    );
+
+    let totalPossibleNights = 0;
+    let bookedNights = 0;
+
+    if (confirmedBookings.length > 0) {
+      const earliestBooking = confirmedBookings[0];
+      const latestBooking = confirmedBookings[confirmedBookings.length - 1];
+      const startDate = new Date(earliestBooking.checkInDate);
+      const endDate = new Date(
+        Math.max(latestBooking.check_out_date.getTime(), currentDate.getTime()),
+      );
+
+      const totalDays = Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      totalPossibleNights = totalDays * activeRooms;
+      bookedNights = confirmedBookings.reduce(
+        (sum, booking) => sum + booking.nights,
+        0,
+      );
+    }
+
+    const averageOccupancyRate =
+      totalPossibleNights > 0 ? (bookedNights / totalPossibleNights) * 100 : 0;
+
+    // 3. Doanh thu và giá
+    const paidBookings = allBookings.filter(
+      (b) => b.payment_status === PaymentStatus.PAID,
+    );
+    const totalRevenue = paidBookings.reduce(
+      (sum, booking) => sum + booking.final_amount,
+      0,
+    );
+
+    // Monthly revenue
+    const monthlyRevenue = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          payment_status: 'paid',
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$checkInDate' },
+            month: { $month: '$checkInDate' },
+          },
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    // Average price per night
+    const totalNightsBooked = paidBookings.reduce(
+      (sum, booking) => sum + booking.nights,
+      0,
+    );
+    const averagePricePerNight =
+      totalNightsBooked > 0 ? totalRevenue / totalNightsBooked : 0;
+
+    // Revenue by room
+    const revenueByRoom = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          payment_status: 'paid',
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: '$listingId',
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+          totalNights: { $sum: '$nights' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      {
+        $unwind: '$listing',
+      },
+      {
+        $project: {
+          listingId: '$_id',
+          listingTitle: '$listing.title',
+          revenue: 1,
+          bookings: 1,
+          totalNights: 1,
+          averageRevenuePerNight: {
+            $cond: [
+              { $gt: ['$totalNights', 0] },
+              { $divide: ['$revenue', '$totalNights'] },
+              0,
+            ],
+          },
+        },
+      },
+    ]);
+
+    // 4. Thống kê thời gian
+    let earliestBookingDate: Date | null = null;
+    let latestBookingDate: Date | null = null;
+    let averageStayDuration = 0;
+
+    if (allBookings.length > 0) {
+      earliestBookingDate = allBookings[0].checkInDate;
+      latestBookingDate = allBookings[allBookings.length - 1].check_out_date;
+      averageStayDuration =
+        allBookings.reduce((sum, booking) => sum + booking.nights, 0) /
+        allBookings.length;
+    }
+
+    // Peak booking days
+    const bookingsByDate = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$checkInDate' },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+      {
+        $limit: 5,
+      },
+    ]);
+
+    // 5. Khách hàng
+    const uniqueCustomers = [
+      ...new Set(allBookings.map((b) => b.guestId.toString())),
+    ].length;
+
+    // Return customers calculation
+    const customerBookingCounts = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+        },
+      },
+      {
+        $group: {
+          _id: '$guestId',
+          bookingCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const returnCustomers = customerBookingCounts.filter(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      (c: any) => (c.bookingCount as number) > 1,
+    ).length;
+    const returnCustomerRate =
+      uniqueCustomers > 0 ? (returnCustomers / uniqueCustomers) * 100 : 0;
+
+    // 6. Thống kê đánh giá (Reviews)
+    const allReviews = await this.reviewModel.find({
+      room_id: { $in: listingIds },
+    });
+
+    const totalReviews = allReviews.length;
+    const averagePropertyRating =
+      totalReviews > 0
+        ? allReviews.reduce((sum, review) => sum + review.rating, 0) /
+          totalReviews
+        : 0;
+
+    // Rating distribution cho toàn bộ property (array format for charts)
+    const ratingDistribution = [
+      { rating: 1, count: allReviews.filter((r) => r.rating === 1).length },
+      { rating: 2, count: allReviews.filter((r) => r.rating === 2).length },
+      { rating: 3, count: allReviews.filter((r) => r.rating === 3).length },
+      { rating: 4, count: allReviews.filter((r) => r.rating === 4).length },
+      { rating: 5, count: allReviews.filter((r) => r.rating === 5).length },
+    ];
+
+    // Reviews by room
+    const reviewsByRoom = await this.reviewModel.aggregate([
+      {
+        $match: {
+          room_id: { $in: listingIds },
+        },
+      },
+      {
+        $group: {
+          _id: '$room_id',
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+          ratings: { $push: '$rating' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      {
+        $unwind: '$listing',
+      },
+      {
+        $project: {
+          listingId: '$_id',
+          listingTitle: '$listing.title',
+          totalReviews: 1,
+          averageRating: { $round: ['$averageRating', 1] },
+          ratingCounts: {
+            1: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 1] } },
+              },
+            },
+            2: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 2] } },
+              },
+            },
+            3: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 3] } },
+              },
+            },
+            4: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 4] } },
+              },
+            },
+            5: {
+              $size: {
+                $filter: { input: '$ratings', cond: { $eq: ['$$this', 5] } },
+              },
+            },
+          },
+        },
+      },
+      {
+        $sort: { averageRating: -1 },
+      },
+    ]);
+
+    // Recent reviews
+    const recentReviews = await this.reviewModel
+      .find({
+        room_id: { $in: listingIds },
+      })
+      .populate('user_id', 'name avatar')
+      .populate('room_id', 'title')
+      .sort({ created_at: -1 })
+      .limit(10);
+
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+    return {
+      propertyInfo: {
+        id: propertyId,
+        name: property.name,
+        description: property.description,
+        thumbnail: property.thumbnail,
+        images: property.images || [],
+        location: property.location,
+
+        createdAt: (property as any).createdAt as Date, // Timestamps field from Mongoose
+      },
+
+      // 1. Tổng quan phòng
+      roomOverview: {
+        totalRooms,
+        activeRooms,
+        roomsWithBookings,
+        roomsWithoutBookings,
+        roomUtilizationRate:
+          totalRooms > 0 ? (roomsWithBookings / totalRooms) * 100 : 0,
+      },
+
+      // 2. Hiệu suất đặt phòng
+      bookingPerformance: {
+        totalBookings,
+        successfulBookings,
+        cancelledBookings,
+        cancellationRate: Math.round(cancellationRate * 100) / 100,
+        averageOccupancyRate: Math.round(averageOccupancyRate * 100) / 100,
+        successRate:
+          totalBookings > 0
+            ? Math.round((successfulBookings / totalBookings) * 100 * 100) / 100
+            : null,
+      },
+
+      // 3. Doanh thu và giá
+      revenueAndPricing: {
+        totalRevenue: Math.round(totalRevenue),
+        monthlyRevenue: monthlyRevenue.map((m: any) => ({
+          year: m._id.year as number,
+          month: m._id.month as number,
+          monthKey: `${m._id.year as number}-${(m._id.month as number).toString().padStart(2, '0')}`, // "2025-07" format
+          revenue: Math.round(m.revenue as number),
+          bookings: m.bookings as number,
+        })),
+        averagePricePerNight: Math.round(averagePricePerNight),
+        totalNightsBooked,
+        revenueByRoom: revenueByRoom.map((r: any) => ({
+          listingId: r.listingId as string,
+          listingTitle: r.listingTitle as string,
+          revenue: Math.round(r.revenue as number),
+          bookings: r.bookings as number,
+          totalNights: r.totalNights as number,
+          averageRevenuePerNight: Math.round(
+            r.averageRevenuePerNight as number,
+          ),
+        })),
+      },
+
+      // 4. Thống kê thời gian
+      timeStatistics: {
+        earliestBookingDate,
+        latestBookingDate,
+        averageStayDuration: Math.round(averageStayDuration * 10) / 10, // 1 chữ số thập phân
+        averageStayDurationText:
+          averageStayDuration > 0
+            ? `${Math.round(averageStayDuration * 10) / 10} nights`
+            : null,
+        peakBookingDays: bookingsByDate.map((d: any) => ({
+          date: d._id as string,
+          bookingCount: d.count as number,
+        })),
+      },
+
+      // 5. Khách hàng
+      customerStatistics: {
+        uniqueCustomers,
+        returnCustomers,
+        returnCustomerRate: Math.round(returnCustomerRate * 100) / 100,
+        newCustomers: uniqueCustomers - returnCustomers,
+        averageBookingsPerCustomer:
+          uniqueCustomers > 0
+            ? Math.round((totalBookings / uniqueCustomers) * 100) / 100
+            : 0,
+      },
+
+      // 6. Thống kê đánh giá
+      reviewStatistics: {
+        totalReviews,
+        averagePropertyRating: Math.round(averagePropertyRating * 10) / 10,
+        ratingDistribution,
+        reviewsByRoom: reviewsByRoom.map((room: any) => ({
+          listingId: room.listingId as string,
+          listingTitle: room.listingTitle as string,
+          totalReviews: room.totalReviews as number,
+          averageRating: room.averageRating as number,
+          ratingDistribution: [
+            {
+              rating: 1,
+              count: room.ratingCounts[1] || 0,
+            },
+            {
+              rating: 2,
+              count: room.ratingCounts[2] || 0,
+            },
+            {
+              rating: 3,
+              count: room.ratingCounts[3] || 0,
+            },
+            {
+              rating: 4,
+              count: room.ratingCounts[4] || 0,
+            },
+            {
+              rating: 5,
+              count: room.ratingCounts[5] || 0,
+            },
+          ],
+        })),
+        recentReviews: recentReviews.map((review: any) => ({
+          id: review._id as string,
+          rating: review.rating as number,
+          comment: review.comment as string,
+          createdAt: review.created_at as Date,
+          // Flattened user info
+          userName: review.user_id?.name || 'Unknown',
+          userAvatar: review.user_id?.avatar || null,
+          // Flattened listing info
+          listingId: review.room_id?._id,
+          listingTitle: review.room_id?.title || 'Unknown Room',
+          // Nested structure vẫn có (optional cho flexibility)
+          user: {
+            name: review.user_id?.name || 'Unknown',
+            avatar: review.user_id?.avatar || null,
+          },
+          listing: {
+            id: review.room_id?._id,
+            title: review.room_id?.title || 'Unknown Room',
+          },
+        })),
+        roomsWithReviews: reviewsByRoom.length,
+        roomsWithoutReviews: totalRooms - reviewsByRoom.length,
+        reviewCoverage:
+          totalRooms > 0 ? (reviewsByRoom.length / totalRooms) * 100 : 0,
+      },
     };
   }
 

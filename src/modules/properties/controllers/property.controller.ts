@@ -45,7 +45,7 @@ export class PropertyController {
   @RequirePermission('property.create')
   @ApiOperation({ summary: 'Tạo tài sản mới (Chỉ Admin)' })
   @ApiResponse({ status: 201, description: 'Tài sản được tạo thành công' })
-  @ResponseMessage('Property created successfully')
+  @ResponseMessage('Tạo tài sản thành công')
   create(
     @Body() createPropertyDto: CreatePropertyDto,
     @Request() req: RequestWithUser,
@@ -58,7 +58,7 @@ export class PropertyController {
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy tất cả tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
-  @ResponseMessage('Properties fetched successfully')
+  @ResponseMessage('Lấy danh sách tài sản thành công')
   findAll(@Query() queryDto: QueryPropertyDto) {
     return this.propertyService.findAll(queryDto);
   }
@@ -67,7 +67,7 @@ export class PropertyController {
   @Get('public')
   @ApiOperation({ summary: 'Lấy tài sản công khai (đã kích hoạt và xác minh)' })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản công khai' })
-  @ResponseMessage('Public properties fetched successfully')
+  @ResponseMessage('Lấy danh sách tài sản công khai thành công')
   findPublic(@Query() queryDto: QueryPropertyDto) {
     return this.propertyService.findAll({
       ...queryDto,
@@ -80,7 +80,7 @@ export class PropertyController {
   @Get('nearby')
   @ApiOperation({ summary: 'Tìm tài sản gần một vị trí' })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản gần đó' })
-  @ResponseMessage('Nearby properties fetched successfully')
+  @ResponseMessage('Lấy danh sách tài sản gần đó thành công')
   findNearby(
     @Query('lat') lat: number,
     @Query('lng') lng: number,
@@ -95,9 +95,18 @@ export class PropertyController {
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy thống kê tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
-  @ResponseMessage('Property statistics fetched successfully')
+  @ResponseMessage('Lấy thống kê tài sản thành công')
   getStats() {
     return this.propertyService.getStats();
+  }
+
+  @Get(':id/statistics')
+  @RequirePermission('property.view')
+  @ApiOperation({ summary: 'Lấy thống kê chi tiết của một tài sản' })
+  @ApiResponse({ status: 200, description: 'Thống kê chi tiết tài sản' })
+  @ResponseMessage('Lấy thống kê chi tiết tài sản thành công')
+  getPropertyStatistics(@Param('id') id: string) {
+    return this.propertyService.getPropertyStatistics(id);
   }
 
   @Get('my-properties')
@@ -105,7 +114,7 @@ export class PropertyController {
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản của người dùng' })
-  @ResponseMessage('User properties fetched successfully')
+  @ResponseMessage('Lấy tài sản của người dùng thành công')
   getMyProperties(
     @Query() queryDto: QueryPropertyDto,
     @Request() req: RequestWithUser,
@@ -120,7 +129,7 @@ export class PropertyController {
     summary: 'Lấy tài sản được gán cho một nhân viên (Chỉ Admin)',
   })
   @ApiResponse({ status: 200, description: 'Tài sản của nhân viên' })
-  @ResponseMessage('Staff properties fetched successfully')
+  @ResponseMessage('Lấy tài sản của nhân viên thành công')
   getStaffProperties(
     @Param('staffId') staffId: string,
     @Query() queryDto: QueryPropertyDto,
@@ -132,7 +141,7 @@ export class PropertyController {
   @Public()
   @ApiOperation({ summary: 'Lấy tài sản theo ID' })
   @ApiResponse({ status: 200, description: 'Chi tiết tài sản' })
-  @ResponseMessage('Property fetched successfully')
+  @ResponseMessage('Lấy chi tiết tài sản thành công')
   findOne(@Param('id') id: string) {
     return this.propertyService.findOne(id);
   }
@@ -142,7 +151,7 @@ export class PropertyController {
   @RequirePermission('property.edit')
   @ApiOperation({ summary: 'Cập nhật tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản được cập nhật thành công' })
-  @ResponseMessage('Property updated successfully')
+  @ResponseMessage('Cập nhật tài sản thành công')
   update(
     @Param('id') id: string,
     @Body() updatePropertyDto: UpdatePropertyDto,
@@ -158,7 +167,7 @@ export class PropertyController {
     status: 200,
     description: 'Trạng thái tài sản được cập nhật thành công',
   })
-  @ResponseMessage('Property status updated successfully')
+  @ResponseMessage('Cập nhật trạng thái tài sản thành công')
   updateStatus(@Param('id') id: string, @Body('status') status: string) {
     return this.propertyService.updateStatus(id, status);
   }
@@ -171,7 +180,7 @@ export class PropertyController {
     status: 200,
     description: 'Xác minh tài sản được cập nhật thành công',
   })
-  @ResponseMessage('Property verification updated successfully')
+  @ResponseMessage('Cập nhật xác minh tài sản thành công')
   verify(@Param('id') id: string, @Body('isVerified') isVerified: boolean) {
     return this.propertyService.verify(id, isVerified);
   }
@@ -181,7 +190,7 @@ export class PropertyController {
   @RequirePermission('property.edit')
   @ApiOperation({ summary: 'Gán nhân viên cho tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
-  @ResponseMessage('Staff assigned successfully')
+  @ResponseMessage('Gán nhân viên thành công')
   assignStaff(@Param('id') id: string, @Body('staffIds') staffIds: string[]) {
     return this.propertyService.assignStaff(id, staffIds);
   }
@@ -192,7 +201,7 @@ export class PropertyController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Xóa tài sản (xóa mềm) - Chỉ Admin' })
   @ApiResponse({ status: 204, description: 'Tài sản được xóa thành công' })
-  @ResponseMessage('Property deleted successfully')
+  @ResponseMessage('Xóa tài sản thành công')
   remove(@Param('id') id: string) {
     return this.propertyService.remove(id);
   }
@@ -205,7 +214,7 @@ export class PropertyController {
     status: 200,
     description: 'Tài sản được khôi phục thành công',
   })
-  @ResponseMessage('Property restored successfully')
+  @ResponseMessage('Khôi phục tài sản thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.propertyService.restore(id, req.user);
   }

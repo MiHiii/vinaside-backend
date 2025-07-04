@@ -10,11 +10,17 @@ import {
   Put,
   Request,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { HouseRulesService } from './house-rules.service';
 import { CreateHouseRuleDto } from './dto/create-house-rule.dto';
 import { UpdateHouseRuleDto } from './dto/update-house-rule.dto';
 import { QueryHouseRuleDto } from './dto/query-house-rule.dto';
+import { HouseRuleStatisticsResponseDto } from './dto/statistics-response.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
@@ -81,6 +87,19 @@ export class HouseRulesController {
     @Request() req: RequestWithUser,
   ) {
     return this.houseRulesService.searchAdmin(query, req.user, filters);
+  }
+
+  @Get('statistics')
+  @RequirePermission('house_rule.manage')
+  @ApiOperation({ summary: 'Lấy thống kê quy tắc nhà' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê được lấy thành công',
+    type: HouseRuleStatisticsResponseDto,
+  })
+  @ResponseMessage('Lấy thống kê quy tắc nhà thành công')
+  getStatistics(@Request() req: RequestWithUser) {
+    return this.houseRulesService.getStatistics(req.user);
   }
 
   @Get(':id')

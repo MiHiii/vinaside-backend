@@ -90,6 +90,15 @@ export class VoucherController {
     return this.voucherService.validateVoucher(code, amount, listingId);
   }
 
+  @Get('statistics')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy thống kê voucher' })
+  @ApiResponse({ status: 200, description: 'Thống kê voucher' })
+  @ResponseMessage('Lấy thống kê voucher thành công')
+  getStatistics() {
+    return this.voucherService.getStatistics();
+  }
+
   @Get('code/:code')
   @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy voucher theo mã' })
