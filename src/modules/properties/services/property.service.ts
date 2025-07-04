@@ -336,8 +336,9 @@ export class PropertyService {
   }
 
   /**
-   * Get comprehensive statistics for a specific property
+   * Lấy thống kê chi tiết cho một property cụ thể
    */
+
   async getPropertyStatistics(propertyId: string) {
     // Validate property exists
     const property = await this.findOne(propertyId);
@@ -672,6 +673,7 @@ export class PropertyService {
       .sort({ created_at: -1 })
       .limit(10);
 
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
     return {
       propertyInfo: {
         id: propertyId,
@@ -680,7 +682,7 @@ export class PropertyService {
         thumbnail: property.thumbnail,
         images: property.images || [],
         location: property.location,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+
         createdAt: (property as any).createdAt as Date, // Timestamps field from Mongoose
       },
 
@@ -711,31 +713,20 @@ export class PropertyService {
       revenueAndPricing: {
         totalRevenue: Math.round(totalRevenue),
         monthlyRevenue: monthlyRevenue.map((m: any) => ({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           year: m._id.year as number,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           month: m._id.month as number,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           monthKey: `${m._id.year as number}-${(m._id.month as number).toString().padStart(2, '0')}`, // "2025-07" format
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           revenue: Math.round(m.revenue as number),
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           bookings: m.bookings as number,
         })),
         averagePricePerNight: Math.round(averagePricePerNight),
         totalNightsBooked,
         revenueByRoom: revenueByRoom.map((r: any) => ({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingId: r.listingId as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingTitle: r.listingTitle as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           revenue: Math.round(r.revenue as number),
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           bookings: r.bookings as number,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           totalNights: r.totalNights as number,
-
           averageRevenuePerNight: Math.round(
             r.averageRevenuePerNight as number,
           ),
@@ -752,9 +743,7 @@ export class PropertyService {
             ? `${Math.round(averageStayDuration * 10) / 10} nights`
             : null,
         peakBookingDays: bookingsByDate.map((d: any) => ({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           date: d._id as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           bookingCount: d.count as number,
         })),
       },
@@ -777,72 +766,51 @@ export class PropertyService {
         averagePropertyRating: Math.round(averagePropertyRating * 10) / 10,
         ratingDistribution,
         reviewsByRoom: reviewsByRoom.map((room: any) => ({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingId: room.listingId as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingTitle: room.listingTitle as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           totalReviews: room.totalReviews as number,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           averageRating: room.averageRating as number,
           ratingDistribution: [
             {
               rating: 1,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               count: room.ratingCounts[1] || 0,
             },
             {
               rating: 2,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               count: room.ratingCounts[2] || 0,
             },
             {
               rating: 3,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               count: room.ratingCounts[3] || 0,
             },
             {
               rating: 4,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               count: room.ratingCounts[4] || 0,
             },
             {
               rating: 5,
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               count: room.ratingCounts[5] || 0,
             },
           ],
         })),
         recentReviews: recentReviews.map((review: any) => ({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           id: review._id as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           rating: review.rating as number,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           comment: review.comment as string,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           createdAt: review.created_at as Date,
           // Flattened user info
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           userName: review.user_id?.name || 'Unknown',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           userAvatar: review.user_id?.avatar || null,
           // Flattened listing info
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingId: review.room_id?._id,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           listingTitle: review.room_id?.title || 'Unknown Room',
           // Nested structure vẫn có (optional cho flexibility)
           user: {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             name: review.user_id?.name || 'Unknown',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             avatar: review.user_id?.avatar || null,
           },
           listing: {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             id: review.room_id?._id,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             title: review.room_id?.title || 'Unknown Room',
           },
         })),
