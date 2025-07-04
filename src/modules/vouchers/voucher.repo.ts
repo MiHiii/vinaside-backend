@@ -240,7 +240,7 @@ export class VoucherRepo extends BaseRepo<Voucher> {
     const userEffectivenessStats = {
       uniqueUsersUsedVouchers: Math.floor(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        ((performanceStats[0]?.totalUsageCount as number) || 0) * 0.7,
+        (performanceStats[0]?.totalUsageCount || 0) * 0.7,
       ), // Mock: giả định 70% usage từ unique users
       topUsersByVoucherUsage: [
         // Mock data
@@ -250,12 +250,11 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       ],
       newUsersUsingVoucher: Math.floor(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        ((performanceStats[0]?.totalUsageCount as number) || 0) * 0.3,
+        (performanceStats[0]?.totalUsageCount || 0) * 0.3,
       ), // Mock: 30% là new users
     };
 
     // 6. Hiệu quả theo property
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const propertyStats = await this.voucherModel.aggregate([
       {
         $group: {
@@ -319,36 +318,33 @@ export class VoucherRepo extends BaseRepo<Voucher> {
         usedVouchers: 0,
       },
       performance: {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        totalUsageCount:
-          ((performanceStats[0] as any)?.totalUsageCount as number) || 0,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+        totalUsageCount: (performanceStats[0] as any)?.totalUsageCount || 0,
         mostUsedVoucher: mostUsedVoucher || null,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        unusedVouchers:
-          ((performanceStats[0] as any)?.unusedVouchers as number) || 0,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+        unusedVouchers: (performanceStats[0] as any)?.unusedVouchers || 0,
       },
       timeAnalysis: {
         usageByMonth,
         creationByMonth,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
         totalDiscountGiven:
-          ((totalDiscountGiven[0] as any)?.estimated_discount as number) || 0,
+          (totalDiscountGiven[0] as any)?.estimated_discount || 0,
       },
       typeAnalysis: {
         byDiscountRange: typeAnalysis,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
         averageDiscountPercent:
-          ((averageDiscountPercent[0] as any)?.averageDiscount as number) || 0,
+          (averageDiscountPercent[0] as any)?.averageDiscount || 0,
       },
       userEffectiveness: userEffectivenessStats,
       propertyEffectiveness: {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
         vouchersWithPropertyRestriction:
-          ((propertyStats[0] as any)
-            ?.vouchersWithPropertyRestriction as number) || 0,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          (propertyStats[0] as any)?.vouchersWithPropertyRestriction || 0,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
         vouchersForAllProperties:
-          ((propertyStats[0] as any)?.vouchersForAllProperties as number) || 0,
+          (propertyStats[0] as any)?.vouchersForAllProperties || 0,
         topPropertiesByVoucherUsage,
       },
     };
