@@ -16,13 +16,12 @@ import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
-import { RequirePropertyStaff } from '../../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
-import { PropertyStaffGuard } from '../../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+import { Roles } from '../../../decorators/roles.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -36,14 +35,15 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Properties')
 @Controller('properties')
-@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 @ApiBearerAuth()
 export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
   @Post()
+  @Roles('admin')
   @RequirePermission('property.create')
-  @ApiOperation({ summary: 'Tạo tài sản mới' })
+  @ApiOperation({ summary: 'Tạo tài sản mới (Chỉ Admin)' })
   @ApiResponse({ status: 201, description: 'Tài sản được tạo thành công' })
   @ResponseMessage('Property created successfully')
   create(
@@ -54,8 +54,9 @@ export class PropertyController {
   }
 
   @Get()
+  @Roles('admin')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tất cả tài sản' })
+  @ApiOperation({ summary: 'Lấy tất cả tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
   @ResponseMessage('Properties fetched successfully')
   findAll(@Query() queryDto: QueryPropertyDto) {
@@ -90,8 +91,9 @@ export class PropertyController {
   }
 
   @Get('stats')
+  @Roles('admin')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy thống kê tài sản' })
+  @ApiOperation({ summary: 'Lấy thống kê tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
   @ResponseMessage('Property statistics fetched successfully')
   getStats() {
@@ -108,8 +110,9 @@ export class PropertyController {
   }
 
   @Get('my-properties')
+  @Roles('admin')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại' })
+  @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản của người dùng' })
   @ResponseMessage('User properties fetched successfully')
   getMyProperties(
@@ -120,8 +123,11 @@ export class PropertyController {
   }
 
   @Get('staff/:staffId')
+  @Roles('admin')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tài sản được gán cho một nhân viên' })
+  @ApiOperation({
+    summary: 'Lấy tài sản được gán cho một nhân viên (Chỉ Admin)',
+  })
   @ApiResponse({ status: 200, description: 'Tài sản của nhân viên' })
   @ResponseMessage('Staff properties fetched successfully')
   getStaffProperties(
@@ -141,39 +147,35 @@ export class PropertyController {
   }
 
   @Patch(':id')
+  @Roles('admin')
   @RequirePermission('property.edit')
-  @RequirePropertyStaff('id')
-  @ApiOperation({ summary: 'Cập nhật tài sản' })
+  @ApiOperation({ summary: 'Cập nhật tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản được cập nhật thành công' })
   @ResponseMessage('Property updated successfully')
   update(
     @Param('id') id: string,
     @Body() updatePropertyDto: UpdatePropertyDto,
-    @Request() req: RequestWithUser,
   ) {
-    return this.propertyService.update(id, updatePropertyDto, req.user);
+    return this.propertyService.update(id, updatePropertyDto);
   }
 
   @Patch(':id/status')
+  @Roles('admin')
   @RequirePermission('property.edit')
-  @RequirePropertyStaff('id')
-  @ApiOperation({ summary: 'Cập nhật trạng thái tài sản' })
+  @ApiOperation({ summary: 'Cập nhật trạng thái tài sản (Chỉ Admin)' })
   @ApiResponse({
     status: 200,
     description: 'Trạng thái tài sản được cập nhật thành công',
   })
   @ResponseMessage('Property status updated successfully')
-  updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: string,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.propertyService.updateStatus(id, status, req.user);
+  updateStatus(@Param('id') id: string, @Body('status') status: string) {
+    return this.propertyService.updateStatus(id, status);
   }
 
   @Patch(':id/verify')
+  @Roles('admin')
   @RequirePermission('property.verify')
-  @ApiOperation({ summary: 'Xác minh/hủy xác minh tài sản' })
+  @ApiOperation({ summary: 'Xác minh/hủy xác minh tài sản (Chỉ Admin)' })
   @ApiResponse({
     status: 200,
     description: 'Xác minh tài sản được cập nhật thành công',
@@ -184,34 +186,30 @@ export class PropertyController {
   }
 
   @Patch(':id/staff')
+  @Roles('admin')
   @RequirePermission('property.edit')
-  @RequirePropertyStaff('id')
-  @ApiOperation({ summary: 'Gán nhân viên cho tài sản' })
+  @ApiOperation({ summary: 'Gán nhân viên cho tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
   @ResponseMessage('Staff assigned successfully')
-  assignStaff(
-    @Param('id') id: string,
-    @Body('staffIds') staffIds: string[],
-    @Request() req: RequestWithUser,
-  ) {
-    return this.propertyService.assignStaff(id, staffIds, req.user);
+  assignStaff(@Param('id') id: string, @Body('staffIds') staffIds: string[]) {
+    return this.propertyService.assignStaff(id, staffIds);
   }
 
   @Delete(':id')
+  @Roles('admin')
   @RequirePermission('property.delete')
-  @RequirePropertyStaff('id')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Xóa tài sản (xóa mềm)' })
+  @ApiOperation({ summary: 'Xóa tài sản (xóa mềm) - Chỉ Admin' })
   @ApiResponse({ status: 204, description: 'Tài sản được xóa thành công' })
   @ResponseMessage('Property deleted successfully')
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.propertyService.remove(id, req.user);
+  remove(@Param('id') id: string) {
+    return this.propertyService.remove(id);
   }
 
   @Patch(':id/restore')
+  @Roles('admin')
   @RequirePermission('property.delete')
-  @RequirePropertyStaff('id')
-  @ApiOperation({ summary: 'Khôi phục tài sản đã xóa' })
+  @ApiOperation({ summary: 'Khôi phục tài sản đã xóa (Chỉ Admin)' })
   @ApiResponse({
     status: 200,
     description: 'Tài sản được khôi phục thành công',

@@ -171,11 +171,11 @@ export class RbacService {
   ): Promise<void> {
     const role = await this.customRoleModel.findOne({
       key: roleKey,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
     const permission = await this.permissionModel.findOne({
       key: permissionKey,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
 
     if (!role || !permission) {
@@ -185,7 +185,7 @@ export class RbacService {
     const existingAssignment = await this.customRolePermissionModel.findOne({
       customRoleId: role._id,
       permissionId: permission._id,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
 
     if (!existingAssignment) {
@@ -229,12 +229,16 @@ export class RbacService {
 
   // Get all custom roles (not deleted)
   async getAllCustomRoles(): Promise<CustomRole[]> {
-    return this.customRoleModel.find({ isDeleted: false });
+    return this.customRoleModel.find({
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
   }
 
   // Get all permissions (not deleted)
   async getAllPermissions(): Promise<Permission[]> {
-    return this.permissionModel.find({ isDeleted: false });
+    return this.permissionModel.find({
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
   }
 
   // Get user's custom roles
@@ -269,14 +273,17 @@ export class RbacService {
   async getRolePermissions(roleKey: string): Promise<string[]> {
     const role = await this.customRoleModel.findOne({
       key: roleKey,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
     if (!role) {
       throw new Error(`Role with key "${roleKey}" not found`);
     }
 
     const rolePermissions = await this.customRolePermissionModel
-      .find({ customRoleId: role._id, isDeleted: false })
+      .find({
+        customRoleId: role._id,
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+      })
       .populate('permissionId');
 
     const permissions: string[] = [];
@@ -287,7 +294,7 @@ export class RbacService {
         'key' in rp.permissionId
       ) {
         const permission = rp.permissionId as unknown as PopulatedPermission;
-        // Only include non-deleted permissions
+        // Only include non-deleted permissions (including those without isDeleted field)
         if (!permission.isDeleted) {
           permissions.push(permission.key);
         }

@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
-import { setupSwagger } from './swagger/swagger.config';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
@@ -25,35 +26,37 @@ async function bootstrap() {
 
   // Setup CORS
   app.enableCors({
-    origin: ['http://localhost:5173'],
+    origin: [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'https://vinaside.vercel.app',
+      'https://vinaside-guest.vercel.app',
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Requested-With',
-      'Accept',
-      'Origin',
-    ],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 3600,
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Setup Swagger
-  setupSwagger(app);
+  const config = new DocumentBuilder()
+    .setTitle('Vinaside API')
+    .setDescription('The Vinaside API documentation')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
 
   // Sử dụng cookie parser
   app.use(cookieParser());
 
   // Start server
-  const port = configService.get<number>('PORT') || 3000;
+  const port = configService.get<number>('PORT') || 8080;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}/api/v1`);
-  console.log(
-    `Swagger documentation is available at: http://localhost:${port}/api/v1/docs`,
-  );
+
+  logger.log(`Application is running on: http://localhost:${port}/api/v1`);
+  logger.log(`Swagger documentation: http://localhost:${port}/api/docs`);
 }
 
 void bootstrap();

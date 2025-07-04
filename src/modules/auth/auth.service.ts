@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/modules/users/users.service';
@@ -15,17 +16,21 @@ import { UserDocument } from '../users/schemas/user.schema';
 import { AuthRepo } from './auth.repo';
 import { User } from '../users/users.interface';
 import { RefreshTokenService } from './services/refresh-token.service';
+import { RbacService } from './services/rbac.service';
 import { Request, Response } from 'express';
 import { toSafeString } from 'src/utils';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly emailQueueService: EmailQueueService,
     private readonly authRepo: AuthRepo,
     private readonly refreshTokenService: RefreshTokenService,
+    private readonly rbacService: RbacService,
   ) {}
 
   /**
@@ -299,7 +304,7 @@ export class AuthService {
     user: { _id: any; name: string; email: string; role: string };
   }> {
     // Tạo JWT access token
-    const authResult = this.login(user as unknown as User);
+    const authResult = await this.login(user as unknown as User);
 
     // Tạo refresh token và lưu vào DB
     const refreshTokenResult =
@@ -366,14 +371,10 @@ export class AuthService {
       await this.refreshTokenService.revokeRefreshToken(tokenId, userIdStr);
 
       // Trả về access token mới
-      return this.login(user as unknown as User);
-    } catch (error) {
+      return await this.login(user as unknown as User);
+    } catch {
       // Xóa cookie nếu có lỗi
       this.refreshTokenService.clearRefreshTokenCookie(res);
-      console.log(
-        'Lỗi khi refresh token:',
-        error instanceof Error ? error.message : 'Lỗi không xác định',
-      );
       throw new UnauthorizedException(
         'Phiên đăng nhập hết hạn hoặc không hợp lệ, vui lòng đăng nhập lại',
       );
@@ -390,7 +391,6 @@ export class AuthService {
   ): Promise<void> {
     // Xóa refresh token cookie
     this.refreshTokenService.clearRefreshTokenCookie(res);
-    console.log('người dùng', user);
 
     // Thu hồi refresh token hiện tại (nếu có)
     if (refreshToken) {
@@ -402,19 +402,14 @@ export class AuthService {
 
         const tokenId = toSafeString(tokenDoc._id);
         const userId = toSafeString(user._id);
-        console.log('xử lý đăng xuất', tokenId, userId);
 
         await this.refreshTokenService.revokeRefreshToken(tokenId, userId);
-      } catch (error) {
+      } catch {
         // Thử thu hồi theo cách khác nếu không tìm thấy token chính xác
         const userId = toSafeString(user._id);
 
         // Thu hồi tất cả token của user để đảm bảo an toàn
         await this.refreshTokenService.revokeAllRefreshTokens(userId);
-        console.log(
-          'Đã thu hồi tất cả token sau khi không thể xác định token cụ thể:',
-          error instanceof Error ? error.message : 'Lỗi không xác định',
-        );
       }
     }
   }
@@ -476,12 +471,38 @@ export class AuthService {
     return this.refreshTokenService.revokeAllRefreshTokens(userId);
   }
 
-  login(user: User) {
+  async login(user: User) {
+    const { _id, role } = user;
+
+    // Initialize with default arrays
+    let permissions: string[] = [];
+    let customRoles: string[] = [];
+
+    // Load user permissions and roles if they are staff (admin bypasses anyway)
+    if (role === 'staff') {
+      try {
+        // Load permissions and custom roles in parallel
+        const [userPermissions, userCustomRoles] = await Promise.all([
+          this.rbacService.getUserPermissions(_id),
+          this.rbacService.getUserCustomRoles(_id),
+        ]);
+
+        permissions = userPermissions;
+        customRoles = userCustomRoles.map((r) => r.key);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to load RBAC data for user ${_id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+
     const payload = {
       _id: user._id,
       email: user.email,
       name: user.name,
       role: user.role,
+      permissions,
+      customRoles,
       iss: 'api',
     };
     const token = this.jwtService.sign(payload);
