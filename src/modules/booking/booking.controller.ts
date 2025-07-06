@@ -20,7 +20,6 @@ import {
   BookingOverviewResponseDto,
   BookingFinancialResponseDto,
   BookingCustomerResponseDto,
-  BookingTimelineResponseDto,
 } from './dto/booking-statistics.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';

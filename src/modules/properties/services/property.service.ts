@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
   Injectable,
   NotFoundException,
@@ -20,11 +24,8 @@ import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import {
-  PropertyOverviewStatistics,
   PropertyVoucherStatistics,
   PropertyServiceStatistics,
-  PropertyFinancialStatistics,
-  PropertyTimelineStatistics,
 } from '../dto/property-statistics.dto';
 
 export interface PaginatedProperties {
@@ -596,7 +597,6 @@ export class PropertyService {
     ]);
 
     const returnCustomers = customerBookingCounts.filter(
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
       (c: any) => (c.bookingCount as number) > 1,
     ).length;
     const returnCustomerRate =

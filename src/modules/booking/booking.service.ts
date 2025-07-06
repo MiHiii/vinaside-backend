@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
   Logger,
@@ -738,7 +743,7 @@ export class BookingService {
     endDate?: string,
     propertyId?: string,
     listingId?: string,
-  ) {
+  ): any {
     const filter: any = { isDeleted: false };
 
     if (startDate || endDate) {
@@ -853,9 +858,9 @@ export class BookingService {
       totalRevenue: overview.totalRevenue,
       totalNights: overview.totalNights,
       averageOccupancyRate: Math.round(
-        (overview.totalNights / daysInPeriod) * 100,
+        ((overview.totalNights as number) / daysInPeriod) * 100,
       ),
-      averageBookingValue: Math.round(overview.averageBookingValue),
+      averageBookingValue: Math.round(overview.averageBookingValue as number),
       totalGuests: overview.totalGuests,
       totalInfants: overview.totalInfants,
       statusBreakdown,
@@ -933,7 +938,7 @@ export class BookingService {
       totalTaxAmount: financial.totalTaxAmount,
       totalRefunds: financial.totalRefunds,
       netRevenue: financial.totalRevenue - financial.totalRefunds,
-      averageBookingValue: Math.round(financial.averageBookingValue),
+      averageBookingValue: Math.round(financial.averageBookingValue as number),
       revenueByMonth: revenueByMonth.map((item: any) => ({
         month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
         revenue: item.revenue,
@@ -1157,9 +1162,11 @@ export class BookingService {
         bookings: item.bookings,
         revenue: item.revenue,
       })),
-      averageAdvanceBookingDays: Math.round(timelineStats.averageAdvanceDays),
+      averageAdvanceBookingDays: Math.round(
+        timelineStats.averageAdvanceDays as number,
+      ),
       averageStayDuration:
-        Math.round(timelineStats.averageStayDuration * 10) / 10,
+        Math.round((timelineStats.averageStayDuration as number) * 10) / 10,
     };
   }
 }

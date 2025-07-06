@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
   Injectable,
   Logger,
@@ -523,11 +527,11 @@ export class ListingService {
     }
 
     // Tạo filter date nếu có
-    const dateFilter = {};
+    const dateFilter: any = {};
     if (startDate || endDate) {
-      dateFilter['created_at'] = {};
-      if (startDate) dateFilter['created_at']['$gte'] = startDate;
-      if (endDate) dateFilter['created_at']['$lte'] = endDate;
+      dateFilter.created_at = {};
+      if (startDate) dateFilter.created_at.$gte = startDate;
+      if (endDate) dateFilter.created_at.$lte = endDate;
     }
 
     // 1. Thống kê booking
@@ -583,10 +587,11 @@ export class ListingService {
       ]);
 
       if (periodBookings.length > 0) {
+        const periodBooking = periodBookings[0];
         occupancyRate = Math.round(
-          (periodBookings[0].totalNights / totalDays) * 100,
+          (periodBooking.totalNights / totalDays) * 100,
         );
-        monthlyRevenueAmount = periodBookings[0].totalRevenue;
+        monthlyRevenueAmount = periodBooking.totalRevenue;
       }
     } else {
       // Fallback: tính theo tháng hiện tại nếu không có khoảng thời gian
@@ -627,10 +632,11 @@ export class ListingService {
       ).getDate();
 
       if (monthlyBookings.length > 0) {
+        const monthlyBooking = monthlyBookings[0];
         occupancyRate = Math.round(
-          (monthlyBookings[0].totalNights / daysInMonth) * 100,
+          (monthlyBooking.totalNights / daysInMonth) * 100,
         );
-        monthlyRevenueAmount = monthlyBookings[0].totalRevenue;
+        monthlyRevenueAmount = monthlyBooking.totalRevenue;
       }
     }
 
@@ -756,7 +762,8 @@ export class ListingService {
         returningGuests: returningGuestsCount,
       },
       reviews: {
-        averageRating: Math.round(reviewData.averageRating * 10) / 10,
+        averageRating:
+          Math.round((reviewData.averageRating as number) * 10) / 10,
         totalReviews: reviewData.totalReviews,
         recentComment: recentReview?.comment || 'Chưa có đánh giá',
       },
