@@ -44,4 +44,13 @@ export class CreateAmenityDto {
   @IsOptional()
   @IsBoolean({ message: 'Default checked phải là boolean' })
   default_checked?: boolean = false;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái hoạt động của tiện ích',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
+  is_active?: boolean = true;
 }
