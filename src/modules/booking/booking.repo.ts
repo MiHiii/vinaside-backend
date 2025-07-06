@@ -32,4 +32,11 @@ export class BookingRepo extends BaseRepo<Booking> {
     const count = await this.bookingModel.countDocuments(conflictQuery);
     return count > 0;
   }
+
+  /**
+   * Lấy model để thực hiện aggregation
+   */
+  getModel(): Model<Booking> {
+    return this.bookingModel;
+  }
 }

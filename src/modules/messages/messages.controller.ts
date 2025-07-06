@@ -79,10 +79,10 @@ export class MessagesController {
   @ApiOperation({ summary: 'Lấy danh sách cuộc trò chuyện' })
   @ApiResponse({ status: 200, description: 'Danh sách cuộc trò chuyện' })
   @ResponseMessage('Lấy danh sách cuộc trò chuyện thành công')
-  async getConversations(@Request() req: RequestWithUser) {
+  async getConversations(@Request() req: RequestWithUser): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getConversations(req.user._id);
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in getConversations controller:', error);
       return [];
@@ -101,7 +101,7 @@ export class MessagesController {
     @Query('otherUserId') otherUserId?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
-  ) {
+  ): Promise<unknown[]> {
     // Validate otherUserId exists
     if (!otherUserId) {
       throw new BadRequestException('Thiếu tham số otherUserId');
@@ -109,7 +109,7 @@ export class MessagesController {
 
     try {
       // Parse query parameters manually để tránh default values
-      const queryParams: any = {};
+      const queryParams: { limit?: number; page?: number } = {};
       if (limit && !isNaN(Number(limit))) {
         queryParams.limit = Number(limit);
       }
@@ -122,7 +122,7 @@ export class MessagesController {
         otherUserId,
         queryParams,
       );
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in getConversation controller:', error);
       return [];
@@ -158,10 +158,10 @@ export class MessagesController {
   @ApiOperation({ summary: 'Lấy danh sách tất cả người dùng để nhắn tin' })
   @ApiResponse({ status: 200, description: 'Danh sách người dùng' })
   @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
-  async getAllUsers(@Request() req: RequestWithUser) {
+  async getAllUsers(@Request() req: RequestWithUser): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getAllUsers(req.user._id);
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in getAllUsers controller:', error);
       return [];
@@ -176,10 +176,10 @@ export class MessagesController {
     description: 'Danh sách người dùng có lịch sử chat',
   })
   @ResponseMessage('Lấy danh sách người dùng có lịch sử chat thành công')
-  async getAvailableUsers(@Request() req: RequestWithUser) {
+  async getAvailableUsers(@Request() req: RequestWithUser): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getAvailableUsers(req.user._id);
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in getAvailableUsers controller:', error);
       return [];
@@ -281,13 +281,13 @@ export class MessagesController {
   async search(
     @Body() searchMessageDto: SearchMessageDto,
     @Request() req: RequestWithUser,
-  ) {
+  ): Promise<unknown[]> {
     try {
       const result = await this.messagesService.search(
         searchMessageDto,
         req.user,
       );
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in search controller:', error);
       return [];

@@ -4,7 +4,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { FilterQuery, Types, SortOrder } from 'mongoose';
+import { FilterQuery, Types, SortOrder, Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
 import { Listing, ListingStatus } from './schemas/listing.schema';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
@@ -12,6 +13,11 @@ import { QueryListingDto } from './dto/query-listing.dto';
 import { ListingRepo } from './listing.repo';
 import { PropertyService } from '../properties/services/property.service';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
+import { Booking } from '../booking/schemas/booking.schema';
+import { Review } from '../reviews/schemas/review.schema';
+import { Wishlist } from '../wishlist/schemas/wishlist.schema';
+import { Transaction } from '../transactions/schemas/transaction.schema';
+import { ListingStatistics } from './dto/listing-statistics.dto';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -40,6 +46,11 @@ export class ListingService {
   constructor(
     private readonly listingRepo: ListingRepo,
     private readonly propertyService: PropertyService,
+    @InjectModel(Booking.name) private readonly bookingModel: Model<Booking>,
+    @InjectModel(Review.name) private readonly reviewModel: Model<Review>,
+    @InjectModel(Wishlist.name) private readonly wishlistModel: Model<Wishlist>,
+    @InjectModel(Transaction.name)
+    private readonly transactionModel: Model<Transaction>,
   ) {}
 
   async create(
@@ -492,5 +503,308 @@ export class ListingService {
       );
     });
     return listing;
+  }
+
+  /**
+   * Lấy thống kê chi tiết cho một listing
+   */
+  async getListingStatistics(
+    listingId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<ListingStatistics> {
+    const { Types } = await import('mongoose');
+    const listingIdObj = new Types.ObjectId(listingId);
+
+    // Lấy thông tin listing
+    const listing = await this.findOne(listingId);
+    if (!listing) {
+      throw new NotFoundException(`Listing with ID ${listingId} not found.`);
+    }
+
+    // Tạo filter date nếu có
+    const dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter['created_at'] = {};
+      if (startDate) dateFilter['created_at']['$gte'] = startDate;
+      if (endDate) dateFilter['created_at']['$lte'] = endDate;
+    }
+
+    // 1. Thống kê booking
+    const bookingStats = await this.bookingModel.aggregate([
+      {
+        $match: {
+          listingId: listingIdObj,
+          isDeleted: false,
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: '$final_amount' },
+          cancelledBookings: {
+            $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
+          },
+          confirmedBookings: {
+            $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    // 2. Tính tỉ lệ lấp đầy (occupancy rate) - theo khoảng thời gian được chọn
+    let occupancyRate = 0;
+    let monthlyRevenueAmount = 0;
+
+    if (startDate && endDate) {
+      // Tính occupancy rate theo khoảng thời gian được chọn
+      const totalDays = Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      const periodBookings = await this.bookingModel.aggregate([
+        {
+          $match: {
+            listingId: listingIdObj,
+            isDeleted: false,
+            created_at: { $gte: startDate, $lte: endDate },
+            status: { $in: ['confirmed', 'completed'] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalNights: { $sum: '$nights' },
+            totalRevenue: { $sum: '$final_amount' },
+          },
+        },
+      ]);
+
+      if (periodBookings.length > 0) {
+        occupancyRate = Math.round(
+          (periodBookings[0].totalNights / totalDays) * 100,
+        );
+        monthlyRevenueAmount = periodBookings[0].totalRevenue;
+      }
+    } else {
+      // Fallback: tính theo tháng hiện tại nếu không có khoảng thời gian
+      const currentMonth = new Date();
+      const firstDayOfMonth = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth(),
+        1,
+      );
+      const lastDayOfMonth = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() + 1,
+        0,
+      );
+
+      const monthlyBookings = await this.bookingModel.aggregate([
+        {
+          $match: {
+            listingId: listingIdObj,
+            isDeleted: false,
+            created_at: { $gte: firstDayOfMonth, $lte: lastDayOfMonth },
+            status: { $in: ['confirmed', 'completed'] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalNights: { $sum: '$nights' },
+            totalRevenue: { $sum: '$final_amount' },
+          },
+        },
+      ]);
+
+      const daysInMonth = new Date(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() + 1,
+        0,
+      ).getDate();
+
+      if (monthlyBookings.length > 0) {
+        occupancyRate = Math.round(
+          (monthlyBookings[0].totalNights / daysInMonth) * 100,
+        );
+        monthlyRevenueAmount = monthlyBookings[0].totalRevenue;
+      }
+    }
+
+    // 3. Thống kê khách quay lại
+    const returningGuests = await this.bookingModel.aggregate([
+      {
+        $match: {
+          listingId: listingIdObj,
+          isDeleted: false,
+          status: { $in: ['confirmed', 'completed'] },
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: '$guestId',
+          bookingCount: { $sum: 1 },
+        },
+      },
+      {
+        $match: {
+          bookingCount: { $gt: 1 },
+        },
+      },
+      {
+        $count: 'returningGuests',
+      },
+    ]);
+
+    // 4. Thống kê đánh giá
+    const reviewStats = await this.reviewModel.aggregate([
+      {
+        $match: {
+          room_id: listingIdObj,
+          isDeleted: false,
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+        },
+      },
+    ]);
+
+    // Lấy bình luận gần đây nhất
+    const recentReview = await this.reviewModel
+      .findOne({
+        room_id: listingIdObj,
+        isDeleted: false,
+      })
+      .sort({ created_at: -1 })
+      .select('comment');
+
+    // 5. Thống kê wishlist
+    const wishlistCount = await this.wishlistModel.countDocuments({
+      room_id: listingIdObj,
+      isDelete: false,
+      ...dateFilter,
+    });
+
+    // 6. Thống kê voucher
+    const voucherStats = await this.transactionModel.aggregate([
+      {
+        $match: {
+          reference_type: 'booking',
+          'metadata.listingId': listingId,
+          'metadata.voucherCode': { $exists: true, $ne: null },
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: '$metadata.voucherCode',
+          totalDiscount: { $sum: '$amount' },
+          usageCount: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { usageCount: -1 },
+      },
+    ]);
+
+    // Tính tổng tiền giảm giá và voucher phổ biến nhất
+    const totalDiscountAmount = voucherStats.reduce(
+      (sum, voucher) => sum + voucher.totalDiscount,
+      0,
+    );
+    const mostPopularVoucher =
+      voucherStats.length > 0 ? voucherStats[0]._id : 'N/A';
+
+    // Tính toán các chỉ số
+    const bookingData = bookingStats[0] || {
+      totalBookings: 0,
+      totalRevenue: 0,
+      cancelledBookings: 0,
+      confirmedBookings: 0,
+    };
+
+    const reviewData = reviewStats[0] || {
+      totalReviews: 0,
+      averageRating: 0,
+    };
+
+    const returningGuestsCount = returningGuests[0]?.returningGuests || 0;
+
+    return {
+      listingId: listingId,
+      listingTitle: listing.title,
+      businessPerformance: {
+        totalBookings: bookingData.totalBookings,
+        occupancyRate,
+        monthlyRevenue: monthlyRevenueAmount,
+        cancellationRate:
+          bookingData.totalBookings > 0
+            ? Math.round(
+                (bookingData.cancelledBookings / bookingData.totalBookings) *
+                  100,
+              )
+            : 0,
+        returningGuests: returningGuestsCount,
+      },
+      reviews: {
+        averageRating: Math.round(reviewData.averageRating * 10) / 10,
+        totalReviews: reviewData.totalReviews,
+        recentComment: recentReview?.comment || 'Chưa có đánh giá',
+      },
+      engagement: {
+        viewCount: listing.viewCount || 0,
+        wishlistCount,
+      },
+      voucherImpact: {
+        totalDiscountAmount,
+        mostPopularVoucher,
+      },
+    };
+  }
+
+  /**
+   * Lấy thống kê cho tất cả listings của một property
+   */
+  async getPropertyListingsStatistics(
+    propertyId: string,
+    startDate?: Date,
+    endDate?: Date,
+  ): Promise<ListingStatistics[]> {
+    const { Types } = await import('mongoose');
+    const propertyIdObj = new Types.ObjectId(propertyId);
+
+    // Lấy tất cả listings của property
+    const listings = await this.listingRepo.findAll(
+      { propertyId: propertyIdObj, isDeleted: false },
+      { limit: 0 },
+    );
+
+    const statistics: ListingStatistics[] = [];
+
+    for (const listing of listings.data) {
+      try {
+        const listingStats = await this.getListingStatistics(
+          String(listing._id),
+          startDate,
+          endDate,
+        );
+        statistics.push(listingStats);
+      } catch (error) {
+        this.logger.error(
+          `Error getting statistics for listing ${String(listing._id)}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return statistics;
   }
 }

@@ -15,6 +15,7 @@ import { PropertyService } from '../services/property.service';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
+import { PropertyStatisticsQueryDto } from '../dto/property-statistics.dto';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
 import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -105,8 +106,15 @@ export class PropertyController {
   @ApiOperation({ summary: 'Lấy thống kê chi tiết của một tài sản' })
   @ApiResponse({ status: 200, description: 'Thống kê chi tiết tài sản' })
   @ResponseMessage('Lấy thống kê chi tiết tài sản thành công')
-  getPropertyStatistics(@Param('id') id: string) {
-    return this.propertyService.getPropertyStatistics(id);
+  getPropertyStatistics(
+    @Param('id') id: string,
+    @Query() queryDto: PropertyStatisticsQueryDto,
+  ) {
+    return this.propertyService.getPropertyStatistics(
+      id,
+      queryDto.startDate,
+      queryDto.endDate,
+    );
   }
 
   @Get('my-properties')

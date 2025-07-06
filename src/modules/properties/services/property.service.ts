@@ -13,10 +13,19 @@ import {
   PaymentStatus,
 } from '../../booking/schemas/booking.schema';
 import { Review } from '../../reviews/schemas/review.schema';
+import { Voucher } from '../../vouchers/schemas/voucher.schema';
+import { Service } from '../../services/schemas/service.schema';
 import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+import {
+  PropertyOverviewStatistics,
+  PropertyVoucherStatistics,
+  PropertyServiceStatistics,
+  PropertyFinancialStatistics,
+  PropertyTimelineStatistics,
+} from '../dto/property-statistics.dto';
 
 export interface PaginatedProperties {
   data: Property[];
@@ -37,6 +46,10 @@ export class PropertyService {
     private bookingModel: Model<Booking>,
     @InjectModel(Review.name)
     private reviewModel: Model<Review>,
+    @InjectModel(Voucher.name)
+    private voucherModel: Model<Voucher>,
+    @InjectModel(Service.name)
+    private serviceModel: Model<Service>,
   ) {}
 
   async create(
@@ -339,9 +352,21 @@ export class PropertyService {
    * Lấy thống kê chi tiết cho một property cụ thể
    */
 
-  async getPropertyStatistics(propertyId: string) {
+  async getPropertyStatistics(
+    propertyId: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
     // Validate property exists
     const property = await this.findOne(propertyId);
+
+    // Create date filter
+    const dateFilter: any = {};
+    if (startDate || endDate) {
+      dateFilter.created_at = {};
+      if (startDate) dateFilter.created_at.$gte = new Date(startDate);
+      if (endDate) dateFilter.created_at.$lte = new Date(endDate);
+    }
 
     // Get all listings for this property
     const allListings = await this.listingModel.find({
@@ -351,11 +376,12 @@ export class PropertyService {
 
     const listingIds = allListings.map((listing) => listing._id);
 
-    // Get all bookings for this property
+    // Get all bookings for this property with date filter
     const allBookings = await this.bookingModel
       .find({
         propertyId: new Types.ObjectId(propertyId),
         isDeleted: false,
+        ...dateFilter,
       })
       .sort({ checkInDate: 1 });
 
@@ -819,6 +845,188 @@ export class PropertyService {
         reviewCoverage:
           totalRooms > 0 ? (reviewsByRoom.length / totalRooms) * 100 : 0,
       },
+
+      // 7. Thống kê Voucher
+      voucherStatistics: await this.getVoucherStatistics(
+        propertyId,
+        dateFilter,
+      ),
+
+      // 8. Thống kê Service
+      serviceStatistics: await this.getServiceStatistics(
+        propertyId,
+        dateFilter,
+      ),
+    };
+  }
+
+  /**
+   * Lấy thống kê voucher cho property
+   */
+  private async getVoucherStatistics(
+    propertyId: string,
+    dateFilter: any,
+  ): Promise<PropertyVoucherStatistics> {
+    // Thống kê voucher usage từ booking metadata
+    const voucherStats = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+          'metadata.voucherCode': { $exists: true, $ne: null },
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: '$metadata.voucherCode',
+          usageCount: { $sum: 1 },
+          totalDiscount: { $sum: { $ifNull: ['$metadata.discountAmount', 0] } },
+        },
+      },
+      {
+        $sort: { usageCount: -1 },
+      },
+    ]);
+
+    // Thống kê voucher theo tháng
+    const voucherUsageByMonth = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+          'metadata.voucherCode': { $exists: true, $ne: null },
+          ...dateFilter,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            month: { $month: '$created_at' },
+          },
+          vouchersUsed: { $sum: 1 },
+          totalDiscount: { $sum: { $ifNull: ['$metadata.discountAmount', 0] } },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    const totalVouchersUsed = voucherStats.reduce(
+      (sum, voucher) => sum + voucher.usageCount,
+      0,
+    );
+    const totalDiscountAmount = voucherStats.reduce(
+      (sum, voucher) => sum + voucher.totalDiscount,
+      0,
+    );
+
+    return {
+      totalVouchersUsed,
+      totalDiscountAmount,
+      averageDiscountPerBooking:
+        totalVouchersUsed > 0 ? totalDiscountAmount / totalVouchersUsed : 0,
+      mostPopularVoucher: voucherStats.length > 0 ? voucherStats[0]._id : 'N/A',
+      voucherUsageByMonth: voucherUsageByMonth.map((item: any) => ({
+        month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+        vouchersUsed: item.vouchersUsed,
+        totalDiscount: item.totalDiscount,
+      })),
+      topVouchers: voucherStats.slice(0, 10).map((voucher: any) => ({
+        voucherCode: voucher._id,
+        usageCount: voucher.usageCount,
+        totalDiscount: voucher.totalDiscount,
+      })),
+    };
+  }
+
+  /**
+   * Lấy thống kê service cho property
+   */
+  private async getServiceStatistics(
+    propertyId: string,
+    dateFilter: any,
+  ): Promise<PropertyServiceStatistics> {
+    // Thống kê service usage từ transactions hoặc booking metadata
+    const serviceStats = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+          'metadata.services': { $exists: true, $ne: [] },
+          ...dateFilter,
+        },
+      },
+      {
+        $unwind: '$metadata.services',
+      },
+      {
+        $group: {
+          _id: '$metadata.services.serviceId',
+          serviceName: { $first: '$metadata.services.serviceName' },
+          usageCount: { $sum: 1 },
+          revenue: { $sum: '$metadata.services.price' },
+        },
+      },
+      {
+        $sort: { usageCount: -1 },
+      },
+    ]);
+
+    // Thống kê service theo tháng
+    const serviceUsageByMonth = await this.bookingModel.aggregate([
+      {
+        $match: {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+          'metadata.services': { $exists: true, $ne: [] },
+          ...dateFilter,
+        },
+      },
+      {
+        $unwind: '$metadata.services',
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            month: { $month: '$created_at' },
+          },
+          servicesUsed: { $sum: 1 },
+          revenue: { $sum: '$metadata.services.price' },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    const totalServices = serviceStats.length;
+    const totalServiceRevenue = serviceStats.reduce(
+      (sum, service) => sum + service.revenue,
+      0,
+    );
+
+    return {
+      totalServices,
+      activeServices: totalServices, // Giả định tất cả services được sử dụng đều active
+      totalServiceRevenue,
+      averageServicePrice:
+        totalServices > 0 ? totalServiceRevenue / totalServices : 0,
+      mostPopularService:
+        serviceStats.length > 0 ? serviceStats[0].serviceName : 'N/A',
+      serviceUsageByMonth: serviceUsageByMonth.map((item: any) => ({
+        month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+        servicesUsed: item.servicesUsed,
+        revenue: item.revenue,
+      })),
+      topServices: serviceStats.slice(0, 10).map((service: any) => ({
+        serviceName: service.serviceName,
+        usageCount: service.usageCount,
+        revenue: service.revenue,
+      })),
     };
   }
 
