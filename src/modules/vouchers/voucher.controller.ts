@@ -75,7 +75,11 @@ export class VoucherController {
 
   @Get('validate/:code')
   @Roles('guest', 'admin', 'staff')
-  @ApiOperation({ summary: 'Kiểm tra tính hợp lệ của voucher' })
+  @ApiOperation({
+    summary: 'Kiểm tra tính hợp lệ của voucher',
+    description:
+      'Kiểm tra voucher có hợp lệ không, bao gồm điều kiện giá trị đơn hàng tối thiểu',
+  })
   @ApiResponse({ status: 200, description: 'Thông tin voucher hợp lệ' })
   @ResponseMessage('Kiểm tra voucher thành công')
   validateVoucher(
@@ -112,6 +116,55 @@ export class VoucherController {
   @ResponseMessage('Lấy voucher theo mã thành công')
   findByCode(@Param('code') code: string) {
     return this.voucherService.findByCode(code);
+  }
+
+  @Get('by-min-order-range')
+  @RequirePermission('booking.view')
+  @ApiOperation({
+    summary: 'Lấy danh sách voucher theo khoảng giá trị đơn hàng tối thiểu',
+    description: 'Tìm voucher có min_order_value trong khoảng chỉ định',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách voucher theo khoảng giá trị',
+  })
+  @ResponseMessage('Lấy danh sách voucher theo khoảng giá trị thành công')
+  getVouchersByMinOrderRange(
+    @Query('min_value') minValue: string,
+    @Query('max_value') maxValue: string,
+  ) {
+    if (!minValue || !maxValue) {
+      throw new BadRequestException('Cần cung cấp cả min_value và max_value');
+    }
+
+    const min = parseFloat(minValue);
+    const max = parseFloat(maxValue);
+
+    if (isNaN(min) || isNaN(max)) {
+      throw new BadRequestException('min_value và max_value phải là số hợp lệ');
+    }
+
+    if (min < 0 || max < 0) {
+      throw new BadRequestException('Giá trị không được âm');
+    }
+
+    if (min > max) {
+      throw new BadRequestException('min_value không được lớn hơn max_value');
+    }
+
+    return this.voucherService.getVouchersByMinOrderRange(min, max);
+  }
+
+  @Get(':propertyId/property')
+  @Public()
+  @ApiOperation({ summary: 'Lấy voucher theo property ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Voucher cho property được tìm thấy',
+  })
+  @ResponseMessage('Lấy voucher theo property thành công')
+  getVoucherByProperty(@Param('propertyId') propertyId: string) {
+    return this.voucherService.getVoucherByProperty(propertyId);
   }
 
   @Get(':id')
@@ -201,15 +254,19 @@ export class VoucherController {
     return this.voucherService.getVoucherWithRooms(id);
   }
 
-  @Get(':propertyId/property')
-  @Public()
-  @ApiOperation({ summary: 'Lấy voucher theo property ID' })
+  @Get(':id/min-order-info')
+  @RequirePermission('booking.view')
+  @ApiOperation({
+    summary: 'Lấy thông tin giá trị đơn hàng tối thiểu của voucher',
+    description:
+      'Trả về thông tin chi tiết về điều kiện giá trị đơn hàng tối thiểu',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Voucher cho property được tìm thấy',
+    description: 'Thông tin min_order_value của voucher',
   })
-  @ResponseMessage('Lấy voucher theo property thành công')
-  getVoucherByProperty(@Param('propertyId') propertyId: string) {
-    return this.voucherService.getVoucherByProperty(propertyId);
+  @ResponseMessage('Lấy thông tin min_order_value thành công')
+  getVoucherMinOrderInfo(@Param('id') id: string) {
+    return this.voucherService.getVoucherMinOrderInfo(id);
   }
 }

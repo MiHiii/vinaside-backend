@@ -312,6 +312,16 @@ export class VoucherService {
       };
     }
 
+    // Kiểm tra giá trị đơn hàng tối thiểu
+    if (voucher.min_order_value && voucher.min_order_value > 0) {
+      if (totalAmount < voucher.min_order_value) {
+        return {
+          valid: false,
+          message: `Đơn hàng phải có giá trị tối thiểu ${voucher.min_order_value.toLocaleString('vi-VN')} VND để sử dụng voucher này`,
+        };
+      }
+    }
+
     // Kiểm tra áp dụng cho property cụ thể
     if (voucher.applies_to?.property_id && propertyId) {
       if (voucher.applies_to.property_id.toString() !== propertyId) {
@@ -475,5 +485,41 @@ export class VoucherService {
       );
       throw new BadRequestException('Không thể lấy thống kê voucher');
     }
+  }
+
+  /**
+   * Lấy thông tin chi tiết về min_order_value của voucher
+   */
+  async getVoucherMinOrderInfo(id: string): Promise<{
+    voucher: Voucher;
+    minOrderValue: number;
+    hasMinOrderRequirement: boolean;
+    formattedMinOrderValue: string;
+  }> {
+    const voucher = await this.findOne(id);
+
+    const minOrderValue = voucher.min_order_value || 0;
+    const hasMinOrderRequirement = minOrderValue > 0;
+    const formattedMinOrderValue =
+      minOrderValue > 0
+        ? minOrderValue.toLocaleString('vi-VN') + ' VND'
+        : 'Không có yêu cầu';
+
+    return {
+      voucher,
+      minOrderValue,
+      hasMinOrderRequirement,
+      formattedMinOrderValue,
+    };
+  }
+
+  /**
+   * Lấy danh sách voucher theo khoảng giá trị đơn hàng tối thiểu
+   */
+  async getVouchersByMinOrderRange(
+    minValue: number,
+    maxValue: number,
+  ): Promise<Voucher[]> {
+    return this.voucherRepo.findByMinOrderRange(minValue, maxValue);
   }
 }

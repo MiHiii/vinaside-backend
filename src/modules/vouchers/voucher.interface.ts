@@ -9,6 +9,7 @@ export interface IVoucher extends Document {
   expiration_date: Date;
   is_active: boolean;
   description?: string;
+  min_order_value?: number;
   applies_to?: {
     property_id?: Types.ObjectId;
     room_ids?: Types.ObjectId[];

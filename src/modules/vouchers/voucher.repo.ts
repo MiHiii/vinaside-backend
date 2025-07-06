@@ -57,11 +57,25 @@ export class VoucherRepo extends BaseRepo<Voucher> {
   async getValidVouchers(): Promise<Voucher[]> {
     return this.voucherModel
       .find({
-        isDeleted: false,
         is_active: true,
-        expiration_date: { $gte: new Date() },
+        isDeleted: false,
+        expiration_date: { $gt: new Date() },
         $expr: { $lt: ['$uses_count', '$max_uses'] },
       })
+      .sort({ created_at: -1 })
+      .exec();
+  }
+
+  async findByMinOrderRange(
+    minValue: number,
+    maxValue: number,
+  ): Promise<Voucher[]> {
+    return this.voucherModel
+      .find({
+        isDeleted: false,
+        min_order_value: { $gte: minValue, $lte: maxValue },
+      })
+      .sort({ min_order_value: 1 })
       .exec();
   }
 
@@ -89,6 +103,13 @@ export class VoucherRepo extends BaseRepo<Voucher> {
     typeAnalysis: {
       byDiscountRange: any[];
       averageDiscountPercent: number;
+    };
+    minOrderValueAnalysis: {
+      vouchersWithMinOrder: number;
+      vouchersWithoutMinOrder: number;
+      averageMinOrderValue: number;
+      maxMinOrderValue: number;
+      byValueRanges: any[];
     };
     userEffectiveness: {
       uniqueUsersUsedVouchers: number;
@@ -249,6 +270,61 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       },
     ]);
 
+    // Thống kê về min_order_value
+    const minOrderValueStats = await this.voucherModel.aggregate([
+      {
+        $group: {
+          _id: null,
+          vouchersWithMinOrder: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$min_order_value', null] },
+                    { $gt: ['$min_order_value', 0] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          vouchersWithoutMinOrder: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ['$min_order_value', null] },
+                    { $eq: ['$min_order_value', 0] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          averageMinOrderValue: { $avg: { $ifNull: ['$min_order_value', 0] } },
+          maxMinOrderValue: { $max: { $ifNull: ['$min_order_value', 0] } },
+        },
+      },
+    ]);
+
+    // Phân tích min_order_value theo khoảng giá
+    const minOrderValueRanges = await this.voucherModel.aggregate([
+      {
+        $bucket: {
+          groupBy: { $ifNull: ['$min_order_value', 0] },
+          boundaries: [0, 500000, 1000000, 2000000, 5000000, 10000000],
+          default: 'Above 10M',
+          output: {
+            count: { $sum: 1 },
+            totalUsage: { $sum: '$uses_count' },
+            averageUsage: { $avg: '$uses_count' },
+          },
+        },
+      },
+    ]);
+
     // 5. Hiệu quả theo người dùng (mock data vì không có user tracking)
 
     const userEffectivenessStats = {
@@ -347,6 +423,17 @@ export class VoucherRepo extends BaseRepo<Voucher> {
         byDiscountRange: typeAnalysis,
         averageDiscountPercent:
           (averageDiscountPercent[0]?.averageDiscount as number) || 0,
+      },
+      minOrderValueAnalysis: {
+        vouchersWithMinOrder:
+          (minOrderValueStats[0]?.vouchersWithMinOrder as number) || 0,
+        vouchersWithoutMinOrder:
+          (minOrderValueStats[0]?.vouchersWithoutMinOrder as number) || 0,
+        averageMinOrderValue:
+          (minOrderValueStats[0]?.averageMinOrderValue as number) || 0,
+        maxMinOrderValue:
+          (minOrderValueStats[0]?.maxMinOrderValue as number) || 0,
+        byValueRanges: minOrderValueRanges,
       },
       userEffectiveness: userEffectivenessStats,
       propertyEffectiveness: {

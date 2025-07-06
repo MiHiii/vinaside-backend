@@ -45,6 +45,12 @@ export class CreateVoucherDto {
   description?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0, { message: 'Giá trị đơn hàng tối thiểu phải từ 0 trở lên' })
+  min_order_value?: number = 0;
+
+  @IsOptional()
   @IsMongoId()
   property_id?: string;
 

@@ -60,6 +60,14 @@ export class Voucher extends Document {
   description?: string;
 
   @Prop({
+    type: Number,
+    required: false,
+    min: 0,
+    default: 0,
+  })
+  min_order_value?: number;
+
+  @Prop({
     type: {
       property_id: { type: MongooseSchema.Types.ObjectId, ref: 'Property' },
       room_ids: [{ type: MongooseSchema.Types.ObjectId, ref: 'Listing' }],
@@ -100,3 +108,4 @@ VoucherSchema.index({ isDeleted: 1 });
 VoucherSchema.index({ created_at: -1 });
 VoucherSchema.index({ 'applies_to.property_id': 1 });
 VoucherSchema.index({ 'applies_to.room_ids': 1 });
+VoucherSchema.index({ min_order_value: 1 });
