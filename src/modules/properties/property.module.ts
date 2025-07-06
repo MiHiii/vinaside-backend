@@ -6,6 +6,8 @@ import { Property, PropertySchema } from './schemas/property.schema';
 import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
 import { Booking, BookingSchema } from '../booking/schemas/booking.schema';
 import { Review, ReviewSchema } from '../reviews/schemas/review.schema';
+import { Voucher, VoucherSchema } from '../vouchers/schemas/voucher.schema';
+import { Service, ServiceSchema } from '../services/schemas/service.schema';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { Review, ReviewSchema } from '../reviews/schemas/review.schema';
       { name: Listing.name, schema: ListingSchema },
       { name: Booking.name, schema: BookingSchema },
       { name: Review.name, schema: ReviewSchema },
+      { name: Voucher.name, schema: VoucherSchema },
+      { name: Service.name, schema: ServiceSchema },
     ]),
   ],
   controllers: [PropertyController],

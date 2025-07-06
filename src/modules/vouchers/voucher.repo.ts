@@ -22,6 +22,18 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       .exec();
   }
 
+  async findByProperty(propertyId: string): Promise<Voucher | null> {
+    return this.voucherModel
+      .findOne({
+        'applies_to.property_id': propertyId,
+        isDeleted: false,
+        is_active: true,
+        expiration_date: { $gte: new Date() },
+        $expr: { $lt: ['$uses_count', '$max_uses'] },
+      })
+      .exec();
+  }
+
   async checkCodeExists(code: string, excludeId?: string): Promise<boolean> {
     const query: FilterQuery<Voucher> = {
       code: code.toUpperCase(),

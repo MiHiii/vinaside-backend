@@ -15,6 +15,12 @@ import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
+import {
+  BookingStatisticsQueryDto,
+  BookingOverviewResponseDto,
+  BookingFinancialResponseDto,
+  BookingCustomerResponseDto,
+} from './dto/booking-statistics.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -221,6 +227,62 @@ export class BookingController {
       id,
       BookingStatus.CONFIRMED,
       req.user as any as JwtPayload,
+    );
+  }
+
+  // =================== STATISTICS ENDPOINTS ===================
+
+  @Get('statistics/overview')
+  @RequirePermission('booking.view_statistics')
+  @ApiOperation({ summary: 'Lấy thống kê tổng quan booking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê tổng quan booking được trả về thành công.',
+    type: BookingOverviewResponseDto,
+  })
+  @ResponseMessage('Lấy thống kê tổng quan booking thành công')
+  getOverviewStatistics(@Query() query: BookingStatisticsQueryDto) {
+    return this.bookingService.getOverviewStatistics(
+      query.startDate,
+      query.endDate,
+      query.propertyId,
+      query.listingId,
+    );
+  }
+
+  @Get('statistics/financial')
+  @RequirePermission('booking.view_statistics')
+  @ApiOperation({ summary: 'Lấy thống kê tài chính booking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê tài chính booking được trả về thành công.',
+    type: BookingFinancialResponseDto,
+  })
+  @ResponseMessage('Lấy thống kê tài chính booking thành công')
+  getFinancialStatistics(@Query() query: BookingStatisticsQueryDto) {
+    return this.bookingService.getFinancialStatistics(
+      query.startDate,
+      query.endDate,
+      query.propertyId,
+      query.listingId,
+    );
+  }
+
+  @Get('statistics/customers')
+  @RequirePermission('booking.view_statistics')
+  @ApiOperation({ summary: 'Lấy thống kê khách hàng booking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê khách hàng booking được trả về thành công.',
+    type: BookingCustomerResponseDto,
+  })
+  @ResponseMessage('Lấy thống kê khách hàng booking thành công')
+  getCustomerStatistics(@Query() query: BookingStatisticsQueryDto) {
+    return this.bookingService.getCustomerStatistics(
+      query.startDate,
+      query.endDate,
+      query.propertyId,
+      query.listingId,
     );
   }
 }

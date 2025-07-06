@@ -70,8 +70,9 @@ export class UsersController {
       ...query,
       role: 'staff',
       isDeleted: false, // Only active staff
-      select: 'name email phone avatar createdAt isVerified',
+      select: 'name email phone avatar_url createdAt is_verified role',
     };
+
     return this.usersService.findAllWithFilters(staffQuery, req.user);
   }
 

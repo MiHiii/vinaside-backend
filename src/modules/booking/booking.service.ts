@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
   Logger,
@@ -18,6 +23,13 @@ import { PropertyService } from '../properties/services/property.service';
 import { MailService } from '../mail/mail.service';
 import { EmailQueueService } from '../mail/mail.queue';
 import { ReservationData } from '../mail/interfaces/reservation-data.interface';
+import {
+  BookingOverviewStatistics,
+  BookingStatusStatistics,
+  BookingFinancialStatistics,
+  BookingCustomerStatistics,
+  BookingTimelineStatistics,
+} from './dto/booking-statistics.dto';
 
 export interface PaginatedBookings {
   data: Booking[];
@@ -106,21 +118,21 @@ export class BookingService {
       listingId: new Types.ObjectId(listingId),
       guestId: new Types.ObjectId(user._id),
       checkInDate: checkIn,
-      checkOutDate: checkOut,
+      check_out_date: checkOut,
       guests: guests,
       infants: createBookingDto.infants || 0,
-      specialRequests: createBookingDto.specialRequests || '',
+      special_requests: createBookingDto.specialRequests || '',
       nights,
-      pricePerNight: populatedListing.price_per_night,
-      totalPrice,
-      serviceFee,
-      taxAmount,
-      finalAmount,
+      price_per_night: populatedListing.price_per_night,
+      total_price: totalPrice,
+      service_fee: serviceFee,
+      tax_amount: taxAmount,
+      final_amount: finalAmount,
       commissionRate,
       finalPayoutAmount,
-      guestName: user.name,
-      guestEmail: user.email,
-      guestPhone: '',
+      guest_name: user.name,
+      guest_email: user.email,
+      guest_phone: '',
     };
 
     // BaseRepo.create expects a generic object, not a DTO with methods
@@ -719,5 +731,442 @@ export class BookingService {
       error instanceof Error ? error.stack : undefined,
     );
     throw error;
+  }
+
+  // =========================== STATISTICS METHODS ===========================
+
+  /**
+   * Tạo filter cơ bản cho thống kê
+   */
+  private createStatisticsFilter(
+    startDate?: string,
+    endDate?: string,
+    propertyId?: string,
+    listingId?: string,
+  ): any {
+    const filter: any = { isDeleted: false };
+
+    if (startDate || endDate) {
+      filter.created_at = {};
+      if (startDate) filter.created_at.$gte = new Date(startDate);
+      if (endDate) filter.created_at.$lte = new Date(endDate);
+    }
+
+    if (propertyId) {
+      filter.propertyId = new Types.ObjectId(propertyId);
+    }
+
+    if (listingId) {
+      filter.listingId = new Types.ObjectId(listingId);
+    }
+
+    return filter;
+  }
+
+  /**
+   * Lấy thống kê tổng quan
+   */
+  async getOverviewStatistics(
+    startDate?: string,
+    endDate?: string,
+    propertyId?: string,
+    listingId?: string,
+  ): Promise<
+    BookingOverviewStatistics & { statusBreakdown: BookingStatusStatistics }
+  > {
+    const filter = this.createStatisticsFilter(
+      startDate,
+      endDate,
+      propertyId,
+      listingId,
+    );
+
+    // Thống kê tổng quan
+    const overviewStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: '$final_amount' },
+          totalNights: { $sum: '$nights' },
+          totalGuests: { $sum: '$guests' },
+          totalInfants: { $sum: '$infants' },
+          averageBookingValue: { $avg: '$final_amount' },
+        },
+      },
+    ]);
+
+    // Thống kê theo trạng thái
+    const statusStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Tính toán tỉ lệ lấp đầy (giả định 30 ngày/tháng)
+    const daysInPeriod =
+      startDate && endDate
+        ? Math.ceil(
+            (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+              (1000 * 60 * 60 * 24),
+          )
+        : 30;
+
+    const overview = overviewStats[0] || {
+      totalBookings: 0,
+      totalRevenue: 0,
+      totalNights: 0,
+      totalGuests: 0,
+      totalInfants: 0,
+      averageBookingValue: 0,
+    };
+
+    // Tạo object trạng thái
+    const statusBreakdown: BookingStatusStatistics = {
+      pending: 0,
+      confirmed: 0,
+      cancelled: 0,
+      completed: 0,
+      rejected: 0,
+      confirmationRate: 0,
+      cancellationRate: 0,
+    };
+
+    statusStats.forEach((stat: any) => {
+      statusBreakdown[stat._id] = stat.count;
+    });
+
+    // Tính tỉ lệ
+    if (overview.totalBookings > 0) {
+      statusBreakdown.confirmationRate = Math.round(
+        ((statusBreakdown.confirmed + statusBreakdown.completed) /
+          overview.totalBookings) *
+          100,
+      );
+      statusBreakdown.cancellationRate = Math.round(
+        (statusBreakdown.cancelled / overview.totalBookings) * 100,
+      );
+    }
+
+    return {
+      totalBookings: overview.totalBookings,
+      totalRevenue: overview.totalRevenue,
+      totalNights: overview.totalNights,
+      averageOccupancyRate: Math.round(
+        ((overview.totalNights as number) / daysInPeriod) * 100,
+      ),
+      averageBookingValue: Math.round(overview.averageBookingValue as number),
+      totalGuests: overview.totalGuests,
+      totalInfants: overview.totalInfants,
+      statusBreakdown,
+    };
+  }
+
+  /**
+   * Lấy thống kê tài chính
+   */
+  async getFinancialStatistics(
+    startDate?: string,
+    endDate?: string,
+    propertyId?: string,
+    listingId?: string,
+  ): Promise<BookingFinancialStatistics> {
+    const filter = this.createStatisticsFilter(
+      startDate,
+      endDate,
+      propertyId,
+      listingId,
+    );
+
+    // Thống kê tài chính tổng quan
+    const financialStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$final_amount' },
+          totalServiceFees: { $sum: '$service_fee' },
+          totalTaxAmount: { $sum: '$tax_amount' },
+          totalRefunds: {
+            $sum: {
+              $cond: [
+                { $eq: ['$payment_status', 'refunded'] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          averageBookingValue: { $avg: '$final_amount' },
+        },
+      },
+    ]);
+
+    // Thống kê doanh thu theo tháng
+    const revenueByMonth = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            month: { $month: '$created_at' },
+          },
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    const financial = financialStats[0] || {
+      totalRevenue: 0,
+      totalServiceFees: 0,
+      totalTaxAmount: 0,
+      totalRefunds: 0,
+      averageBookingValue: 0,
+    };
+
+    return {
+      totalRevenue: financial.totalRevenue,
+      totalServiceFees: financial.totalServiceFees,
+      totalTaxAmount: financial.totalTaxAmount,
+      totalRefunds: financial.totalRefunds,
+      netRevenue: financial.totalRevenue - financial.totalRefunds,
+      averageBookingValue: Math.round(financial.averageBookingValue as number),
+      revenueByMonth: revenueByMonth.map((item: any) => ({
+        month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+        revenue: item.revenue,
+        bookings: item.bookings,
+      })),
+    };
+  }
+
+  /**
+   * Lấy thống kê khách hàng
+   */
+  async getCustomerStatistics(
+    startDate?: string,
+    endDate?: string,
+    propertyId?: string,
+    listingId?: string,
+  ): Promise<BookingCustomerStatistics> {
+    const filter = this.createStatisticsFilter(
+      startDate,
+      endDate,
+      propertyId,
+      listingId,
+    );
+
+    // Thống kê khách hàng
+    const customerStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$guestId',
+          totalBookings: { $sum: 1 },
+          totalSpent: { $sum: '$final_amount' },
+          totalNights: { $sum: '$nights' },
+          totalGuests: { $sum: '$guests' },
+          guestName: { $first: '$guest_name' },
+        },
+      },
+    ]);
+
+    // Thống kê khách hàng mới vs quay lại
+    const newCustomers = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$guestId',
+          firstBooking: { $min: '$created_at' },
+        },
+      },
+      {
+        $match: {
+          firstBooking: {
+            $gte: startDate
+              ? new Date(startDate)
+              : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+      },
+      {
+        $count: 'count',
+      },
+    ]);
+
+    // Top khách hàng
+    const topCustomers = customerStats
+      .sort((a: any, b: any) => b.totalSpent - a.totalSpent)
+      .slice(0, 10)
+      .map((customer: any) => ({
+        customerId: customer._id.toString(),
+        customerName: customer.guestName,
+        totalBookings: customer.totalBookings,
+        totalSpent: customer.totalSpent,
+      }));
+
+    const totalCustomers = customerStats.length;
+    const newCustomersCount = newCustomers[0]?.count || 0;
+    const returningCustomers = totalCustomers - newCustomersCount;
+
+    // Tính trung bình
+    const totalNights = customerStats.reduce(
+      (sum: number, customer: any) => sum + customer.totalNights,
+      0,
+    );
+    const totalGuests = customerStats.reduce(
+      (sum: number, customer: any) => sum + customer.totalGuests,
+      0,
+    );
+    const totalBookings = customerStats.reduce(
+      (sum: number, customer: any) => sum + customer.totalBookings,
+      0,
+    );
+
+    return {
+      totalCustomers,
+      newCustomers: newCustomersCount,
+      returningCustomers,
+      averageNightsPerBooking:
+        totalBookings > 0
+          ? Math.round((totalNights / totalBookings) * 10) / 10
+          : 0,
+      averageGuestsPerBooking:
+        totalBookings > 0
+          ? Math.round((totalGuests / totalBookings) * 10) / 10
+          : 0,
+      topCustomers,
+    };
+  }
+
+  /**
+   * Lấy thống kê theo thời gian
+   */
+  async getTimelineStatistics(
+    startDate?: string,
+    endDate?: string,
+    propertyId?: string,
+    listingId?: string,
+  ): Promise<BookingTimelineStatistics> {
+    const filter = this.createStatisticsFilter(
+      startDate,
+      endDate,
+      propertyId,
+      listingId,
+    );
+
+    // Thống kê theo ngày
+    const bookingsByDay = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            month: { $month: '$created_at' },
+            day: { $dayOfMonth: '$created_at' },
+          },
+          bookings: { $sum: 1 },
+          revenue: { $sum: '$final_amount' },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 },
+      },
+    ]);
+
+    // Thống kê theo tuần
+    const bookingsByWeek = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            week: { $week: '$created_at' },
+          },
+          bookings: { $sum: 1 },
+          revenue: { $sum: '$final_amount' },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.week': 1 },
+      },
+    ]);
+
+    // Thống kê theo tháng
+    const bookingsByMonth = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$created_at' },
+            month: { $month: '$created_at' },
+          },
+          bookings: { $sum: 1 },
+          revenue: { $sum: '$final_amount' },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    // Tính thời gian đặt trước trung bình
+    const advanceBookingStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          advanceDays: {
+            $ceil: {
+              $divide: [
+                { $subtract: ['$checkInDate', '$created_at'] },
+                1000 * 60 * 60 * 24,
+              ],
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          averageAdvanceDays: { $avg: '$advanceDays' },
+          averageStayDuration: { $avg: '$nights' },
+        },
+      },
+    ]);
+
+    const timelineStats = advanceBookingStats[0] || {
+      averageAdvanceDays: 0,
+      averageStayDuration: 0,
+    };
+
+    return {
+      bookingsByDay: bookingsByDay.map((item: any) => ({
+        date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`,
+        bookings: item.bookings,
+        revenue: item.revenue,
+      })),
+      bookingsByWeek: bookingsByWeek.map((item: any) => ({
+        week: `${item._id.year}-W${String(item._id.week).padStart(2, '0')}`,
+        bookings: item.bookings,
+        revenue: item.revenue,
+      })),
+      bookingsByMonth: bookingsByMonth.map((item: any) => ({
+        month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+        bookings: item.bookings,
+        revenue: item.revenue,
+      })),
+      averageAdvanceBookingDays: Math.round(
+        timelineStats.averageAdvanceDays as number,
+      ),
+      averageStayDuration:
+        Math.round((timelineStats.averageStayDuration as number) * 10) / 10,
+    };
   }
 }

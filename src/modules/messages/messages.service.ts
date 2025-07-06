@@ -32,6 +32,7 @@ interface MessageQueryDto {
 interface ConversationQueryDto {
   limit?: number;
   page?: number;
+  // Không có default limit để lấy toàn bộ tin nhắn
   [key: string]: any;
 }
 
@@ -111,29 +112,40 @@ export class MessagesService {
     queryDto?: MessageQueryDto,
     user?: JwtPayload,
   ): Promise<Message[]> {
-    // Implementation for backward compatibility
-    if (queryDto && user) {
-      // Filter messages for the specific user
-      const userObjectId = new Types.ObjectId(user._id);
+    try {
+      // Implementation for backward compatibility
+      if (queryDto && user) {
+        // Filter messages for the specific user
+        const userObjectId = new Types.ObjectId(user._id);
 
-      return await this.messageModel
-        .find({
-          $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
-        })
+        const result = await this.messageModel
+          .find({
+            $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
+          })
+          .populate('sender_id', 'username email')
+          .populate('receiver_id', 'username email')
+          .sort({ sent_at: -1 })
+          .limit(queryDto?.limit || 10)
+          .skip(
+            queryDto?.page ? (queryDto.page - 1) * (queryDto.limit || 10) : 0,
+          )
+          .exec();
+
+        return result || [];
+      }
+
+      const result = await this.messageModel
+        .find()
         .populate('sender_id', 'username email')
         .populate('receiver_id', 'username email')
         .sort({ sent_at: -1 })
-        .limit(queryDto?.limit || 10)
-        .skip(queryDto?.page ? (queryDto.page - 1) * (queryDto.limit || 10) : 0)
         .exec();
-    }
 
-    return await this.messageModel
-      .find()
-      .populate('sender_id', 'username email')
-      .populate('receiver_id', 'username email')
-      .sort({ sent_at: -1 })
-      .exec();
+      return result || [];
+    } catch (error) {
+      console.error('Error in findAll:', error);
+      return [];
+    }
   }
 
   async findOne(id: string, user: JwtPayload): Promise<Message | null> {
@@ -174,125 +186,135 @@ export class MessagesService {
       throw new BadRequestException('Định dạng ID người dùng không hợp lệ');
     }
 
-    // Handle both string and ObjectId formats for backward compatibility
-    const userObjectId = new Types.ObjectId(userId);
-    const otherUserObjectId = new Types.ObjectId(otherUserId);
+    try {
+      // Handle both string and ObjectId formats for backward compatibility
+      const userObjectId = new Types.ObjectId(userId);
+      const otherUserObjectId = new Types.ObjectId(otherUserId);
 
-    const messages = await this.messageModel
-      .find({
-        $or: [
-          // Handle ObjectId format (new data)
-          { sender_id: userObjectId, receiver_id: otherUserObjectId },
-          { sender_id: otherUserObjectId, receiver_id: userObjectId },
-          // Handle string format (legacy data)
-          { sender_id: userId, receiver_id: otherUserId },
-          { sender_id: otherUserId, receiver_id: userId },
-        ],
-      })
-      .populate('sender_id', 'username email')
-      .populate('receiver_id', 'username email')
-      .sort({ sent_at: 1 })
-      .exec();
+      const messages = await this.messageModel
+        .find({
+          $or: [
+            // Handle ObjectId format (new data)
+            { sender_id: userObjectId, receiver_id: otherUserObjectId },
+            { sender_id: otherUserObjectId, receiver_id: userObjectId },
+            // Handle string format (legacy data)
+            { sender_id: userId, receiver_id: otherUserId },
+            { sender_id: otherUserId, receiver_id: userId },
+          ],
+        })
+        .populate('sender_id', 'username email')
+        .populate('receiver_id', 'username email')
+        .sort({ sent_at: 1 })
+        .exec();
 
-    return messages;
+      return messages || [];
+    } catch (error) {
+      console.error('Error in findConversation:', error);
+      return [];
+    }
   }
 
   async findUserConversations(userId: string): Promise<any[]> {
-    // Handle both string and ObjectId formats for backward compatibility
-    const userObjectId = new Types.ObjectId(userId);
+    try {
+      // Handle both string and ObjectId formats for backward compatibility
+      const userObjectId = new Types.ObjectId(userId);
 
-    const conversations = await this.messageModel.aggregate([
-      {
-        $match: {
-          $or: [
-            // Handle ObjectId format (new data)
-            { sender_id: userObjectId },
-            { receiver_id: userObjectId },
-            // Handle string format (legacy data)
-            { sender_id: userId },
-            { receiver_id: userId },
-          ],
-        },
-      },
-      {
-        $sort: { sent_at: -1 },
-      },
-      {
-        $addFields: {
-          otherUserId: {
-            $cond: [
-              {
-                $or: [
-                  { $eq: ['$sender_id', userObjectId] },
-                  { $eq: ['$sender_id', userId] },
-                ],
-              },
-              '$receiver_id',
-              '$sender_id',
+      const conversations = await this.messageModel.aggregate([
+        {
+          $match: {
+            $or: [
+              // Handle ObjectId format (new data)
+              { sender_id: userObjectId },
+              { receiver_id: userObjectId },
+              // Handle string format (legacy data)
+              { sender_id: userId },
+              { receiver_id: userId },
             ],
           },
         },
-      },
-      {
-        $group: {
-          _id: '$otherUserId',
-          lastMessage: { $first: '$$ROOT' },
-          unreadCount: {
-            $sum: {
+        {
+          $sort: { sent_at: -1 },
+        },
+        {
+          $addFields: {
+            otherUserId: {
               $cond: [
                 {
-                  $and: [
-                    {
-                      $or: [
-                        { $eq: ['$receiver_id', userObjectId] },
-                        { $eq: ['$receiver_id', userId] },
-                      ],
-                    },
-                    { $ne: ['$is_read', MessageStatus.READ] },
+                  $or: [
+                    { $eq: ['$sender_id', userObjectId] },
+                    { $eq: ['$sender_id', userId] },
                   ],
                 },
-                1,
-                0,
+                '$receiver_id',
+                '$sender_id',
               ],
             },
           },
         },
-      },
-      {
-        $addFields: {
-          userIdToLookup: {
-            $cond: [
-              { $eq: [{ $type: '$_id' }, 'objectId'] },
-              '$_id',
-              { $toObjectId: '$_id' },
-            ],
+        {
+          $group: {
+            _id: '$otherUserId',
+            lastMessage: { $first: '$$ROOT' },
+            unreadCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      {
+                        $or: [
+                          { $eq: ['$receiver_id', userObjectId] },
+                          { $eq: ['$receiver_id', userId] },
+                        ],
+                      },
+                      { $ne: ['$is_read', MessageStatus.READ] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
           },
         },
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userIdToLookup',
-          foreignField: '_id',
-          as: 'user',
+        {
+          $addFields: {
+            userIdToLookup: {
+              $cond: [
+                { $eq: [{ $type: '$_id' }, 'objectId'] },
+                '$_id',
+                { $toObjectId: '$_id' },
+              ],
+            },
+          },
         },
-      },
-      {
-        $unwind: '$user',
-      },
-      {
-        $project: {
-          user: { username: 1, email: 1, avatar: 1 },
-          lastMessage: 1,
-          unreadCount: 1,
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userIdToLookup',
+            foreignField: '_id',
+            as: 'user',
+          },
         },
-      },
-      {
-        $sort: { 'lastMessage.sent_at': -1 },
-      },
-    ]);
+        {
+          $unwind: '$user',
+        },
+        {
+          $project: {
+            user: { username: 1, email: 1, avatar: 1 },
+            lastMessage: 1,
+            unreadCount: 1,
+          },
+        },
+        {
+          $sort: { 'lastMessage.sent_at': -1 },
+        },
+      ]);
 
-    return conversations;
+      return conversations || [];
+    } catch (error) {
+      console.error('Error in findUserConversations:', error);
+      return [];
+    }
   }
 
   async update(
@@ -394,14 +416,19 @@ export class MessagesService {
   }
 
   async getUnreadCount(userId: string): Promise<{ count: number }> {
-    const count = await this.messageModel
-      .countDocuments({
-        receiver_id: userId,
-        is_read: { $ne: MessageStatus.READ },
-      })
-      .exec();
+    try {
+      const count = await this.messageModel
+        .countDocuments({
+          receiver_id: userId,
+          is_read: { $ne: MessageStatus.READ },
+        })
+        .exec();
 
-    return { count };
+      return { count: count || 0 };
+    } catch (error) {
+      console.error('Error in getUnreadCount:', error);
+      return { count: 0 };
+    }
   }
 
   async getAvailableUsers(currentUserId: string): Promise<any[]> {
@@ -498,7 +525,7 @@ export class MessagesService {
         },
       ]);
 
-      return users;
+      return users || [];
     } catch (error) {
       console.error('Error getting available users:', error);
       return [];
@@ -525,7 +552,7 @@ export class MessagesService {
         )
         .toArray();
 
-      return users;
+      return users || [];
     } catch (error) {
       console.error('Error getting all users:', error);
       return [];
@@ -547,13 +574,20 @@ export class MessagesService {
     otherUserId: string,
     query?: ConversationQueryDto,
   ): Promise<Message[]> {
-    const messages = await this.findConversation(userId, otherUserId);
+    try {
+      const messages = await this.findConversation(userId, otherUserId);
 
-    if (query?.limit && typeof query.limit === 'number') {
-      return messages.slice(0, query.limit);
+      // Chỉ áp dụng limit khi user chủ động truyền vào
+      if (query?.limit && typeof query.limit === 'number' && query.limit > 0) {
+        return messages.slice(0, query.limit);
+      }
+
+      // Trả về toàn bộ tin nhắn nếu không có limit
+      return messages || [];
+    } catch (error) {
+      console.error('Error in getConversation:', error);
+      return [];
     }
-
-    return messages;
   }
 
   /**
@@ -639,23 +673,30 @@ export class MessagesService {
     searchDto: MessageSearchDto,
     user: JwtPayload,
   ): Promise<Message[]> {
-    const userObjectId = new Types.ObjectId(user._id);
+    try {
+      const userObjectId = new Types.ObjectId(user._id);
 
-    const query: Record<string, any> = {
-      $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
-    };
+      const query: Record<string, any> = {
+        $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
+      };
 
-    if (searchDto?.keyword && typeof searchDto.keyword === 'string') {
-      query.content = { $regex: searchDto.keyword, $options: 'i' };
+      if (searchDto?.keyword && typeof searchDto.keyword === 'string') {
+        query.content = { $regex: searchDto.keyword, $options: 'i' };
+      }
+
+      const result = await this.messageModel
+        .find(query)
+        .populate('sender_id', 'username email')
+        .populate('receiver_id', 'username email')
+        .sort({ sent_at: -1 })
+        .limit(searchDto?.limit || 20)
+        .exec();
+
+      return result || [];
+    } catch (error) {
+      console.error('Error in search:', error);
+      return [];
     }
-
-    return await this.messageModel
-      .find(query)
-      .populate('sender_id', 'username email')
-      .populate('receiver_id', 'username email')
-      .sort({ sent_at: -1 })
-      .limit(searchDto?.limit || 20)
-      .exec();
   }
 
   /**
@@ -901,5 +942,64 @@ export class MessagesService {
     }
 
     return { action, message: updatedMessage };
+  }
+
+  /**
+   * Thu hồi tin nhắn
+   */
+  async recallMessage(messageId: string, user: JwtPayload): Promise<Message> {
+    if (!isValidObjectId(messageId)) {
+      throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
+    }
+
+    const message = await this.messageModel.findById(messageId);
+    if (!message) {
+      throw new NotFoundException('Không tìm thấy tin nhắn');
+    }
+
+    // Authorization: chỉ người gửi mới có thể thu hồi tin nhắn của mình
+    if (user.role !== 'admin' && user._id !== message.sender_id.toString()) {
+      throw new ForbiddenException('Bạn chỉ có thể thu hồi tin nhắn của mình');
+    }
+
+    // Kiểm tra tin nhắn đã được thu hồi chưa
+    if (message.is_recalled) {
+      throw new BadRequestException('Tin nhắn đã được thu hồi trước đó');
+    }
+
+    // Cập nhật trạng thái thu hồi
+    const updatedMessage = await this.messageModel
+      .findByIdAndUpdate(
+        messageId,
+        {
+          is_recalled: true,
+          recalled_at: new Date(),
+          content: 'Bạn đã thu hồi một tin nhắn', // Thay đổi nội dung để hiển thị
+        },
+        { new: true },
+      )
+      .populate('sender_id', 'username email')
+      .populate('receiver_id', 'username email')
+      .exec();
+
+    if (!updatedMessage) {
+      throw new NotFoundException('Failed to recall message');
+    }
+
+    // Emit real-time notification để cả 2 bên đều nhận được thông báo
+    try {
+      const senderId = message.sender_id.toString();
+      const receiverId = message.receiver_id.toString();
+
+      // Emit đến người nhận
+      this.messagesGateway.emitMessageRecalled(updatedMessage, receiverId);
+
+      // Emit đến người gửi (để sync trên các device khác)
+      this.messagesGateway.emitMessageRecalled(updatedMessage, senderId);
+    } catch (error) {
+      console.error('Failed to emit message recall notification:', error);
+    }
+
+    return updatedMessage;
   }
 }

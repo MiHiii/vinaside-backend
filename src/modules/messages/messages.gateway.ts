@@ -142,6 +142,19 @@ export class MessagesGateway
     this.logger.log(`Emitted reaction_update to ${receiverRoom}`);
   }
 
+  // Method public để emit message recalled event
+  emitMessageRecalled(message: Message, userId: string): void {
+    const userRoom = buildUserRoom(userId);
+    this.server.to(userRoom).emit('message_recalled', {
+      messageId: message._id?.toString(),
+      content: message.content,
+      is_recalled: message.is_recalled,
+      recalled_at: message.recalled_at,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.log(`Emitted message_recalled to ${userRoom}`);
+  }
+
   // Getter để có thể access server từ controller nếu cần
   get socketServer(): Server {
     return this.server;

@@ -82,12 +82,18 @@ export class VoucherController {
     @Param('code') code: string,
     @Query('total_amount') totalAmount: string,
     @Query('listing_id') listingId?: string,
+    @Query('property_id') propertyId?: string,
   ) {
     const amount = parseFloat(totalAmount);
     if (isNaN(amount) || amount <= 0) {
       throw new BadRequestException('Tổng tiền phải là số dương hợp lệ');
     }
-    return this.voucherService.validateVoucher(code, amount, listingId);
+    return this.voucherService.validateVoucher(
+      code,
+      amount,
+      listingId,
+      propertyId,
+    );
   }
 
   @Get('statistics')
@@ -193,5 +199,17 @@ export class VoucherController {
   @ResponseMessage('Lấy danh sách phòng áp dụng voucher thành công')
   getVoucherRooms(@Param('id') id: string) {
     return this.voucherService.getVoucherWithRooms(id);
+  }
+
+  @Get(':propertyId/property')
+  @Public()
+  @ApiOperation({ summary: 'Lấy voucher theo property ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Voucher cho property được tìm thấy',
+  })
+  @ResponseMessage('Lấy voucher theo property thành công')
+  getVoucherByProperty(@Param('propertyId') propertyId: string) {
+    return this.voucherService.getVoucherByProperty(propertyId);
   }
 }

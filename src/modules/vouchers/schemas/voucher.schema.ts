@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export interface AppliesTo {
+  property_id?: Types.ObjectId;
   room_ids?: Types.ObjectId[];
 }
 
@@ -60,6 +61,7 @@ export class Voucher extends Document {
 
   @Prop({
     type: {
+      property_id: { type: MongooseSchema.Types.ObjectId, ref: 'Property' },
       room_ids: [{ type: MongooseSchema.Types.ObjectId, ref: 'Listing' }],
     },
     required: false,
@@ -96,3 +98,5 @@ VoucherSchema.index({ is_active: 1 });
 VoucherSchema.index({ expiration_date: 1 });
 VoucherSchema.index({ isDeleted: 1 });
 VoucherSchema.index({ created_at: -1 });
+VoucherSchema.index({ 'applies_to.property_id': 1 });
+VoucherSchema.index({ 'applies_to.room_ids': 1 });

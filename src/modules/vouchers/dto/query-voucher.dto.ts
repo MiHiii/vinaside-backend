@@ -55,4 +55,12 @@ export class QueryVoucherDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true')
   include_deleted?: boolean = false;
+
+  @IsOptional()
+  @IsString()
+  property_id?: string;
+
+  @IsOptional()
+  @IsString()
+  room_id?: string;
 }

@@ -20,6 +20,10 @@ import {
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { QueryListingDto } from './dto/query-listing.dto';
+import {
+  ListingStatisticsDto,
+  ListingStatisticsResponseDto,
+} from './dto/listing-statistics.dto';
 import { ListingService } from './listing.service';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { Listing, ListingStatus } from './schemas/listing.schema';
@@ -135,10 +139,55 @@ export class ListingController {
   }
 
   @Public()
+  @Get('top/viewed')
+  @ApiOperation({ summary: 'Lấy top listings theo số lượt xem' })
+  @ApiResponse({
+    status: 200,
+    description: 'Top listings theo view count được trả về thành công.',
+  })
+  @ResponseMessage('Top viewed listings fetched successfully')
+  getTopViewedListings(@Query('limit') limit?: string) {
+    const limitNumber = limit ? parseInt(limit, 10) : 10;
+    return this.listingService.getTopViewedListings(limitNumber);
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Tìm listing theo ID' })
   @ResponseMessage('Listing fetched successfully')
   findOne(@Param('id') id: string) {
     return this.listingService.findOne(id);
+  }
+
+  @Public()
+  @Get(':id/view')
+  @ApiOperation({ summary: 'Xem chi tiết listing và tăng số lượt xem' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listing được tìm thấy và view count được tăng.',
+  })
+  @ResponseMessage('Listing viewed successfully')
+  findOneAndIncrementView(@Param('id') id: string) {
+    return this.listingService.findOneAndIncrementView(id);
+  }
+
+  // =================== STATISTICS ENDPOINTS ===================
+
+  @Get('statistics/:id')
+  @RequirePermission('listing.view_statistics')
+  @ApiOperation({ summary: 'Lấy thống kê chi tiết cho một listing' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê listing được trả về thành công.',
+    type: ListingStatisticsResponseDto,
+  })
+  @ResponseMessage('Lấy thống kê listing thành công')
+  getListingStatistics(
+    @Param('id') id: string,
+    @Query() query: ListingStatisticsDto,
+  ): Promise<ListingStatisticsResponseDto> {
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+    return this.listingService.getListingStatistics(id, startDate, endDate);
   }
 }

@@ -10,6 +10,7 @@ export interface IVoucher extends Document {
   is_active: boolean;
   description?: string;
   applies_to?: {
+    property_id?: Types.ObjectId;
     room_ids?: Types.ObjectId[];
   };
   isDeleted: boolean;

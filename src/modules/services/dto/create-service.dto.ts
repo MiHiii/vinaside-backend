@@ -6,7 +6,9 @@ import {
   IsNotEmpty,
   Min,
   IsUrl,
+  IsMongoId,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateServiceDto {
   @IsString({ message: 'Tên dịch vụ phải là chuỗi văn bản' })
@@ -21,6 +23,7 @@ export class CreateServiceDto {
   @IsNotEmpty({ message: 'Đơn vị không được để trống' })
   unit: string;
 
+  @Type(() => Number)
   @IsNumber({}, { message: 'Giá mặc định phải là số' })
   @Min(0, { message: 'Giá mặc định phải từ 0 trở lên' })
   default_price: number;
@@ -33,4 +36,11 @@ export class CreateServiceDto {
   @IsOptional()
   @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
   is_active?: boolean = true;
+
+  @IsMongoId({ message: 'Property ID phải có định dạng hợp lệ' })
+  property_id: string;
+
+  @IsOptional()
+  @IsMongoId({ message: 'Room ID phải có định dạng hợp lệ' })
+  room_id?: string;
 }
