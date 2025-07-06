@@ -121,4 +121,18 @@ export class ListingRepo {
       )
       .exec();
   }
+
+  /**
+   * Tăng số lượt xem của listing
+   */
+  async incrementViewCount(id: string): Promise<void> {
+    if (!Types.ObjectId.isValid(id)) {
+      this.logger.warn(`Invalid listing ID for view count increment: ${id}`);
+      return;
+    }
+
+    await this.listingModel
+      .findByIdAndUpdate(id, { $inc: { viewCount: 1 } }, { new: false })
+      .exec();
+  }
 }

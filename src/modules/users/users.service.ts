@@ -24,10 +24,16 @@ export class UsersService {
     }
 
     // Extract pagination options from queryDto
-    const { page = 1, limit = 10, ...filters } = queryDto;
-    const options = { page, limit };
+    const { page = 1, limit = 10, sort, select, ...filters } = queryDto;
+    const options = {
+      page,
+      limit,
+      sort: sort ? this.parseSortString(sort) : { createdAt: -1 as const },
+      select: select || '',
+    };
 
     const result = await this.userRepo.findAll(filters, options);
+
     return {
       data: result.data,
       pagination: {
@@ -37,6 +43,11 @@ export class UsersService {
         itemsPerPage: limit,
       },
     };
+  }
+
+  private parseSortString(sort: string): Record<string, 1 | -1> {
+    const [field, direction] = sort.split(':');
+    return { [field]: direction === 'desc' ? -1 : 1 };
   }
 
   /**

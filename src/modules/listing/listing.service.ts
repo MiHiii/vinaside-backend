@@ -142,6 +142,21 @@ export class ListingService {
       query.title = { $regex: searchStr, $options: 'i' };
     }
 
+    // Filter theo view count
+    if (
+      filters.minViewCount !== undefined ||
+      filters.maxViewCount !== undefined
+    ) {
+      query.viewCount = {
+        ...(filters.minViewCount !== undefined && {
+          $gte: filters.minViewCount,
+        }),
+        ...(filters.maxViewCount !== undefined && {
+          $lte: filters.maxViewCount,
+        }),
+      };
+    }
+
     const sort: Record<string, SortOrder> = {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
@@ -393,6 +408,26 @@ export class ListingService {
   }
 
   /**
+   * Lấy top listings theo số lượt xem
+   */
+  async getTopViewedListings(limit: number = 10): Promise<Listing[]> {
+    const result = await this.listingRepo.findAll(
+      {
+        isDeleted: false,
+        status: ListingStatus.ACTIVE,
+        viewCount: { $gte: 1 }, // Chỉ lấy những listing có ít nhất 1 lượt xem
+      },
+      {
+        sort: { viewCount: -1 },
+        limit,
+        populate: { path: 'propertyId', select: 'name type location' },
+      },
+    );
+
+    return result.data;
+  }
+
+  /**
    * Tìm listings theo khoảng rating
    */
   async findByRatingRange(
@@ -428,5 +463,34 @@ export class ListingService {
         totalPages: Math.ceil(result.total / limit),
       },
     };
+  }
+
+  /**
+   * Tăng số lượt xem của listing
+   */
+  async incrementViewCount(id: string): Promise<void> {
+    try {
+      await this.listingRepo.incrementViewCount(id);
+      this.logger.debug(`Incremented view count for listing ${id}`);
+    } catch (error) {
+      this.logger.error(
+        `Error incrementing view count for listing ${id}: ${(error as Error).message}`,
+      );
+      // Không throw error để không ảnh hưởng đến việc xem listing
+    }
+  }
+
+  /**
+   * Lấy listing và tăng view count
+   */
+  async findOneAndIncrementView(id: string): Promise<Listing> {
+    const listing = await this.findOne(id);
+    // Tăng view count bất đồng bộ để không làm chậm response
+    this.incrementViewCount(id).catch((error) => {
+      this.logger.error(
+        `Failed to increment view count for listing ${id}: ${(error as Error).message}`,
+      );
+    });
+    return listing;
   }
 }

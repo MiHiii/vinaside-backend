@@ -41,7 +41,7 @@ export class VoucherService {
     createVoucherDto: CreateVoucherDto,
     user: JwtPayload,
   ): Promise<Voucher> {
-    const { code, room_ids, ...rest } = createVoucherDto;
+    const { code, room_ids, property_id, ...rest } = createVoucherDto;
 
     // Kiểm tra mã voucher đã tồn tại
     const codeExists = await this.voucherRepo.checkCodeExists(code);
@@ -55,13 +55,25 @@ export class VoucherService {
       throw new BadRequestException('Ngày hết hạn phải sau thời điểm hiện tại');
     }
 
+    // Xây dựng applies_to object
+    const appliesTo: {
+      property_id?: Types.ObjectId;
+      room_ids?: Types.ObjectId[];
+    } = {};
+
+    if (property_id) {
+      appliesTo.property_id = new Types.ObjectId(property_id);
+    }
+
+    if (room_ids && room_ids.length > 0) {
+      appliesTo.room_ids = room_ids.map((id) => new Types.ObjectId(id));
+    }
+
     const voucherData = {
       ...rest,
       code: code.toUpperCase(),
       expiration_date: expirationDate,
-      applies_to: room_ids
-        ? { room_ids: room_ids.map((id) => new Types.ObjectId(id)) }
-        : undefined,
+      applies_to: Object.keys(appliesTo).length > 0 ? appliesTo : undefined,
     };
 
     return this.voucherRepo.create(voucherData, user._id);
@@ -104,6 +116,18 @@ export class VoucherService {
         { code: { $regex: filters.search, $options: 'i' } },
         { description: { $regex: filters.search, $options: 'i' } },
       ];
+    }
+
+    // Filter theo property_id
+    if (filters.property_id) {
+      filterQuery['applies_to.property_id'] = new Types.ObjectId(
+        filters.property_id,
+      );
+    }
+
+    // Filter theo room_id
+    if (filters.room_id) {
+      filterQuery['applies_to.room_ids'] = new Types.ObjectId(filters.room_id);
     }
 
     const { data, total } = await this.voucherRepo.findAll(filterQuery);
@@ -197,13 +221,26 @@ export class VoucherService {
       }
     }
 
-    const { room_ids, ...rest } = updateVoucherDto;
+    const { room_ids, property_id, ...rest } = updateVoucherDto;
+
+    // Xây dựng applies_to object
+    const appliesTo: {
+      property_id?: Types.ObjectId;
+      room_ids?: Types.ObjectId[];
+    } = {};
+
+    if (property_id) {
+      appliesTo.property_id = new Types.ObjectId(property_id);
+    }
+
+    if (room_ids && room_ids.length > 0) {
+      appliesTo.room_ids = room_ids.map((id) => new Types.ObjectId(id));
+    }
+
     const updateData = {
       ...rest,
       code: updateVoucherDto.code?.toUpperCase(),
-      applies_to: room_ids
-        ? { room_ids: room_ids.map((id) => new Types.ObjectId(id)) }
-        : undefined,
+      applies_to: Object.keys(appliesTo).length > 0 ? appliesTo : undefined,
     };
 
     const updated = await this.voucherRepo.updateById(id, updateData, user._id);
@@ -243,6 +280,7 @@ export class VoucherService {
     code: string,
     totalAmount: number,
     listingId?: string,
+    propertyId?: string,
   ): Promise<VoucherValidationResult> {
     const voucher = await this.voucherRepo.findByCode(code);
 
@@ -272,6 +310,16 @@ export class VoucherService {
         valid: false,
         message: 'Mã voucher đã hết lượt sử dụng',
       };
+    }
+
+    // Kiểm tra áp dụng cho property cụ thể
+    if (voucher.applies_to?.property_id && propertyId) {
+      if (voucher.applies_to.property_id.toString() !== propertyId) {
+        return {
+          valid: false,
+          message: 'Mã voucher không áp dụng cho property này',
+        };
+      }
     }
 
     // Kiểm tra áp dụng cho phòng cụ thể
@@ -314,31 +362,97 @@ export class VoucherService {
   }
 
   /**
-   * Lấy voucher với thông tin chi tiết về phòng
+   * Lấy voucher với thông tin chi tiết về property và phòng
    */
-  async getVoucherWithRooms(id: string): Promise<any> {
+  async getVoucherWithRooms(id: string): Promise<{
+    voucher: Voucher;
+    message: string;
+    property_id?: Types.ObjectId;
+    room_ids?: Types.ObjectId[];
+    total_rooms?: number;
+  }> {
     const voucher = await this.findOne(id);
 
-    if (
-      !voucher.applies_to?.room_ids ||
-      voucher.applies_to.room_ids.length === 0
-    ) {
-      return {
-        voucher,
-        rooms: [],
-        message: 'Voucher này áp dụng cho tất cả phòng',
-      };
+    const result: {
+      voucher: Voucher;
+      message: string;
+      property_id?: Types.ObjectId;
+      room_ids?: Types.ObjectId[];
+      total_rooms?: number;
+    } = {
+      voucher,
+      message: 'Voucher này áp dụng cho tất cả',
+    };
+
+    // Kiểm tra property_id
+    if (voucher.applies_to?.property_id) {
+      result.property_id = voucher.applies_to.property_id;
+      result.message = 'Voucher này áp dụng cho property cụ thể';
     }
 
-    // Lấy thông tin chi tiết về các phòng từ Listing collection
-    const roomIds = voucher.applies_to.room_ids;
+    // Kiểm tra room_ids
+    if (
+      voucher.applies_to?.room_ids &&
+      voucher.applies_to.room_ids.length > 0
+    ) {
+      result.room_ids = voucher.applies_to.room_ids;
+      result.total_rooms = voucher.applies_to.room_ids.length;
+      result.message = `Voucher này áp dụng cho ${voucher.applies_to.room_ids.length} phòng cụ thể`;
+    }
 
-    return {
+    // Nếu có cả property_id và room_ids
+    if (
+      voucher.applies_to?.property_id &&
+      voucher.applies_to?.room_ids &&
+      voucher.applies_to.room_ids.length > 0
+    ) {
+      result.message = `Voucher này áp dụng cho property cụ thể với ${voucher.applies_to.room_ids.length} phòng`;
+    }
+
+    return result;
+  }
+
+  /**
+   * Lấy voucher theo property ID
+   */
+  async getVoucherByProperty(propertyId: string): Promise<{
+    voucher: Voucher;
+    message: string;
+    property_id: Types.ObjectId;
+    room_ids?: Types.ObjectId[];
+    total_rooms?: number;
+  }> {
+    const voucher = await this.voucherRepo.findByProperty(propertyId);
+
+    if (!voucher) {
+      throw new NotFoundException(
+        `Không tìm thấy voucher cho property ${propertyId}`,
+      );
+    }
+
+    const result: {
+      voucher: Voucher;
+      message: string;
+      property_id: Types.ObjectId;
+      room_ids?: Types.ObjectId[];
+      total_rooms?: number;
+    } = {
       voucher,
-      room_ids: roomIds,
-      total_rooms: roomIds.length,
-      message: `Voucher này áp dụng cho ${roomIds.length} phòng cụ thể`,
+      property_id: voucher.applies_to?.property_id as Types.ObjectId,
+      message: 'Voucher này áp dụng cho property này',
     };
+
+    // Kiểm tra room_ids
+    if (
+      voucher.applies_to?.room_ids &&
+      voucher.applies_to.room_ids.length > 0
+    ) {
+      result.room_ids = voucher.applies_to.room_ids;
+      result.total_rooms = voucher.applies_to.room_ids.length;
+      result.message = `Voucher này áp dụng cho property này với ${voucher.applies_to.room_ids.length} phòng cụ thể`;
+    }
+
+    return result;
   }
 
   /**

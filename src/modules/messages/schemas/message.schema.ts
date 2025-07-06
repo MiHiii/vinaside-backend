@@ -47,6 +47,15 @@ export class Message extends Document {
 
   @Prop({ type: [Reaction], default: [] })
   reactions: Reaction[];
+
+  @Prop({ type: Boolean, default: false })
+  is_recalled: boolean;
+
+  @Prop({ type: Date })
+  recalled_at?: Date;
+
+  @Prop({ type: Boolean, default: false })
+  pinned?: boolean;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

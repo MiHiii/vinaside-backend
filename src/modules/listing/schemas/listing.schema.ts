@@ -104,6 +104,9 @@ export class Listing extends Document {
   @Prop({ default: 0 })
   reviews_count: number;
 
+  @Prop({ default: 0 })
+  viewCount: number;
+
   // Timestamps and user tracking
   @Prop({ type: MongooseSchema.Types.ObjectId })
   createdBy?: Types.ObjectId;
@@ -125,3 +128,4 @@ ListingSchema.index({ propertyId: 1 });
 ListingSchema.index({ status: 1 });
 ListingSchema.index({ price_per_night: 1 });
 ListingSchema.index({ isDeleted: 1 });
+ListingSchema.index({ viewCount: -1 }); // Index cho view count để tối ưu truy vấn top viewed

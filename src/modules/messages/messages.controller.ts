@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -18,6 +19,7 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/reaction.dto';
 import { QueryMessageDto } from './dto/query-message.dto';
 import { SearchMessageDto } from './dto/search-message.dto';
+import { ReactionType } from './schemas/message.schema';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Roles } from '../../decorators/roles.decorator';
@@ -28,6 +30,7 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 
 interface RequestWithUser extends Request {
@@ -58,8 +61,17 @@ export class MessagesController {
   @ApiOperation({ summary: 'Lấy danh sách tin nhắn' })
   @ApiResponse({ status: 200, description: 'Danh sách tin nhắn' })
   @ResponseMessage('Lấy danh sách tin nhắn thành công')
-  findAll(@Query() query: QueryMessageDto, @Request() req: RequestWithUser) {
-    return this.messagesService.findAll(query, req.user);
+  async findAll(
+    @Query() query: QueryMessageDto,
+    @Request() req: RequestWithUser,
+  ) {
+    try {
+      const result = await this.messagesService.findAll(query, req.user);
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in findAll controller:', error);
+      return [];
+    }
   }
 
   @Get('conversations')
@@ -67,18 +79,64 @@ export class MessagesController {
   @ApiOperation({ summary: 'Lấy danh sách cuộc trò chuyện' })
   @ApiResponse({ status: 200, description: 'Danh sách cuộc trò chuyện' })
   @ResponseMessage('Lấy danh sách cuộc trò chuyện thành công')
-  getConversations(@Request() req: RequestWithUser) {
-    return this.messagesService.getConversations(req.user._id);
+  async getConversations(@Request() req: RequestWithUser) {
+    try {
+      const result = await this.messagesService.getConversations(req.user._id);
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in getConversations controller:', error);
+      return [];
+    }
   }
 
-  @Get('conversation/:userId')
+  @Get('conversation')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({
     summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể',
   })
   @ApiResponse({ status: 200, description: 'Tin nhắn trong cuộc trò chuyện' })
   @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
-  getConversation(
+  async getConversation(
+    @Request() req: RequestWithUser,
+    @Query('otherUserId') otherUserId?: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    // Validate otherUserId exists
+    if (!otherUserId) {
+      throw new BadRequestException('Thiếu tham số otherUserId');
+    }
+
+    try {
+      // Parse query parameters manually để tránh default values
+      const queryParams: any = {};
+      if (limit && !isNaN(Number(limit))) {
+        queryParams.limit = Number(limit);
+      }
+      if (page && !isNaN(Number(page))) {
+        queryParams.page = Number(page);
+      }
+
+      const result = await this.messagesService.getConversation(
+        req.user._id,
+        otherUserId,
+        queryParams,
+      );
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in getConversation controller:', error);
+      return [];
+    }
+  }
+
+  @Get('conversation/:userId')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({
+    summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể (deprecated)',
+  })
+  @ApiResponse({ status: 200, description: 'Tin nhắn trong cuộc trò chuyện' })
+  @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
+  getConversationDeprecated(
     @Param('userId') userId: string,
     @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
@@ -100,8 +158,32 @@ export class MessagesController {
   @ApiOperation({ summary: 'Lấy danh sách tất cả người dùng để nhắn tin' })
   @ApiResponse({ status: 200, description: 'Danh sách người dùng' })
   @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
-  getAllUsers(@Request() req: RequestWithUser) {
-    return this.messagesService.getAllUsers(req.user._id);
+  async getAllUsers(@Request() req: RequestWithUser) {
+    try {
+      const result = await this.messagesService.getAllUsers(req.user._id);
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in getAllUsers controller:', error);
+      return [];
+    }
+  }
+
+  @Get('available-users')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Lấy danh sách người dùng đã từng chat' })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách người dùng có lịch sử chat',
+  })
+  @ResponseMessage('Lấy danh sách người dùng có lịch sử chat thành công')
+  async getAvailableUsers(@Request() req: RequestWithUser) {
+    try {
+      const result = await this.messagesService.getAvailableUsers(req.user._id);
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in getAvailableUsers controller:', error);
+      return [];
+    }
   }
 
   // ==================== REACTION ENDPOINTS ====================
@@ -128,6 +210,42 @@ export class MessagesController {
     return this.messagesService.removeReaction(id, req.user);
   }
 
+  @Post(':id/reactions/toggle/:type')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Toggle reaction cho tin nhắn (thêm/xóa)' })
+  @ApiParam({
+    name: 'id',
+    description: 'ID của tin nhắn',
+    type: 'string',
+  })
+  @ApiParam({
+    name: 'type',
+    description: 'Loại reaction',
+    enum: ReactionType,
+    example: 'like',
+  })
+  @ApiResponse({ status: 200, description: 'Toggle reaction thành công' })
+  @ResponseMessage('Toggle reaction thành công')
+  toggleReaction(
+    @Param('id') id: string,
+    @Param('type') type: string,
+    @Request() req: RequestWithUser,
+  ) {
+    // Validate reaction type
+    const validTypes = Object.values(ReactionType);
+    if (!validTypes.includes(type as ReactionType)) {
+      throw new BadRequestException(
+        `Loại reaction không hợp lệ. Chỉ hỗ trợ: ${validTypes.join(', ')}`,
+      );
+    }
+
+    return this.messagesService.toggleReaction(
+      id,
+      type as ReactionType,
+      req.user,
+    );
+  }
+
   @Patch(':id/pin')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Ghim tin nhắn quan trọng' })
@@ -146,17 +264,59 @@ export class MessagesController {
     return this.messagesService.unpinMessage(id, req.user);
   }
 
+  @Post(':id/recall')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Thu hồi tin nhắn đã gửi' })
+  @ApiResponse({ status: 200, description: 'Thu hồi tin nhắn thành công' })
+  @ResponseMessage('Thu hồi tin nhắn thành công')
+  recallMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.messagesService.recallMessage(id, req.user);
+  }
+
   @Post('search')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Tìm kiếm tin nhắn theo nội dung' })
   @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm tin nhắn' })
   @ResponseMessage('Tìm kiếm tin nhắn thành công')
-  search(
+  async search(
     @Body() searchMessageDto: SearchMessageDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.messagesService.search(searchMessageDto, req.user);
+    try {
+      const result = await this.messagesService.search(
+        searchMessageDto,
+        req.user,
+      );
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.error('Error in search controller:', error);
+      return [];
+    }
   }
+
+  @Patch('conversation/read')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Đánh dấu toàn bộ cuộc hội thoại đã đọc' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cuộc hội thoại được đánh dấu đã đọc',
+  })
+  @ResponseMessage('Đánh dấu cuộc hội thoại đã đọc thành công')
+  markConversationAsRead(
+    @Query('otherUserId') otherUserId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    // Validate otherUserId exists
+    if (!otherUserId) {
+      throw new BadRequestException('Thiếu tham số otherUserId');
+    }
+    return this.messagesService.markConversationAsRead(
+      req.user._id,
+      otherUserId,
+    );
+  }
+
+  // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================
 
   @Get(':id')
   @Roles('guest', 'staff', 'admin')
@@ -190,24 +350,6 @@ export class MessagesController {
   @ResponseMessage('Đánh dấu tin nhắn đã đọc thành công')
   markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.messagesService.markAsRead(id, req.user._id);
-  }
-
-  @Patch('conversation/read')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Đánh dấu toàn bộ cuộc hội thoại đã đọc' })
-  @ApiResponse({
-    status: 200,
-    description: 'Cuộc hội thoại được đánh dấu đã đọc',
-  })
-  @ResponseMessage('Đánh dấu cuộc hội thoại đã đọc thành công')
-  markConversationAsRead(
-    @Query('otherUserId') otherUserId: string,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.messagesService.markConversationAsRead(
-      req.user._id,
-      otherUserId,
-    );
   }
 
   @Delete(':id')

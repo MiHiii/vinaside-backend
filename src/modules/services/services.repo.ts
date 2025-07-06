@@ -159,6 +159,16 @@ export class ServicesRepo extends BaseRepo<Service> {
       ];
     }
 
+    // Filter theo property_id
+    if (filters.property_id) {
+      filterQuery.property_id = new Types.ObjectId(filters.property_id);
+    }
+
+    // Filter theo room_id
+    if (filters.room_id) {
+      filterQuery.room_id = new Types.ObjectId(filters.room_id);
+    }
+
     return filterQuery;
   }
 
@@ -172,6 +182,34 @@ export class ServicesRepo extends BaseRepo<Service> {
         _id: { $in: objectIds },
         isDeleted: false,
       })
+      .exec();
+  }
+
+  /**
+   * Tìm service theo property ID
+   */
+  async findByProperty(propertyId: string): Promise<Service[]> {
+    return this.serviceModel
+      .find({
+        property_id: new Types.ObjectId(propertyId),
+        isDeleted: false,
+        is_active: true,
+      })
+      .sort({ name: 1 })
+      .exec();
+  }
+
+  /**
+   * Tìm service theo room ID
+   */
+  async findByRoom(roomId: string): Promise<Service[]> {
+    return this.serviceModel
+      .find({
+        room_id: new Types.ObjectId(roomId),
+        isDeleted: false,
+        is_active: true,
+      })
+      .sort({ name: 1 })
       .exec();
   }
 

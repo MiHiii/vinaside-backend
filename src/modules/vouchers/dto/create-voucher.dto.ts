@@ -11,6 +11,7 @@ import {
   IsNotEmpty,
   Matches,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateVoucherDto {
   @IsString()
@@ -21,11 +22,13 @@ export class CreateVoucherDto {
   })
   code: string;
 
+  @Type(() => Number)
   @IsNumber()
   @Min(1, { message: 'Phần trăm giảm giá phải từ 1% trở lên' })
   @Max(50, { message: 'Phần trăm giảm giá không được vượt quá 50%' })
   discount_percent: number;
 
+  @Type(() => Number)
   @IsNumber()
   @Min(1, { message: 'Số lượt sử dụng tối đa phải từ 1 trở lên' })
   max_uses: number;
@@ -40,6 +43,10 @@ export class CreateVoucherDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsMongoId()
+  property_id?: string;
 
   @IsOptional()
   @IsArray()

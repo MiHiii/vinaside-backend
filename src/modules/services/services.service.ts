@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { Service } from './schemas/service.schema';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -185,8 +186,15 @@ export class ServicesService {
     createServiceDto: CreateServiceDto,
     user?: JwtPayload,
   ): Promise<Service> {
-    const { name, description, default_price, unit, ...rest } =
-      createServiceDto;
+    const {
+      name,
+      description,
+      default_price,
+      unit,
+      property_id,
+      room_id,
+      ...rest
+    } = createServiceDto;
 
     // Validation
     await this.validateServiceName(name);
@@ -200,6 +208,8 @@ export class ServicesService {
       description,
       default_price,
       unit,
+      property_id: new Types.ObjectId(property_id),
+      ...(room_id && { room_id: new Types.ObjectId(room_id) }),
     };
 
     return this.servicesRepo.create(serviceData, user?._id);
@@ -268,11 +278,15 @@ export class ServicesService {
       this.validateDescription(updateServiceDto.description);
     }
 
+    const { property_id, room_id, ...updateData } = updateServiceDto;
+
     const serviceData = {
-      ...updateServiceDto,
+      ...updateData,
       name: updateServiceDto.name
         ? this.sanitizeServiceName(updateServiceDto.name)
         : undefined,
+      ...(property_id && { property_id: new Types.ObjectId(property_id) }),
+      ...(room_id && { room_id: new Types.ObjectId(room_id) }),
     };
 
     const updated = await this.servicesRepo.updateById(
@@ -377,6 +391,20 @@ export class ServicesService {
     this.validateUnit(unit);
 
     return this.servicesRepo.findByUnit(unit);
+  }
+
+  /**
+   * Tìm service theo property ID
+   */
+  async findByProperty(propertyId: string): Promise<Service[]> {
+    return this.servicesRepo.findByProperty(propertyId);
+  }
+
+  /**
+   * Tìm service theo room ID
+   */
+  async findByRoom(roomId: string): Promise<Service[]> {
+    return this.servicesRepo.findByRoom(roomId);
   }
 
   /**

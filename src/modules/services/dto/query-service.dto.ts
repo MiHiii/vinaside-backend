@@ -4,6 +4,7 @@ import {
   IsString,
   IsNumber,
   Min,
+  IsMongoId,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -59,4 +60,12 @@ export class QueryServiceDto {
   @IsNumber({}, { message: 'Giá tối đa phải là số' })
   @Transform(({ value }: { value: string }) => parseFloat(value))
   max_price?: number;
+
+  @IsOptional()
+  @IsMongoId({ message: 'Property ID phải có định dạng hợp lệ' })
+  property_id?: string;
+
+  @IsOptional()
+  @IsMongoId({ message: 'Room ID phải có định dạng hợp lệ' })
+  room_id?: string;
 }
