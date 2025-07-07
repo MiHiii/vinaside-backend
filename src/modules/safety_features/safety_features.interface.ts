@@ -4,7 +4,6 @@ export interface ISafetyFeature {
   _id: string | Types.ObjectId;
   name: string;
   description?: string;
-  icon_url: string;
   is_active: boolean;
   default_checked: boolean;
   isDeleted: boolean;

@@ -33,12 +33,6 @@ export class Service extends Document {
   default_price: number;
 
   @Prop({
-    type: String,
-    required: false,
-  })
-  icon_url?: string;
-
-  @Prop({
     type: Boolean,
     required: true,
     default: true,

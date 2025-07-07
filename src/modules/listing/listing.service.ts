@@ -684,15 +684,6 @@ export class ListingService {
       },
     ]);
 
-    // Lấy bình luận gần đây nhất
-    const recentReview = await this.reviewModel
-      .findOne({
-        room_id: listingIdObj,
-        isDeleted: false,
-      })
-      .sort({ created_at: -1 })
-      .select('comment');
-
     // 5. Thống kê wishlist
     const wishlistCount = await this.wishlistModel.countDocuments({
       room_id: listingIdObj,
@@ -739,10 +730,9 @@ export class ListingService {
     };
 
     const reviewData = reviewStats[0] || {
-      totalReviews: 0,
-      averageRating: 0,
+      totalReviews: listing.reviews_count ?? 0,
+      averageRating: listing.average_rating ?? 0,
     };
-
     const returningGuestsCount = returningGuests[0]?.returningGuests || 0;
 
     return {
@@ -762,10 +752,10 @@ export class ListingService {
         returningGuests: returningGuestsCount,
       },
       reviews: {
-        averageRating:
-          Math.round((reviewData.averageRating as number) * 10) / 10,
-        totalReviews: reviewData.totalReviews,
-        recentComment: recentReview?.comment || 'Chưa có đánh giá',
+        averageRating: reviewData.averageRating
+          ? Math.round(reviewData.averageRating * 10) / 10
+          : 0,
+        totalReviews: reviewData.totalReviews || 0,
       },
       engagement: {
         viewCount: listing.viewCount || 0,

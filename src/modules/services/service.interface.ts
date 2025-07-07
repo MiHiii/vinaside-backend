@@ -6,7 +6,6 @@ export interface IService {
   description?: string;
   unit: string;
   default_price: number;
-  icon_url?: string;
   is_active: boolean;
   property_id: Types.ObjectId;
   room_id?: Types.ObjectId;

@@ -23,12 +23,6 @@ export class SafetyFeature {
   description?: string;
 
   @Prop({
-    required: true,
-    trim: true,
-  })
-  icon_url: string;
-
-  @Prop({
     default: true,
     index: true,
   })
