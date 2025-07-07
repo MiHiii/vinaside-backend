@@ -28,15 +28,6 @@ export class CreateHouseRuleDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'URL icon cho quy tắc nhà',
-    example: 'https://example.com/no-smoking.png',
-  })
-  @IsOptional()
-  @IsString({ message: 'URL icon phải là chuỗi' })
-  @IsUrl({}, { message: 'URL icon không hợp lệ' })
-  icon_url?: string;
-
-  @ApiPropertyOptional({
     description: 'Quy tắc có được chọn mặc định khi tạo listing không',
     example: true,
     default: false,

@@ -21,13 +21,6 @@ export class CreateSafetyFeatureDto {
   @MaxLength(1000, { message: 'Mô tả không được vượt quá 1000 ký tự' })
   description?: string;
 
-  @ApiProperty({
-    description: 'URL của icon cho tính năng an toàn',
-    example: 'https://example.com/icons/smart-lock.svg',
-  })
-  @IsString({ message: 'URL icon phải là chuỗi ký tự' })
-  icon_url: string;
-
   @ApiPropertyOptional({
     description: 'Có được chọn mặc định khi tạo booking không',
     example: true,

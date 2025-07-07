@@ -29,11 +29,6 @@ export class CreateServiceDto {
   default_price: number;
 
   @IsOptional()
-  @IsString({ message: 'URL icon phải là chuỗi văn bản' })
-  @IsUrl({}, { message: 'URL icon phải có định dạng hợp lệ' })
-  icon_url?: string;
-
-  @IsOptional()
   @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
   is_active?: boolean = true;
 

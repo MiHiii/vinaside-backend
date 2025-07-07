@@ -14,7 +14,6 @@ export interface ListingStatistics {
   reviews: {
     averageRating: number;
     totalReviews: number;
-    recentComment: string;
   };
   engagement: {
     viewCount: number;
@@ -68,7 +67,6 @@ export class ListingStatisticsResponseDto implements ListingStatistics {
   reviews: {
     averageRating: number;
     totalReviews: number;
-    recentComment: string;
   };
 
   @ApiProperty({ description: 'Mức độ quan tâm & chuyển đổi' })
