@@ -5,7 +5,6 @@ import {
   IsBoolean,
   IsNotEmpty,
   Min,
-  IsUrl,
   IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';

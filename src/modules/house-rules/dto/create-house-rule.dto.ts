@@ -4,7 +4,6 @@ import {
   IsBoolean,
   IsNotEmpty,
   MaxLength,
-  IsUrl,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
