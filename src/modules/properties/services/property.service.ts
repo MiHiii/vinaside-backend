@@ -1082,12 +1082,8 @@ export class PropertyService {
         isDeleted: false,
       })
       .select('_id')
-      .lean();
+      .lean<{ _id: Types.ObjectId }[]>();
 
-    return properties.map((property) =>
-      property._id instanceof Types.ObjectId
-        ? property._id.toString()
-        : String(property._id),
-    );
+    return properties.map((property) => property._id.toString());
   }
 }

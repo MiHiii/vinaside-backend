@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
@@ -773,6 +773,7 @@ export class BookingService {
   /**
    * Lấy thống kê tổng quan
    */
+
   async getOverviewStatistics(
     startDate?: string,
     endDate?: string,
@@ -856,6 +857,7 @@ export class BookingService {
       actualEndDate!,
       finalGroupBy,
     );
+
     const chartData: BookingChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
         revenue: 0,
@@ -863,7 +865,7 @@ export class BookingService {
         nights: 0,
       };
       return {
-        label: labelFn(label),
+        label: labelFn(String(label)),
         revenue: data.revenue,
         bookings: data.bookings,
         occupancyRate: data.nights > 0 ? 100 : 0,
