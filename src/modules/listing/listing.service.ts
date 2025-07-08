@@ -21,7 +21,13 @@ import { Booking } from '../booking/schemas/booking.schema';
 import { Review } from '../reviews/schemas/review.schema';
 import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { Transaction } from '../transactions/schemas/transaction.schema';
-import { ListingStatistics } from './dto/listing-statistics.dto';
+import {
+  ListingStatistics,
+  ListingRevenueStatistics,
+  TimeGroupBy,
+  RevenueChartData,
+  ChartDataPoint, // thêm dòng này
+} from './dto/listing-statistics.dto';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -304,7 +310,7 @@ export class ListingService {
           _id: null,
           total: { $sum: 1 },
           averageRating: { $avg: '$rating' },
-          ratings: { $push: '$rating' },
+          ratingDistribution: { $push: '$rating' },
         },
       },
     ]);
@@ -317,28 +323,28 @@ export class ListingService {
       };
     }
 
-    const { total, averageRating, ratings } = stats[0] as {
+    const { total, averageRating, ratingDistribution } = stats[0] as {
       total: number;
       averageRating: number;
-      ratings: number[];
+      ratingDistribution: number[];
     };
 
     // Tính phân bố rating
-    const ratingDistribution: { [key: number]: number } = {
+    const ratingDistributionResult: { [key: number]: number } = {
       1: 0,
       2: 0,
       3: 0,
       4: 0,
       5: 0,
     };
-    ratings.forEach((rating: number) => {
-      ratingDistribution[rating]++;
+    ratingDistribution.forEach((rating: number) => {
+      ratingDistributionResult[rating]++;
     });
 
     return {
       total,
       averageRating: Math.round(averageRating * 10) / 10,
-      ratingDistribution,
+      ratingDistribution: ratingDistributionResult,
     };
   }
 
@@ -516,9 +522,140 @@ export class ListingService {
     listingId: string,
     startDate?: Date,
     endDate?: Date,
-  ): Promise<ListingStatistics> {
+    groupBy?: string,
+  ): Promise<ListingStatistics & { chartData: ChartDataPoint[] }> {
     const { Types } = await import('mongoose');
     const listingIdObj = new Types.ObjectId(listingId);
+
+    // Nếu không truyền ngày thì mặc định lấy 7 ngày gần nhất
+    let chartStartDate = startDate;
+    let chartEndDate = endDate;
+    if (!startDate && !endDate) {
+      chartEndDate = new Date();
+      chartStartDate = new Date();
+      chartStartDate.setDate(chartEndDate.getDate() - 6); // 7 ngày gần nhất (bao gồm hôm nay)
+    }
+    // Tính số ngày
+    const daysCount =
+      Math.ceil(
+        ((chartEndDate?.getTime() ?? 0) - (chartStartDate?.getTime() ?? 0)) /
+          (1000 * 60 * 60 * 24),
+      ) + 1;
+    // Xác định groupBy
+    let finalGroupBy = groupBy;
+    if (!finalGroupBy || finalGroupBy === 'auto') {
+      if (daysCount <= 31) finalGroupBy = 'day';
+      else if (daysCount <= 180) finalGroupBy = 'week';
+      else if (daysCount <= 730) finalGroupBy = 'month';
+      else finalGroupBy = 'year';
+    }
+    // Tạo format và label cho group
+    let groupFormat = '%Y-%m-%d';
+    let labelFn = (v: any) => new Date(v).toLocaleDateString('vi-VN');
+    if (finalGroupBy === 'week') {
+      groupFormat = '%G-%V'; // ISO week
+      labelFn = (v: any) => {
+        const [year, week] = v.split('-');
+        return `Tuần ${week}/${year}`;
+      };
+    } else if (finalGroupBy === 'month') {
+      groupFormat = '%Y-%m';
+      labelFn = (v: any) => {
+        const [year, month] = v.split('-');
+        return `Tháng ${month}/${year}`;
+      };
+    } else if (finalGroupBy === 'year') {
+      groupFormat = '%Y';
+      labelFn = (v: any) => `Năm ${v}`;
+    }
+    // Lấy dữ liệu cho biểu đồ
+    const chartMatch: any = {
+      listingId: listingIdObj,
+      isDeleted: false,
+      status: { $in: ['confirmed', 'completed'] },
+    };
+    if (chartStartDate || chartEndDate) {
+      chartMatch.created_at = {};
+      if (chartStartDate) chartMatch.created_at.$gte = chartStartDate;
+      if (chartEndDate) chartMatch.created_at.$lte = chartEndDate;
+    }
+    const chartDataAgg = await this.bookingModel.aggregate([
+      { $match: chartMatch },
+      {
+        $group: {
+          _id: {
+            group: {
+              $dateToString: { format: groupFormat, date: '$created_at' },
+            },
+          },
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+          nights: { $sum: '$nights' },
+        },
+      },
+      { $sort: { '_id.group': 1 } },
+    ]);
+    // Chuẩn hóa dữ liệu: tạo mảng label liên tục
+    const chartData: ChartDataPoint[] = [];
+    const labelMap = new Map<
+      string,
+      { revenue: number; bookings: number; nights: number }
+    >();
+    chartDataAgg.forEach((item) => {
+      labelMap.set(item._id.group, {
+        revenue: item.revenue,
+        bookings: item.bookings,
+        nights: item.nights,
+      });
+    });
+    // Tạo mảng label liên tục
+    let labels: string[] = [];
+    if (finalGroupBy === 'day') {
+      let d = new Date(chartStartDate!);
+      while (d <= chartEndDate!) {
+        labels.push(d.toISOString().slice(0, 10));
+        d.setDate(d.getDate() + 1);
+      }
+    } else if (finalGroupBy === 'week') {
+      let d = new Date(chartStartDate!);
+      const end = new Date(chartEndDate!);
+      while (d <= end) {
+        const year = d.getUTCFullYear();
+        const week = getISOWeek(d);
+        labels.push(`${year}-${String(week).padStart(2, '0')}`);
+        d.setDate(d.getDate() + 7 - d.getDay());
+      }
+    } else if (finalGroupBy === 'month') {
+      let d = new Date(chartStartDate!);
+      const end = new Date(chartEndDate!);
+      while (d <= end) {
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        labels.push(`${year}-${month}`);
+        d.setMonth(d.getMonth() + 1);
+      }
+    } else if (finalGroupBy === 'year') {
+      let d = new Date(chartStartDate!);
+      const end = new Date(chartEndDate!);
+      while (d <= end) {
+        const year = d.getUTCFullYear();
+        labels.push(`${year}`);
+        d.setFullYear(d.getFullYear() + 1);
+      }
+    }
+    for (const label of labels) {
+      const data = labelMap.get(label) || {
+        revenue: 0,
+        bookings: 0,
+        nights: 0,
+      };
+      chartData.push({
+        label: labelFn(label),
+        revenue: data.revenue,
+        bookings: data.bookings,
+        occupancyRate: data.nights > 0 ? 100 : 0,
+      });
+    }
 
     // Lấy thông tin listing
     const listing = await this.findOne(listingId);
@@ -765,6 +902,7 @@ export class ListingService {
         totalDiscountAmount,
         mostPopularVoucher,
       },
+      chartData,
     };
   }
 
@@ -804,4 +942,15 @@ export class ListingService {
 
     return statistics;
   }
+}
+
+// Helper lấy số tuần ISO
+function getISOWeek(date: Date): number {
+  const tmp = new Date(date.getTime());
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(
+    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
+  return weekNo;
 }

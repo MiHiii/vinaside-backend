@@ -106,15 +106,13 @@ export class PropertyController {
   @ApiOperation({ summary: 'Lấy thống kê chi tiết của một tài sản' })
   @ApiResponse({ status: 200, description: 'Thống kê chi tiết tài sản' })
   @ResponseMessage('Lấy thống kê chi tiết tài sản thành công')
-  getPropertyStatistics(
+  async getPropertyStatistics(
     @Param('id') id: string,
     @Query() queryDto: PropertyStatisticsQueryDto,
   ) {
-    return this.propertyService.getPropertyStatistics(
-      id,
-      queryDto.startDate,
-      queryDto.endDate,
-    );
+    const startDate = queryDto.startDate;
+    const endDate = queryDto.endDate;
+    return this.propertyService.getPropertyStatistics(id, startDate, endDate);
   }
 
   @Get('my-properties')

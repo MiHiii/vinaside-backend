@@ -241,7 +241,7 @@ export class BookingController {
     type: BookingOverviewResponseDto,
   })
   @ResponseMessage('Lấy thống kê tổng quan booking thành công')
-  getOverviewStatistics(@Query() query: BookingStatisticsQueryDto) {
+  async getOverviewStatistics(@Query() query: BookingStatisticsQueryDto) {
     return this.bookingService.getOverviewStatistics(
       query.startDate,
       query.endDate,
