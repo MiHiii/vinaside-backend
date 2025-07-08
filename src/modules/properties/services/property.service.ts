@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Injectable,
   NotFoundException,
@@ -673,12 +671,7 @@ export class PropertyService {
           $unwind: '$listing',
         },
         {
-          $project: {
-            listingId: '$_id',
-            listingTitle: '$listing.title',
-            revenue: 1,
-            bookings: 1,
-            totalNights: 1,
+          $addFields: {
             averageRevenuePerNight: {
               $cond: [
                 { $gt: ['$totalNights', 0] },
@@ -1091,6 +1084,6 @@ export class PropertyService {
       .select('_id')
       .lean();
 
-    return properties.map((property) => String(property._id));
+    return properties.map((property) => property._id.toString());
   }
 }

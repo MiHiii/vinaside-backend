@@ -926,9 +926,13 @@ export class BookingService {
       cancellationRate: 0,
     };
 
-    statusStats.forEach((stat: any) => {
-      statusBreakdown[stat._id] = stat.count;
-    });
+    statusStats.forEach(
+      (stat: { _id: keyof BookingStatusStatistics; count: number }) => {
+        if (stat._id in statusBreakdown) {
+          statusBreakdown[stat._id] = stat.count;
+        }
+      },
+    );
 
     // Tính tỉ lệ
     if (overview.totalBookings > 0) {
