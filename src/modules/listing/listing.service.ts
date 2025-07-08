@@ -282,7 +282,7 @@ export class ListingService {
 
     // Lấy reviews với pagination
     const skip = (reviewsPage - 1) * reviewsLimit;
-    const reviews = await (ReviewModel.find({ room_id: id }) as any)
+    const reviews = await ReviewModel.find({ room_id: id })
       .populate('user_id', 'name avatar email')
       .sort({ created_at: -1 })
       .skip(skip)

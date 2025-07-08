@@ -35,6 +35,67 @@ import {
   generateLabels,
 } from '../../../utils/date.util';
 
+// Aggregation result interfaces
+interface ChartAggregationResult {
+  _id: { group: string };
+  revenue: number;
+  bookings: number;
+  nights: number;
+}
+
+interface MonthlyRevenueResult {
+  _id: { year: number; month: number };
+  revenue: number;
+  bookings: number;
+}
+
+interface RevenueByRoomResult {
+  _id: Types.ObjectId;
+  revenue: number;
+  bookings: number;
+  totalNights: number;
+  listing: { title: string };
+  averageRevenuePerNight: number;
+}
+
+interface GuestStatsResult {
+  totalUniqueGuests: number;
+  returningGuests: number;
+  averageSpentPerGuest: number;
+  averageStayDurationAcrossGuests: number;
+}
+
+interface ReviewAnalysisResult {
+  totalReviews: number;
+  averageRating: number;
+  ratingBreakdown: number[];
+}
+
+interface VoucherStatsResult {
+  _id: string;
+  usageCount: number;
+  totalDiscount: number;
+}
+
+interface VoucherUsageByMonthResult {
+  _id: { year: number; month: number };
+  vouchersUsed: number;
+  totalDiscount: number;
+}
+
+interface ServiceStatsResult {
+  _id: Types.ObjectId;
+  serviceName: string;
+  usageCount: number;
+  revenue: number;
+}
+
+interface ServiceUsageByMonthResult {
+  _id: { year: number; month: number };
+  servicesUsed: number;
+  revenue: number;
+}
+
 export interface PaginatedProperties {
   data: Property[];
   total: number;
@@ -400,29 +461,30 @@ export class PropertyService {
       if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
     }
 
-    const chartDataAgg = await this.bookingModel.aggregate([
-      { $match: chartMatch },
-      {
-        $group: {
-          _id: {
-            group: {
-              $dateToString: { format: groupFormat, date: '$created_at' },
+    const chartDataAgg =
+      await this.bookingModel.aggregate<ChartAggregationResult>([
+        { $match: chartMatch },
+        {
+          $group: {
+            _id: {
+              group: {
+                $dateToString: { format: groupFormat, date: '$created_at' },
+              },
             },
+            revenue: { $sum: '$final_amount' },
+            bookings: { $sum: 1 },
+            nights: { $sum: '$nights' },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          nights: { $sum: '$nights' },
         },
-      },
-      { $sort: { '_id.group': 1 } },
-    ]);
+        { $sort: { '_id.group': 1 } },
+      ]);
 
     // Chuẩn hóa dữ liệu cho biểu đồ
     const labelMap = new Map<
       string,
       { revenue: number; bookings: number; nights: number }
     >();
-    chartDataAgg.forEach((item: any) => {
+    chartDataAgg.forEach((item) => {
       labelMap.set(item._id.group, {
         revenue: item.revenue,
         bookings: item.bookings,
@@ -450,7 +512,7 @@ export class PropertyService {
     });
 
     // Create date filter sử dụng cùng khoảng thời gian
-    const dateFilter: any = {};
+    const dateFilter: { created_at?: { $gte?: Date; $lte?: Date } } = {};
     if (actualStartDate || actualEndDate) {
       dateFilter.created_at = {};
       if (actualStartDate) dateFilter.created_at.$gte = actualStartDate;
@@ -549,28 +611,29 @@ export class PropertyService {
     );
 
     // Monthly revenue
-    const monthlyRevenue = await this.bookingModel.aggregate([
-      {
-        $match: {
-          propertyId: new Types.ObjectId(propertyId),
-          payment_status: 'paid',
-          isDeleted: false,
-        },
-      },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$checkInDate' },
-            month: { $month: '$checkInDate' },
+    const monthlyRevenue =
+      await this.bookingModel.aggregate<MonthlyRevenueResult>([
+        {
+          $match: {
+            propertyId: new Types.ObjectId(propertyId),
+            payment_status: 'paid',
+            isDeleted: false,
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
         },
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 },
-      },
-    ]);
+        {
+          $group: {
+            _id: {
+              year: { $year: '$checkInDate' },
+              month: { $month: '$checkInDate' },
+            },
+            revenue: { $sum: '$final_amount' },
+            bookings: { $sum: 1 },
+          },
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1 },
+        },
+      ]);
 
     // Average price per night
     const totalNightsBooked = paidBookings.reduce(
@@ -581,50 +644,51 @@ export class PropertyService {
       totalNightsBooked > 0 ? totalRevenue / totalNightsBooked : 0;
 
     // Revenue by room
-    const revenueByRoom = await this.bookingModel.aggregate([
-      {
-        $match: {
-          propertyId: new Types.ObjectId(propertyId),
-          payment_status: 'paid',
-          isDeleted: false,
-        },
-      },
-      {
-        $group: {
-          _id: '$listingId',
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          totalNights: { $sum: '$nights' },
-        },
-      },
-      {
-        $lookup: {
-          from: 'listings',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'listing',
-        },
-      },
-      {
-        $unwind: '$listing',
-      },
-      {
-        $project: {
-          listingId: '$_id',
-          listingTitle: '$listing.title',
-          revenue: 1,
-          bookings: 1,
-          totalNights: 1,
-          averageRevenuePerNight: {
-            $cond: [
-              { $gt: ['$totalNights', 0] },
-              { $divide: ['$revenue', '$totalNights'] },
-              0,
-            ],
+    const revenueByRoom =
+      await this.bookingModel.aggregate<RevenueByRoomResult>([
+        {
+          $match: {
+            propertyId: new Types.ObjectId(propertyId),
+            payment_status: 'paid',
+            isDeleted: false,
           },
         },
-      },
-    ]);
+        {
+          $group: {
+            _id: '$listingId',
+            revenue: { $sum: '$final_amount' },
+            bookings: { $sum: 1 },
+            totalNights: { $sum: '$nights' },
+          },
+        },
+        {
+          $lookup: {
+            from: 'listings',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'listing',
+          },
+        },
+        {
+          $unwind: '$listing',
+        },
+        {
+          $project: {
+            listingId: '$_id',
+            listingTitle: '$listing.title',
+            revenue: 1,
+            bookings: 1,
+            totalNights: 1,
+            averageRevenuePerNight: {
+              $cond: [
+                { $gt: ['$totalNights', 0] },
+                { $divide: ['$revenue', '$totalNights'] },
+                0,
+              ],
+            },
+          },
+        },
+      ]);
 
     // 4. Thống kê thời gian
     let earliestBookingDate: Date | null = null;
@@ -640,7 +704,7 @@ export class PropertyService {
     }
 
     // 5. Thống kê khách hàng
-    const guestStats = await this.bookingModel.aggregate([
+    const guestStats = await this.bookingModel.aggregate<GuestStatsResult>([
       {
         $match: {
           propertyId: new Types.ObjectId(propertyId),
@@ -670,7 +734,7 @@ export class PropertyService {
       },
     ]);
 
-    const customerInsights = guestStats[0] || {
+    const customerInsights: GuestStatsResult = guestStats[0] || {
       totalUniqueGuests: 0,
       returningGuests: 0,
       averageSpentPerGuest: 0,
@@ -678,26 +742,27 @@ export class PropertyService {
     };
 
     // 6. Thống kê review
-    const reviewAnalysis = await this.reviewModel.aggregate([
-      {
-        $match: {
-          room_id: { $in: listingIds },
-          isDeleted: false,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalReviews: { $sum: 1 },
-          averageRating: { $avg: '$rating' },
-          ratingBreakdown: {
-            $push: '$rating',
+    const reviewAnalysis =
+      await this.reviewModel.aggregate<ReviewAnalysisResult>([
+        {
+          $match: {
+            room_id: { $in: listingIds },
+            isDeleted: false,
           },
         },
-      },
-    ]);
+        {
+          $group: {
+            _id: null,
+            totalReviews: { $sum: 1 },
+            averageRating: { $avg: '$rating' },
+            ratingBreakdown: {
+              $push: '$rating',
+            },
+          },
+        },
+      ]);
 
-    const reviewData = reviewAnalysis[0] || {
+    const reviewData: ReviewAnalysisResult = reviewAnalysis[0] || {
       totalReviews: 0,
       averageRating: 0,
       ratingBreakdown: [],
@@ -746,14 +811,14 @@ export class PropertyService {
       revenueAndPricing: {
         totalRevenue,
         averagePricePerNight: Math.round(averagePricePerNight),
-        monthlyRevenue: monthlyRevenue.map((item: any) => ({
+        monthlyRevenue: monthlyRevenue.map((item) => ({
           month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
           revenue: item.revenue,
           bookings: item.bookings,
         })),
-        revenueByRoom: revenueByRoom.map((item: any) => ({
-          listingId: item.listingId,
-          listingTitle: item.listingTitle,
+        revenueByRoom: revenueByRoom.map((item) => ({
+          listingId: item._id,
+          listingTitle: item.listing.title,
           revenue: item.revenue,
           bookings: item.bookings,
           totalNights: item.totalNights,
@@ -806,10 +871,10 @@ export class PropertyService {
    */
   private async getVoucherStatistics(
     propertyId: string,
-    dateFilter: any,
+    dateFilter: { created_at?: { $gte?: Date; $lte?: Date } },
   ): Promise<PropertyVoucherStatistics> {
     // Thống kê voucher usage từ booking metadata
-    const voucherStats = await this.bookingModel.aggregate([
+    const voucherStats = await this.bookingModel.aggregate<VoucherStatsResult>([
       {
         $match: {
           propertyId: new Types.ObjectId(propertyId),
@@ -831,29 +896,32 @@ export class PropertyService {
     ]);
 
     // Thống kê voucher theo tháng
-    const voucherUsageByMonth = await this.bookingModel.aggregate([
-      {
-        $match: {
-          propertyId: new Types.ObjectId(propertyId),
-          isDeleted: false,
-          'metadata.voucherCode': { $exists: true, $ne: null },
-          ...dateFilter,
-        },
-      },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const voucherUsageByMonth =
+      await this.bookingModel.aggregate<VoucherUsageByMonthResult>([
+        {
+          $match: {
+            propertyId: new Types.ObjectId(propertyId),
+            isDeleted: false,
+            'metadata.voucherCode': { $exists: true, $ne: null },
+            ...dateFilter,
           },
-          vouchersUsed: { $sum: 1 },
-          totalDiscount: { $sum: { $ifNull: ['$metadata.discountAmount', 0] } },
         },
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 },
-      },
-    ]);
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            vouchersUsed: { $sum: 1 },
+            totalDiscount: {
+              $sum: { $ifNull: ['$metadata.discountAmount', 0] },
+            },
+          },
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1 },
+        },
+      ]);
 
     const totalVouchersUsed = voucherStats.reduce(
       (sum, voucher) => sum + voucher.usageCount,
@@ -870,12 +938,12 @@ export class PropertyService {
       averageDiscountPerBooking:
         totalVouchersUsed > 0 ? totalDiscountAmount / totalVouchersUsed : 0,
       mostPopularVoucher: voucherStats.length > 0 ? voucherStats[0]._id : 'N/A',
-      voucherUsageByMonth: voucherUsageByMonth.map((item: any) => ({
+      voucherUsageByMonth: voucherUsageByMonth.map((item) => ({
         month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
         vouchersUsed: item.vouchersUsed,
         totalDiscount: item.totalDiscount,
       })),
-      topVouchers: voucherStats.slice(0, 10).map((voucher: any) => ({
+      topVouchers: voucherStats.slice(0, 10).map((voucher) => ({
         voucherCode: voucher._id,
         usageCount: voucher.usageCount,
         totalDiscount: voucher.totalDiscount,
@@ -888,10 +956,10 @@ export class PropertyService {
    */
   private async getServiceStatistics(
     propertyId: string,
-    dateFilter: any,
+    dateFilter: { created_at?: { $gte?: Date; $lte?: Date } },
   ): Promise<PropertyServiceStatistics> {
     // Thống kê service usage từ transactions hoặc booking metadata
-    const serviceStats = await this.bookingModel.aggregate([
+    const serviceStats = await this.bookingModel.aggregate<ServiceStatsResult>([
       {
         $match: {
           propertyId: new Types.ObjectId(propertyId),
@@ -917,32 +985,33 @@ export class PropertyService {
     ]);
 
     // Thống kê service theo tháng
-    const serviceUsageByMonth = await this.bookingModel.aggregate([
-      {
-        $match: {
-          propertyId: new Types.ObjectId(propertyId),
-          isDeleted: false,
-          'metadata.services': { $exists: true, $ne: [] },
-          ...dateFilter,
-        },
-      },
-      {
-        $unwind: '$metadata.services',
-      },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const serviceUsageByMonth =
+      await this.bookingModel.aggregate<ServiceUsageByMonthResult>([
+        {
+          $match: {
+            propertyId: new Types.ObjectId(propertyId),
+            isDeleted: false,
+            'metadata.services': { $exists: true, $ne: [] },
+            ...dateFilter,
           },
-          servicesUsed: { $sum: 1 },
-          revenue: { $sum: '$metadata.services.price' },
         },
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 },
-      },
-    ]);
+        {
+          $unwind: '$metadata.services',
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            servicesUsed: { $sum: 1 },
+            revenue: { $sum: '$metadata.services.price' },
+          },
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1 },
+        },
+      ]);
 
     const totalServices = serviceStats.length;
     const totalServiceRevenue = serviceStats.reduce(
@@ -958,12 +1027,12 @@ export class PropertyService {
         totalServices > 0 ? totalServiceRevenue / totalServices : 0,
       mostPopularService:
         serviceStats.length > 0 ? serviceStats[0].serviceName : 'N/A',
-      serviceUsageByMonth: serviceUsageByMonth.map((item: any) => ({
+      serviceUsageByMonth: serviceUsageByMonth.map((item) => ({
         month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
         servicesUsed: item.servicesUsed,
         revenue: item.revenue,
       })),
-      topServices: serviceStats.slice(0, 10).map((service: any) => ({
+      topServices: serviceStats.slice(0, 10).map((service) => ({
         serviceName: service.serviceName,
         usageCount: service.usageCount,
         revenue: service.revenue,
@@ -1022,6 +1091,6 @@ export class PropertyService {
       .select('_id')
       .lean();
 
-    return properties.map((property: any) => property._id.toString());
+    return properties.map((property) => String(property._id));
   }
 }
