@@ -1084,6 +1084,10 @@ export class PropertyService {
       .select('_id')
       .lean();
 
-    return properties.map((property) => property._id.toString());
+    return properties.map((property) =>
+      property._id instanceof Types.ObjectId
+        ? property._id.toString()
+        : String(property._id),
+    );
   }
 }
