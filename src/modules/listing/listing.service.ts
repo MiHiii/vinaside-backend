@@ -23,11 +23,14 @@ import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { Transaction } from '../transactions/schemas/transaction.schema';
 import {
   ListingStatistics,
-  ListingRevenueStatistics,
-  TimeGroupBy,
-  RevenueChartData,
-  ChartDataPoint, // thêm dòng này
+  ChartDataPoint,
 } from './dto/listing-statistics.dto';
+import {
+  getDefaultDateRange,
+  determineGroupBy,
+  getGroupFormat,
+  generateLabels,
+} from '../../utils/date.util';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -279,7 +282,7 @@ export class ListingService {
 
     // Lấy reviews với pagination
     const skip = (reviewsPage - 1) * reviewsLimit;
-    const reviews = await ReviewModel.find({ room_id: id })
+    const reviews = await (ReviewModel.find({ room_id: id }) as any)
       .populate('user_id', 'name avatar email')
       .sort({ created_at: -1 })
       .skip(skip)
@@ -387,12 +390,12 @@ export class ListingService {
 
         // Cập nhật listing trực tiếp qua model
         const mongoose = await import('mongoose');
-        await mongoose
+        await (mongoose
           .model('Listing')
           .findByIdAndUpdate((listing as Listing)._id, {
             average_rating: Math.round(averageRating * 10) / 10,
             reviews_count: reviewsCount,
-          });
+          }) as any);
 
         updatedCount++;
       } catch (error) {
@@ -527,58 +530,34 @@ export class ListingService {
     const { Types } = await import('mongoose');
     const listingIdObj = new Types.ObjectId(listingId);
 
-    // Nếu không truyền ngày thì mặc định lấy 7 ngày gần nhất
-    let chartStartDate = startDate;
-    let chartEndDate = endDate;
+    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
+    let actualStartDate = startDate;
+    let actualEndDate = endDate;
     if (!startDate && !endDate) {
-      chartEndDate = new Date();
-      chartStartDate = new Date();
-      chartStartDate.setDate(chartEndDate.getDate() - 6); // 7 ngày gần nhất (bao gồm hôm nay)
+      const defaultRange = getDefaultDateRange();
+      actualStartDate = defaultRange.startDate;
+      actualEndDate = defaultRange.endDate;
     }
-    // Tính số ngày
-    const daysCount =
-      Math.ceil(
-        ((chartEndDate?.getTime() ?? 0) - (chartStartDate?.getTime() ?? 0)) /
-          (1000 * 60 * 60 * 24),
-      ) + 1;
-    // Xác định groupBy
-    let finalGroupBy = groupBy;
-    if (!finalGroupBy || finalGroupBy === 'auto') {
-      if (daysCount <= 31) finalGroupBy = 'day';
-      else if (daysCount <= 180) finalGroupBy = 'week';
-      else if (daysCount <= 730) finalGroupBy = 'month';
-      else finalGroupBy = 'year';
-    }
-    // Tạo format và label cho group
-    let groupFormat = '%Y-%m-%d';
-    let labelFn = (v: any) => new Date(v).toLocaleDateString('vi-VN');
-    if (finalGroupBy === 'week') {
-      groupFormat = '%G-%V'; // ISO week
-      labelFn = (v: any) => {
-        const [year, week] = v.split('-');
-        return `Tuần ${week}/${year}`;
-      };
-    } else if (finalGroupBy === 'month') {
-      groupFormat = '%Y-%m';
-      labelFn = (v: any) => {
-        const [year, month] = v.split('-');
-        return `Tháng ${month}/${year}`;
-      };
-    } else if (finalGroupBy === 'year') {
-      groupFormat = '%Y';
-      labelFn = (v: any) => `Năm ${v}`;
-    }
+
+    const finalGroupBy = determineGroupBy(
+      actualStartDate!,
+      actualEndDate!,
+      groupBy,
+    );
+    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+
     // Lấy dữ liệu cho biểu đồ
     const chartMatch: any = {
       listingId: listingIdObj,
       isDeleted: false,
       status: { $in: ['confirmed', 'completed'] },
     };
-    if (chartStartDate || chartEndDate) {
+    if (actualStartDate || actualEndDate) {
       chartMatch.created_at = {};
-      if (chartStartDate) chartMatch.created_at.$gte = chartStartDate;
-      if (chartEndDate) chartMatch.created_at.$lte = chartEndDate;
+      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
+      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
     }
+
     const chartDataAgg = await this.bookingModel.aggregate([
       { $match: chartMatch },
       {
@@ -595,8 +574,8 @@ export class ListingService {
       },
       { $sort: { '_id.group': 1 } },
     ]);
-    // Chuẩn hóa dữ liệu: tạo mảng label liên tục
-    const chartData: ChartDataPoint[] = [];
+
+    // Chuẩn hóa dữ liệu cho biểu đồ
     const labelMap = new Map<
       string,
       { revenue: number; bookings: number; nights: number }
@@ -608,54 +587,25 @@ export class ListingService {
         nights: item.nights,
       });
     });
-    // Tạo mảng label liên tục
-    let labels: string[] = [];
-    if (finalGroupBy === 'day') {
-      let d = new Date(chartStartDate!);
-      while (d <= chartEndDate!) {
-        labels.push(d.toISOString().slice(0, 10));
-        d.setDate(d.getDate() + 1);
-      }
-    } else if (finalGroupBy === 'week') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const week = getISOWeek(d);
-        labels.push(`${year}-${String(week).padStart(2, '0')}`);
-        d.setDate(d.getDate() + 7 - d.getDay());
-      }
-    } else if (finalGroupBy === 'month') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        labels.push(`${year}-${month}`);
-        d.setMonth(d.getMonth() + 1);
-      }
-    } else if (finalGroupBy === 'year') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        labels.push(`${year}`);
-        d.setFullYear(d.getFullYear() + 1);
-      }
-    }
-    for (const label of labels) {
+
+    const labels = generateLabels(
+      actualStartDate!,
+      actualEndDate!,
+      finalGroupBy,
+    );
+    const chartData: ChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
         revenue: 0,
         bookings: 0,
         nights: 0,
       };
-      chartData.push({
+      return {
         label: labelFn(label),
         revenue: data.revenue,
         bookings: data.bookings,
         occupancyRate: data.nights > 0 ? 100 : 0,
-      });
-    }
+      };
+    });
 
     // Lấy thông tin listing
     const listing = await this.findOne(listingId);
@@ -663,12 +613,12 @@ export class ListingService {
       throw new NotFoundException(`Listing with ID ${listingId} not found.`);
     }
 
-    // Tạo filter date nếu có
+    // Sử dụng cùng khoảng thời gian cho thống kê chính
     const dateFilter: any = {};
-    if (startDate || endDate) {
+    if (actualStartDate || actualEndDate) {
       dateFilter.created_at = {};
-      if (startDate) dateFilter.created_at.$gte = startDate;
-      if (endDate) dateFilter.created_at.$lte = endDate;
+      if (actualStartDate) dateFilter.created_at.$gte = actualStartDate;
+      if (actualEndDate) dateFilter.created_at.$lte = actualEndDate;
     }
 
     // 1. Thống kê booking
@@ -695,22 +645,23 @@ export class ListingService {
       },
     ]);
 
-    // 2. Tính tỉ lệ lấp đầy (occupancy rate) - theo khoảng thời gian được chọn
+    // 2. Tính tỉ lệ lấp đầy và doanh thu theo khoảng thời gian được chọn
     let occupancyRate = 0;
-    let monthlyRevenueAmount = 0;
+    let revenueAmount = 0;
 
-    if (startDate && endDate) {
-      // Tính occupancy rate theo khoảng thời gian được chọn
-      const totalDays = Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      );
+    if (actualStartDate && actualEndDate) {
+      const totalDays =
+        Math.ceil(
+          (actualEndDate.getTime() - actualStartDate.getTime()) /
+            (1000 * 60 * 60 * 24),
+        ) + 1;
 
       const periodBookings = await this.bookingModel.aggregate([
         {
           $match: {
             listingId: listingIdObj,
             isDeleted: false,
-            created_at: { $gte: startDate, $lte: endDate },
+            created_at: { $gte: actualStartDate, $lte: actualEndDate },
             status: { $in: ['confirmed', 'completed'] },
           },
         },
@@ -728,52 +679,7 @@ export class ListingService {
         occupancyRate = Math.round(
           (periodBooking.totalNights / totalDays) * 100,
         );
-        monthlyRevenueAmount = periodBooking.totalRevenue;
-      }
-    } else {
-      // Fallback: tính theo tháng hiện tại nếu không có khoảng thời gian
-      const currentMonth = new Date();
-      const firstDayOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        1,
-      );
-      const lastDayOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-      );
-
-      const monthlyBookings = await this.bookingModel.aggregate([
-        {
-          $match: {
-            listingId: listingIdObj,
-            isDeleted: false,
-            created_at: { $gte: firstDayOfMonth, $lte: lastDayOfMonth },
-            status: { $in: ['confirmed', 'completed'] },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            totalNights: { $sum: '$nights' },
-            totalRevenue: { $sum: '$final_amount' },
-          },
-        },
-      ]);
-
-      const daysInMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-      ).getDate();
-
-      if (monthlyBookings.length > 0) {
-        const monthlyBooking = monthlyBookings[0];
-        occupancyRate = Math.round(
-          (monthlyBooking.totalNights / daysInMonth) * 100,
-        );
-        monthlyRevenueAmount = monthlyBooking.totalRevenue;
+        revenueAmount = periodBooking.totalRevenue;
       }
     }
 
@@ -878,7 +784,7 @@ export class ListingService {
       businessPerformance: {
         totalBookings: bookingData.totalBookings,
         occupancyRate,
-        monthlyRevenue: monthlyRevenueAmount,
+        monthlyRevenue: revenueAmount, // Đổi tên từ monthlyRevenueAmount thành revenueAmount
         cancellationRate:
           bookingData.totalBookings > 0
             ? Math.round(
@@ -942,15 +848,4 @@ export class ListingService {
 
     return statistics;
   }
-}
-
-// Helper lấy số tuần ISO
-function getISOWeek(date: Date): number {
-  const tmp = new Date(date.getTime());
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-  return weekNo;
 }

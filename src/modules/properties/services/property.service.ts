@@ -26,7 +26,14 @@ import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import {
   PropertyVoucherStatistics,
   PropertyServiceStatistics,
+  PropertyChartDataPoint,
 } from '../dto/property-statistics.dto';
+import {
+  getDefaultDateRange,
+  determineGroupBy,
+  getGroupFormat,
+  generateLabels,
+} from '../../../utils/date.util';
 
 export interface PaginatedProperties {
   data: Property[];
@@ -352,7 +359,6 @@ export class PropertyService {
   /**
    * Lấy thống kê chi tiết cho một property cụ thể
    */
-
   async getPropertyStatistics(
     propertyId: string,
     startDate?: string,
@@ -362,58 +368,38 @@ export class PropertyService {
     // Validate property exists
     const property = await this.findOne(propertyId);
 
-    // Xử lý ngày cho chartData
-    let chartStartDate = startDate ? new Date(startDate) : undefined;
-    let chartEndDate = endDate ? new Date(endDate) : undefined;
-    if (!chartStartDate && !chartEndDate) {
-      chartEndDate = new Date();
-      chartStartDate = new Date();
-      chartStartDate.setDate(chartEndDate.getDate() - 6); // 7 ngày gần nhất
+    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
+    let actualStartDate: Date | undefined;
+    let actualEndDate: Date | undefined;
+
+    if (!startDate && !endDate) {
+      const defaultRange = getDefaultDateRange();
+      actualStartDate = defaultRange.startDate;
+      actualEndDate = defaultRange.endDate;
+    } else {
+      if (startDate) actualStartDate = new Date(startDate);
+      if (endDate) actualEndDate = new Date(endDate);
     }
-    // Tính số ngày
-    const daysCount =
-      Math.ceil(
-        ((chartEndDate?.getTime() ?? 0) - (chartStartDate?.getTime() ?? 0)) /
-          (1000 * 60 * 60 * 24),
-      ) + 1;
-    // Xác định groupBy
-    let finalGroupBy = groupBy;
-    if (!finalGroupBy || finalGroupBy === 'auto') {
-      if (daysCount <= 31) finalGroupBy = 'day';
-      else if (daysCount <= 180) finalGroupBy = 'week';
-      else if (daysCount <= 730) finalGroupBy = 'month';
-      else finalGroupBy = 'year';
-    }
-    // Tạo format và label cho group
-    let groupFormat = '%Y-%m-%d';
-    let labelFn = (v: any) => new Date(v).toLocaleDateString('vi-VN');
-    if (finalGroupBy === 'week') {
-      groupFormat = '%G-%V'; // ISO week
-      labelFn = (v: any) => {
-        const [year, week] = v.split('-');
-        return `Tuần ${week}/${year}`;
-      };
-    } else if (finalGroupBy === 'month') {
-      groupFormat = '%Y-%m';
-      labelFn = (v: any) => {
-        const [year, month] = v.split('-');
-        return `Tháng ${month}/${year}`;
-      };
-    } else if (finalGroupBy === 'year') {
-      groupFormat = '%Y';
-      labelFn = (v: any) => `Năm ${v}`;
-    }
+
+    const finalGroupBy = determineGroupBy(
+      actualStartDate!,
+      actualEndDate!,
+      groupBy,
+    );
+    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+
     // Lấy dữ liệu cho biểu đồ
     const chartMatch: any = {
       propertyId: new Types.ObjectId(propertyId),
       isDeleted: false,
       status: { $in: ['confirmed', 'completed'] },
     };
-    if (chartStartDate || chartEndDate) {
+    if (actualStartDate || actualEndDate) {
       chartMatch.created_at = {};
-      if (chartStartDate) chartMatch.created_at.$gte = chartStartDate;
-      if (chartEndDate) chartMatch.created_at.$lte = chartEndDate;
+      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
+      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
     }
+
     const chartDataAgg = await this.bookingModel.aggregate([
       { $match: chartMatch },
       {
@@ -430,74 +416,45 @@ export class PropertyService {
       },
       { $sort: { '_id.group': 1 } },
     ]);
-    // Chuẩn hóa dữ liệu: tạo mảng label liên tục
-    const chartData: any[] = [];
+
+    // Chuẩn hóa dữ liệu cho biểu đồ
     const labelMap = new Map<
       string,
       { revenue: number; bookings: number; nights: number }
     >();
-    chartDataAgg.forEach((item) => {
+    chartDataAgg.forEach((item: any) => {
       labelMap.set(item._id.group, {
         revenue: item.revenue,
         bookings: item.bookings,
         nights: item.nights,
       });
     });
-    // Tạo mảng label liên tục
-    let labels: string[] = [];
-    if (finalGroupBy === 'day') {
-      let d = new Date(chartStartDate!);
-      while (d <= chartEndDate!) {
-        labels.push(d.toISOString().slice(0, 10));
-        d.setDate(d.getDate() + 1);
-      }
-    } else if (finalGroupBy === 'week') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const week = getISOWeek(d);
-        labels.push(`${year}-${String(week).padStart(2, '0')}`);
-        d.setDate(d.getDate() + 7 - d.getDay());
-      }
-    } else if (finalGroupBy === 'month') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        labels.push(`${year}-${month}`);
-        d.setMonth(d.getMonth() + 1);
-      }
-    } else if (finalGroupBy === 'year') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        labels.push(`${year}`);
-        d.setFullYear(d.getFullYear() + 1);
-      }
-    }
-    for (const label of labels) {
+
+    const labels = generateLabels(
+      actualStartDate!,
+      actualEndDate!,
+      finalGroupBy,
+    );
+    const chartData: PropertyChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
         revenue: 0,
         bookings: 0,
         nights: 0,
       };
-      chartData.push({
+      return {
         label: labelFn(label),
         revenue: data.revenue,
         bookings: data.bookings,
         occupancyRate: data.nights > 0 ? 100 : 0,
-      });
-    }
+      };
+    });
 
-    // Create date filter
+    // Create date filter sử dụng cùng khoảng thời gian
     const dateFilter: any = {};
-    if (startDate || endDate) {
+    if (actualStartDate || actualEndDate) {
       dateFilter.created_at = {};
-      if (startDate) dateFilter.created_at.$gte = new Date(startDate);
-      if (endDate) dateFilter.created_at.$lte = new Date(endDate);
+      if (actualStartDate) dateFilter.created_at.$gte = actualStartDate;
+      if (actualEndDate) dateFilter.created_at.$lte = actualEndDate;
     }
 
     // Get all listings for this property
@@ -682,314 +639,164 @@ export class PropertyService {
         allBookings.length;
     }
 
-    // Peak booking days
-    const bookingsByDate = await this.bookingModel.aggregate([
+    // 5. Thống kê khách hàng
+    const guestStats = await this.bookingModel.aggregate([
       {
         $match: {
           propertyId: new Types.ObjectId(propertyId),
-          isDeleted: false,
-        },
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$checkInDate' },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { count: -1 },
-      },
-      {
-        $limit: 5,
-      },
-    ]);
-
-    // 5. Khách hàng
-    const uniqueCustomers = [
-      ...new Set(allBookings.map((b) => b.guestId.toString())),
-    ].length;
-
-    // Return customers calculation
-    const customerBookingCounts = await this.bookingModel.aggregate([
-      {
-        $match: {
-          propertyId: new Types.ObjectId(propertyId),
+          payment_status: 'paid',
           isDeleted: false,
         },
       },
       {
         $group: {
           _id: '$guestId',
-          bookingCount: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const returnCustomers = customerBookingCounts.filter(
-      (c: any) => (c.bookingCount as number) > 1,
-    ).length;
-    const returnCustomerRate =
-      uniqueCustomers > 0 ? (returnCustomers / uniqueCustomers) * 100 : 0;
-
-    // 6. Thống kê đánh giá (Reviews)
-    const allReviews = await this.reviewModel.find({
-      room_id: { $in: listingIds },
-    });
-
-    const totalReviews = allReviews.length;
-    const averagePropertyRating =
-      totalReviews > 0
-        ? allReviews.reduce((sum, review) => sum + review.rating, 0) /
-          totalReviews
-        : 0;
-
-    // Rating distribution cho toàn bộ property (array format for charts)
-    const ratingDistribution = [
-      { rating: 1, count: allReviews.filter((r) => r.rating === 1).length },
-      { rating: 2, count: allReviews.filter((r) => r.rating === 2).length },
-      { rating: 3, count: allReviews.filter((r) => r.rating === 3).length },
-      { rating: 4, count: allReviews.filter((r) => r.rating === 4).length },
-      { rating: 5, count: allReviews.filter((r) => r.rating === 5).length },
-    ];
-
-    // Reviews by room
-    const reviewsByRoom = await this.reviewModel.aggregate([
-      {
-        $match: {
-          room_id: { $in: listingIds },
+          bookings: { $sum: 1 },
+          totalSpent: { $sum: '$final_amount' },
+          totalNights: { $sum: '$nights' },
+          averageStayDuration: { $avg: '$nights' },
         },
       },
       {
         $group: {
-          _id: '$room_id',
-          totalReviews: { $sum: 1 },
-          averageRating: { $avg: '$rating' },
-          ratings: { $push: '$rating' },
-        },
-      },
-      {
-        $lookup: {
-          from: 'listings',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'listing',
-        },
-      },
-      {
-        $unwind: '$listing',
-      },
-      {
-        $project: {
-          listingId: '$_id',
-          listingTitle: '$listing.title',
-          totalReviews: 1,
-          averageRating: { $round: ['$averageRating', 1] },
-          ratingCounts: {
-            1: {
-              $size: {
-                $filter: { input: '$ratings', cond: { $eq: ['$$this', 1] } },
-              },
-            },
-            2: {
-              $size: {
-                $filter: { input: '$ratings', cond: { $eq: ['$$this', 2] } },
-              },
-            },
-            3: {
-              $size: {
-                $filter: { input: '$ratings', cond: { $eq: ['$$this', 3] } },
-              },
-            },
-            4: {
-              $size: {
-                $filter: { input: '$ratings', cond: { $eq: ['$$this', 4] } },
-              },
-            },
-            5: {
-              $size: {
-                $filter: { input: '$ratings', cond: { $eq: ['$$this', 5] } },
-              },
-            },
+          _id: null,
+          totalUniqueGuests: { $sum: 1 },
+          returningGuests: {
+            $sum: { $cond: [{ $gt: ['$bookings', 1] }, 1, 0] },
           },
+          averageSpentPerGuest: { $avg: '$totalSpent' },
+          averageStayDurationAcrossGuests: { $avg: '$averageStayDuration' },
         },
-      },
-      {
-        $sort: { averageRating: -1 },
       },
     ]);
 
-    // Recent reviews
-    const recentReviews = await this.reviewModel
-      .find({
-        room_id: { $in: listingIds },
-      })
-      .populate('user_id', 'name avatar')
-      .populate('room_id', 'title')
-      .sort({ created_at: -1 })
-      .limit(10);
+    const customerInsights = guestStats[0] || {
+      totalUniqueGuests: 0,
+      returningGuests: 0,
+      averageSpentPerGuest: 0,
+      averageStayDurationAcrossGuests: 0,
+    };
 
-    /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-    return {
-      propertyInfo: {
-        id: propertyId,
-        name: property.name,
-        description: property.description,
-        thumbnail: property.thumbnail,
-        images: property.images || [],
-        location: property.location,
-
-        createdAt: (property as any).createdAt as Date, // Timestamps field from Mongoose
+    // 6. Thống kê review
+    const reviewAnalysis = await this.reviewModel.aggregate([
+      {
+        $match: {
+          room_id: { $in: listingIds },
+          isDeleted: false,
+        },
       },
+      {
+        $group: {
+          _id: null,
+          totalReviews: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+          ratingBreakdown: {
+            $push: '$rating',
+          },
+        },
+      },
+    ]);
 
-      // 1. Tổng quan phòng
-      roomOverview: {
+    const reviewData = reviewAnalysis[0] || {
+      totalReviews: 0,
+      averageRating: 0,
+      ratingBreakdown: [],
+    };
+
+    // Tính phân bố rating
+    const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    if (reviewData.ratingBreakdown) {
+      reviewData.ratingBreakdown.forEach((rating: number) => {
+        if (rating >= 1 && rating <= 5) {
+          ratingDistribution[rating as keyof typeof ratingDistribution]++;
+        }
+      });
+    }
+
+    // 7. Get voucher and service statistics
+    const voucherStatistics = await this.getVoucherStatistics(
+      propertyId,
+      dateFilter,
+    );
+    const serviceStatistics = await this.getServiceStatistics(
+      propertyId,
+      dateFilter,
+    );
+
+    return {
+      propertyId,
+      propertyName: property.name,
+      overview: {
         totalRooms,
         activeRooms,
         roomsWithBookings,
         roomsWithoutBookings,
-        roomUtilizationRate:
+        utilizationRate:
           totalRooms > 0 ? (roomsWithBookings / totalRooms) * 100 : 0,
       },
-
-      // 2. Hiệu suất đặt phòng
       bookingPerformance: {
         totalBookings,
         successfulBookings,
         cancelledBookings,
-        cancellationRate: Math.round(cancellationRate * 100) / 100,
-        averageOccupancyRate: Math.round(averageOccupancyRate * 100) / 100,
         successRate:
-          totalBookings > 0
-            ? Math.round((successfulBookings / totalBookings) * 100 * 100) / 100
-            : null,
+          totalBookings > 0 ? (successfulBookings / totalBookings) * 100 : 0,
+        cancellationRate: Math.round(cancellationRate),
+        averageOccupancyRate: Math.round(averageOccupancyRate),
       },
-
-      // 3. Doanh thu và giá
       revenueAndPricing: {
-        totalRevenue: Math.round(totalRevenue),
-        monthlyRevenue: monthlyRevenue.map((m: any) => ({
-          year: m._id.year as number,
-          month: m._id.month as number,
-          monthKey: `${m._id.year as number}-${(m._id.month as number).toString().padStart(2, '0')}`, // "2025-07" format
-          revenue: Math.round(m.revenue as number),
-          bookings: m.bookings as number,
-        })),
+        totalRevenue,
         averagePricePerNight: Math.round(averagePricePerNight),
-        totalNightsBooked,
-        revenueByRoom: revenueByRoom.map((r: any) => ({
-          listingId: r.listingId as string,
-          listingTitle: r.listingTitle as string,
-          revenue: Math.round(r.revenue as number),
-          bookings: r.bookings as number,
-          totalNights: r.totalNights as number,
-          averageRevenuePerNight: Math.round(
-            r.averageRevenuePerNight as number,
-          ),
+        monthlyRevenue: monthlyRevenue.map((item: any) => ({
+          month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+          revenue: item.revenue,
+          bookings: item.bookings,
+        })),
+        revenueByRoom: revenueByRoom.map((item: any) => ({
+          listingId: item.listingId,
+          listingTitle: item.listingTitle,
+          revenue: item.revenue,
+          bookings: item.bookings,
+          totalNights: item.totalNights,
+          averageRevenuePerNight: Math.round(item.averageRevenuePerNight),
         })),
       },
-
-      // 4. Thống kê thời gian
       timeStatistics: {
         earliestBookingDate,
         latestBookingDate,
-        averageStayDuration: Math.round(averageStayDuration * 10) / 10, // 1 chữ số thập phân
-        averageStayDurationText:
-          averageStayDuration > 0
-            ? `${Math.round(averageStayDuration * 10) / 10} nights`
-            : null,
-        peakBookingDays: bookingsByDate.map((d: any) => ({
-          date: d._id as string,
-          bookingCount: d.count as number,
-        })),
+        averageStayDuration: Math.round(averageStayDuration * 10) / 10,
       },
-
-      // 5. Khách hàng
-      customerStatistics: {
-        uniqueCustomers,
-        returnCustomers,
-        returnCustomerRate: Math.round(returnCustomerRate * 100) / 100,
-        newCustomers: uniqueCustomers - returnCustomers,
-        averageBookingsPerCustomer:
-          uniqueCustomers > 0
-            ? Math.round((totalBookings / uniqueCustomers) * 100) / 100
+      customerInsights: {
+        totalUniqueGuests: customerInsights.totalUniqueGuests,
+        returningGuests: customerInsights.returningGuests,
+        newGuestRate:
+          customerInsights.totalUniqueGuests > 0
+            ? Math.round(
+                ((customerInsights.totalUniqueGuests -
+                  customerInsights.returningGuests) /
+                  customerInsights.totalUniqueGuests) *
+                  100,
+              )
             : 0,
+        returningGuestRate:
+          customerInsights.totalUniqueGuests > 0
+            ? Math.round(
+                (customerInsights.returningGuests /
+                  customerInsights.totalUniqueGuests) *
+                  100,
+              )
+            : 0,
+        averageSpentPerGuest: Math.round(customerInsights.averageSpentPerGuest),
+        averageStayDuration:
+          Math.round(customerInsights.averageStayDurationAcrossGuests * 10) /
+          10,
       },
-
-      // 6. Thống kê đánh giá
-      reviewStatistics: {
-        totalReviews,
-        averagePropertyRating: Math.round(averagePropertyRating * 10) / 10,
+      reviewAnalysis: {
+        totalReviews: reviewData.totalReviews,
+        averageRating: Math.round(reviewData.averageRating * 10) / 10,
         ratingDistribution,
-        reviewsByRoom: reviewsByRoom.map((room: any) => ({
-          listingId: room.listingId as string,
-          listingTitle: room.listingTitle as string,
-          totalReviews: room.totalReviews as number,
-          averageRating: room.averageRating as number,
-          ratingDistribution: [
-            {
-              rating: 1,
-              count: room.ratingCounts[1] || 0,
-            },
-            {
-              rating: 2,
-              count: room.ratingCounts[2] || 0,
-            },
-            {
-              rating: 3,
-              count: room.ratingCounts[3] || 0,
-            },
-            {
-              rating: 4,
-              count: room.ratingCounts[4] || 0,
-            },
-            {
-              rating: 5,
-              count: room.ratingCounts[5] || 0,
-            },
-          ],
-        })),
-        recentReviews: recentReviews.map((review: any) => ({
-          id: review._id as string,
-          rating: review.rating as number,
-          comment: review.comment as string,
-          createdAt: review.created_at as Date,
-          // Flattened user info
-          userName: review.user_id?.name || 'Unknown',
-          userAvatar: review.user_id?.avatar || null,
-          // Flattened listing info
-          listingId: review.room_id?._id,
-          listingTitle: review.room_id?.title || 'Unknown Room',
-          // Nested structure vẫn có (optional cho flexibility)
-          user: {
-            name: review.user_id?.name || 'Unknown',
-            avatar: review.user_id?.avatar || null,
-          },
-          listing: {
-            id: review.room_id?._id,
-            title: review.room_id?.title || 'Unknown Room',
-          },
-        })),
-        roomsWithReviews: reviewsByRoom.length,
-        roomsWithoutReviews: totalRooms - reviewsByRoom.length,
-        reviewCoverage:
-          totalRooms > 0 ? (reviewsByRoom.length / totalRooms) * 100 : 0,
       },
-
-      // 7. Thống kê Voucher
-      voucherStatistics: await this.getVoucherStatistics(
-        propertyId,
-        dateFilter,
-      ),
-
-      // 8. Thống kê Service
-      serviceStatistics: await this.getServiceStatistics(
-        propertyId,
-        dateFilter,
-      ),
-
-      // 9. Thống kê biểu đồ
+      voucherStatistics,
+      serviceStatistics,
       chartData,
     };
   }
@@ -1207,27 +1014,14 @@ export class PropertyService {
    * Lấy danh sách property IDs mà user được gán làm staff
    */
   async getStaffPropertyIds(staffId: string): Promise<string[]> {
-    try {
-      const staffProperties = await this.findByStaff(staffId, {});
-      interface PropertyWithId {
-        _id: Types.ObjectId;
-      }
-      return staffProperties.data.map((prop) =>
-        (prop as unknown as PropertyWithId)._id.toString(),
-      );
-    } catch {
-      return [];
-    }
-  }
-}
+    const properties = await this.propertyModel
+      .find({
+        staffIds: staffId,
+        isDeleted: false,
+      })
+      .select('_id')
+      .lean();
 
-// Helper lấy số tuần ISO
-function getISOWeek(date: Date): number {
-  const tmp = new Date(date.getTime());
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-  return weekNo;
+    return properties.map((property: any) => property._id.toString());
+  }
 }

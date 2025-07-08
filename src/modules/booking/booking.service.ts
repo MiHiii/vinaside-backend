@@ -31,6 +31,12 @@ import {
   BookingTimelineStatistics,
   BookingChartDataPoint,
 } from './dto/booking-statistics.dto';
+import {
+  getDefaultDateRange,
+  determineGroupBy,
+  getGroupFormat,
+  generateLabels,
+} from '../../utils/date.util';
 
 export interface PaginatedBookings {
   data: Booking[];
@@ -779,61 +785,42 @@ export class BookingService {
       chartData: BookingChartDataPoint[];
     }
   > {
+    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
+    let actualStartDate: Date | undefined;
+    let actualEndDate: Date | undefined;
+
+    if (!startDate && !endDate) {
+      const defaultRange = getDefaultDateRange();
+      actualStartDate = defaultRange.startDate;
+      actualEndDate = defaultRange.endDate;
+    } else {
+      if (startDate) actualStartDate = new Date(startDate);
+      if (endDate) actualEndDate = new Date(endDate);
+    }
+
+    // Tạo filter cho thống kê chính (sử dụng cùng khoảng thời gian)
     const filter = this.createStatisticsFilter(
-      startDate,
-      endDate,
+      actualStartDate?.toISOString(),
+      actualEndDate?.toISOString(),
       propertyId,
       listingId,
     );
 
-    // Xử lý ngày cho chartData
-    let chartStartDate = startDate ? new Date(startDate) : undefined;
-    let chartEndDate = endDate ? new Date(endDate) : undefined;
-    if (!chartStartDate && !chartEndDate) {
-      chartEndDate = new Date();
-      chartStartDate = new Date();
-      chartStartDate.setDate(chartEndDate.getDate() - 6); // 7 ngày gần nhất
-    }
-    // Tính số ngày
-    const daysCount =
-      Math.ceil(
-        ((chartEndDate?.getTime() ?? 0) - (chartStartDate?.getTime() ?? 0)) /
-          (1000 * 60 * 60 * 24),
-      ) + 1;
-    // Xác định groupBy
-    let finalGroupBy = groupBy;
-    if (!finalGroupBy || finalGroupBy === 'auto') {
-      if (daysCount <= 31) finalGroupBy = 'day';
-      else if (daysCount <= 180) finalGroupBy = 'week';
-      else if (daysCount <= 730) finalGroupBy = 'month';
-      else finalGroupBy = 'year';
-    }
-    // Tạo format và label cho group
-    let groupFormat = '%Y-%m-%d';
-    let labelFn = (v: any) => new Date(v).toLocaleDateString('vi-VN');
-    if (finalGroupBy === 'week') {
-      groupFormat = '%G-%V'; // ISO week
-      labelFn = (v: any) => {
-        const [year, week] = v.split('-');
-        return `Tuần ${week}/${year}`;
-      };
-    } else if (finalGroupBy === 'month') {
-      groupFormat = '%Y-%m';
-      labelFn = (v: any) => {
-        const [year, month] = v.split('-');
-        return `Tháng ${month}/${year}`;
-      };
-    } else if (finalGroupBy === 'year') {
-      groupFormat = '%Y';
-      labelFn = (v: any) => `Năm ${v}`;
-    }
-    // Lấy dữ liệu cho biểu đồ
+    const finalGroupBy = determineGroupBy(
+      actualStartDate!,
+      actualEndDate!,
+      groupBy,
+    );
+    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+
+    // Lấy dữ liệu cho biểu đồ (sử dụng cùng khoảng thời gian)
     const chartMatch: any = { ...filter };
-    if (chartStartDate || chartEndDate) {
+    if (actualStartDate || actualEndDate) {
       chartMatch.created_at = {};
-      if (chartStartDate) chartMatch.created_at.$gte = chartStartDate;
-      if (chartEndDate) chartMatch.created_at.$lte = chartEndDate;
+      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
+      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
     }
+
     const chartDataAgg = await this.bookingRepo.getModel().aggregate([
       { $match: chartMatch },
       {
@@ -850,8 +837,8 @@ export class BookingService {
       },
       { $sort: { '_id.group': 1 } },
     ]);
-    // Chuẩn hóa dữ liệu: tạo mảng label liên tục
-    const chartData: BookingChartDataPoint[] = [];
+
+    // Chuẩn hóa dữ liệu cho biểu đồ
     const labelMap = new Map<
       string,
       { revenue: number; bookings: number; nights: number }
@@ -863,55 +850,25 @@ export class BookingService {
         nights: item.nights,
       });
     });
-    // Tạo mảng label liên tục
-    let labels: string[] = [];
-    if (finalGroupBy === 'day') {
-      let d = new Date(chartStartDate!);
-      while (d <= chartEndDate!) {
-        labels.push(d.toISOString().slice(0, 10));
-        d.setDate(d.getDate() + 1);
-      }
-    } else if (finalGroupBy === 'week') {
-      // Tạo mảng tuần liên tục
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const week = getISOWeek(d);
-        labels.push(`${year}-${String(week).padStart(2, '0')}`);
-        d.setDate(d.getDate() + 7 - d.getDay());
-      }
-    } else if (finalGroupBy === 'month') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        labels.push(`${year}-${month}`);
-        d.setMonth(d.getMonth() + 1);
-      }
-    } else if (finalGroupBy === 'year') {
-      let d = new Date(chartStartDate!);
-      const end = new Date(chartEndDate!);
-      while (d <= end) {
-        const year = d.getUTCFullYear();
-        labels.push(`${year}`);
-        d.setFullYear(d.getFullYear() + 1);
-      }
-    }
-    for (const label of labels) {
+
+    const labels = generateLabels(
+      actualStartDate!,
+      actualEndDate!,
+      finalGroupBy,
+    );
+    const chartData: BookingChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
         revenue: 0,
         bookings: 0,
         nights: 0,
       };
-      chartData.push({
+      return {
         label: labelFn(label),
         revenue: data.revenue,
         bookings: data.bookings,
         occupancyRate: data.nights > 0 ? 100 : 0,
-      });
-    }
+      };
+    });
 
     // Thống kê tổng quan
     const overviewStats = await this.bookingRepo.getModel().aggregate([
@@ -940,14 +897,14 @@ export class BookingService {
       },
     ]);
 
-    // Tính toán tỉ lệ lấp đầy (giả định 30 ngày/tháng)
+    // Tính toán tỉ lệ lấp đầy dựa trên khoảng thời gian thực tế
     const daysInPeriod =
-      startDate && endDate
+      actualStartDate && actualEndDate
         ? Math.ceil(
-            (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+            (actualEndDate.getTime() - actualStartDate.getTime()) /
               (1000 * 60 * 60 * 24),
-          )
-        : 30;
+          ) + 1
+        : 7; // Mặc định 7 ngày
 
     const overview = overviewStats[0] || {
       totalBookings: 0,
@@ -1302,15 +1259,4 @@ export class BookingService {
         Math.round((timelineStats.averageStayDuration as number) * 10) / 10,
     };
   }
-}
-
-// Helper lấy số tuần ISO
-function getISOWeek(date: Date): number {
-  const tmp = new Date(date.getTime());
-  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-  return weekNo;
 }

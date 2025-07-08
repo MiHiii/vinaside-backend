@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsDateString, IsEnum } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsDateString } from 'class-validator';
 
 export interface PropertyOverviewStatistics {
   totalRooms: number;
@@ -106,25 +106,30 @@ export interface PropertyChartDataPoint {
 }
 
 export class PropertyStatisticsQueryDto {
-  @ApiProperty({ description: 'Ngày bắt đầu thống kê', required: false })
+  @ApiPropertyOptional({
+    description: 'Ngày bắt đầu (YYYY-MM-DD)',
+    example: '2024-01-01',
+  })
   @IsOptional()
   @IsDateString()
   startDate?: string;
 
-  @ApiProperty({ description: 'Ngày kết thúc thống kê', required: false })
+  @ApiPropertyOptional({
+    description: 'Ngày kết thúc (YYYY-MM-DD)',
+    example: '2024-12-31',
+  })
   @IsOptional()
   @IsDateString()
   endDate?: string;
 
-  @ApiProperty({
-    description: 'Kiểu nhóm dữ liệu biểu đồ',
-    enum: PropertyChartGroupBy,
-    required: false,
-    default: PropertyChartGroupBy.AUTO,
+  @ApiPropertyOptional({
+    description: 'Cách nhóm dữ liệu',
+    enum: ['auto', 'day', 'week', 'month', 'year'],
+    example: 'auto',
   })
   @IsOptional()
-  @IsEnum(PropertyChartGroupBy)
-  groupBy?: PropertyChartGroupBy = PropertyChartGroupBy.AUTO;
+  @IsString()
+  groupBy?: string;
 }
 
 export class PropertyStatisticsResponseDto {

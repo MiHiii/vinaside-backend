@@ -110,9 +110,13 @@ export class PropertyController {
     @Param('id') id: string,
     @Query() queryDto: PropertyStatisticsQueryDto,
   ) {
-    const startDate = queryDto.startDate;
-    const endDate = queryDto.endDate;
-    return this.propertyService.getPropertyStatistics(id, startDate, endDate);
+    const { startDate, endDate, groupBy } = queryDto;
+    return this.propertyService.getPropertyStatistics(
+      id,
+      startDate,
+      endDate,
+      groupBy,
+    );
   }
 
   @Get('my-properties')
