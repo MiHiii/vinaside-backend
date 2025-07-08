@@ -182,10 +182,10 @@ export class ListingController {
     type: ListingStatisticsResponseDto,
   })
   @ResponseMessage('Lấy thống kê listing thành công')
-  getListingStatistics(
+  async getListingStatistics(
     @Param('id') id: string,
     @Query() query: ListingStatisticsDto,
-  ): Promise<ListingStatisticsResponseDto> {
+  ): Promise<ListingStatisticsResponseDto & { chartData: any[] }> {
     const startDate = query.startDate ? new Date(query.startDate) : undefined;
     const endDate = query.endDate ? new Date(query.endDate) : undefined;
     return this.listingService.getListingStatistics(id, startDate, endDate);

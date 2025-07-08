@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Injectable,
@@ -29,7 +29,14 @@ import {
   BookingFinancialStatistics,
   BookingCustomerStatistics,
   BookingTimelineStatistics,
+  BookingChartDataPoint,
 } from './dto/booking-statistics.dto';
+import {
+  getDefaultDateRange,
+  determineGroupBy,
+  getGroupFormat,
+  generateLabels,
+} from '../../utils/date.util';
 
 export interface PaginatedBookings {
   data: Booking[];
@@ -766,20 +773,104 @@ export class BookingService {
   /**
    * Lấy thống kê tổng quan
    */
+
   async getOverviewStatistics(
     startDate?: string,
     endDate?: string,
     propertyId?: string,
     listingId?: string,
+    groupBy?: string,
   ): Promise<
-    BookingOverviewStatistics & { statusBreakdown: BookingStatusStatistics }
+    BookingOverviewStatistics & {
+      statusBreakdown: BookingStatusStatistics;
+      chartData: BookingChartDataPoint[];
+    }
   > {
+    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
+    let actualStartDate: Date | undefined;
+    let actualEndDate: Date | undefined;
+
+    if (!startDate && !endDate) {
+      const defaultRange = getDefaultDateRange();
+      actualStartDate = defaultRange.startDate;
+      actualEndDate = defaultRange.endDate;
+    } else {
+      if (startDate) actualStartDate = new Date(startDate);
+      if (endDate) actualEndDate = new Date(endDate);
+    }
+
+    // Tạo filter cho thống kê chính (sử dụng cùng khoảng thời gian)
     const filter = this.createStatisticsFilter(
-      startDate,
-      endDate,
+      actualStartDate?.toISOString(),
+      actualEndDate?.toISOString(),
       propertyId,
       listingId,
     );
+
+    const finalGroupBy = determineGroupBy(
+      actualStartDate!,
+      actualEndDate!,
+      groupBy,
+    );
+    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+
+    // Lấy dữ liệu cho biểu đồ (sử dụng cùng khoảng thời gian)
+    const chartMatch: any = { ...filter };
+    if (actualStartDate || actualEndDate) {
+      chartMatch.created_at = {};
+      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
+      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
+    }
+
+    const chartDataAgg = await this.bookingRepo.getModel().aggregate([
+      { $match: chartMatch },
+      {
+        $group: {
+          _id: {
+            group: {
+              $dateToString: { format: groupFormat, date: '$created_at' },
+            },
+          },
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+          nights: { $sum: '$nights' },
+        },
+      },
+      { $sort: { '_id.group': 1 } },
+    ]);
+
+    // Chuẩn hóa dữ liệu cho biểu đồ
+    const labelMap = new Map<
+      string,
+      { revenue: number; bookings: number; nights: number }
+    >();
+    chartDataAgg.forEach((item) => {
+      labelMap.set(item._id.group, {
+        revenue: item.revenue,
+        bookings: item.bookings,
+        nights: item.nights,
+      });
+    });
+
+    const labels = generateLabels(
+      actualStartDate!,
+      actualEndDate!,
+      finalGroupBy,
+    );
+
+    const chartData: BookingChartDataPoint[] = labels.map((label) => {
+      const data = labelMap.get(label) || {
+        revenue: 0,
+        bookings: 0,
+        nights: 0,
+      };
+      return {
+        label: labelFn(String(label)),
+        revenue: data.revenue,
+        bookings: data.bookings,
+        occupancyRate: data.nights > 0 ? 100 : 0,
+      };
+    });
 
     // Thống kê tổng quan
     const overviewStats = await this.bookingRepo.getModel().aggregate([
@@ -808,14 +899,14 @@ export class BookingService {
       },
     ]);
 
-    // Tính toán tỉ lệ lấp đầy (giả định 30 ngày/tháng)
+    // Tính toán tỉ lệ lấp đầy dựa trên khoảng thời gian thực tế
     const daysInPeriod =
-      startDate && endDate
+      actualStartDate && actualEndDate
         ? Math.ceil(
-            (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+            (actualEndDate.getTime() - actualStartDate.getTime()) /
               (1000 * 60 * 60 * 24),
-          )
-        : 30;
+          ) + 1
+        : 7; // Mặc định 7 ngày
 
     const overview = overviewStats[0] || {
       totalBookings: 0,
@@ -837,9 +928,13 @@ export class BookingService {
       cancellationRate: 0,
     };
 
-    statusStats.forEach((stat: any) => {
-      statusBreakdown[stat._id] = stat.count;
-    });
+    statusStats.forEach(
+      (stat: { _id: keyof BookingStatusStatistics; count: number }) => {
+        if (stat._id in statusBreakdown) {
+          statusBreakdown[stat._id] = stat.count;
+        }
+      },
+    );
 
     // Tính tỉ lệ
     if (overview.totalBookings > 0) {
@@ -864,6 +959,7 @@ export class BookingService {
       totalGuests: overview.totalGuests,
       totalInfants: overview.totalInfants,
       statusBreakdown,
+      chartData,
     };
   }
 

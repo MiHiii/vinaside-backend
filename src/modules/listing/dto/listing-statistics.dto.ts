@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
+
+export enum TimeGroupBy {
+  DAY = 'day',
+  WEEK = 'week',
+  MONTH = 'month',
+  YEAR = 'year',
+}
 
 export interface ListingStatistics {
   listingId: string;
@@ -25,6 +32,37 @@ export interface ListingStatistics {
   };
 }
 
+export interface RevenueChartData {
+  date: string;
+  revenue: number;
+  bookings: number;
+  occupancyRate: number;
+}
+
+export interface ListingRevenueStatistics {
+  listingId: string;
+  listingTitle: string;
+  totalRevenue: number;
+  totalBookings: number;
+  averageOccupancyRate: number;
+  chartData: RevenueChartData[];
+}
+
+export enum ListingChartGroupBy {
+  AUTO = 'auto',
+  DAY = 'day',
+  WEEK = 'week',
+  MONTH = 'month',
+  YEAR = 'year',
+}
+
+export interface ChartDataPoint {
+  label: string; // label cho trục X (ngày/tuần/tháng)
+  revenue: number;
+  bookings: number;
+  occupancyRate: number;
+}
+
 export class ListingStatisticsDto {
   @ApiProperty({ description: 'ID của listing', required: false })
   @IsOptional()
@@ -45,6 +83,16 @@ export class ListingStatisticsDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @ApiProperty({
+    description: 'Kiểu nhóm dữ liệu biểu đồ',
+    enum: ListingChartGroupBy,
+    required: false,
+    default: ListingChartGroupBy.AUTO,
+  })
+  @IsOptional()
+  @IsEnum(ListingChartGroupBy)
+  groupBy?: ListingChartGroupBy = ListingChartGroupBy.AUTO;
 }
 
 export class ListingStatisticsResponseDto implements ListingStatistics {
@@ -80,4 +128,36 @@ export class ListingStatisticsResponseDto implements ListingStatistics {
     totalDiscountAmount: number;
     mostPopularVoucher: string;
   };
+
+  @ApiProperty({
+    description: 'Dữ liệu biểu đồ doanh thu 7 ngày gần nhất',
+    type: [Object],
+    required: false,
+  })
+  chartData?: ChartDataPoint[];
+}
+
+export class ListingRevenueStatisticsResponseDto
+  implements ListingRevenueStatistics
+{
+  @ApiProperty({ description: 'ID của listing' })
+  listingId: string;
+
+  @ApiProperty({ description: 'Tên listing' })
+  listingTitle: string;
+
+  @ApiProperty({ description: 'Tổng doanh thu' })
+  totalRevenue: number;
+
+  @ApiProperty({ description: 'Tổng số booking' })
+  totalBookings: number;
+
+  @ApiProperty({ description: 'Tỷ lệ lấp đầy trung bình' })
+  averageOccupancyRate: number;
+
+  @ApiProperty({
+    description: 'Dữ liệu biểu đồ theo thời gian',
+    type: [Object],
+  })
+  chartData: RevenueChartData[];
 }

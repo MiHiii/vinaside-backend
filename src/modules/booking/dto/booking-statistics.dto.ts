@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
 export interface BookingOverviewStatistics {
   totalBookings: number;
@@ -69,6 +69,21 @@ export interface BookingTimelineStatistics {
   averageStayDuration: number;
 }
 
+export enum BookingChartGroupBy {
+  AUTO = 'auto',
+  DAY = 'day',
+  WEEK = 'week',
+  MONTH = 'month',
+  YEAR = 'year',
+}
+
+export interface BookingChartDataPoint {
+  label: string; // label cho trục X (ngày/tuần/tháng)
+  revenue: number;
+  bookings: number;
+  occupancyRate: number;
+}
+
 export class BookingStatisticsQueryDto {
   @ApiProperty({ description: 'Ngày bắt đầu thống kê', required: false })
   @IsOptional()
@@ -89,6 +104,16 @@ export class BookingStatisticsQueryDto {
   @IsOptional()
   @IsString()
   listingId?: string;
+
+  @ApiProperty({
+    description: 'Kiểu nhóm dữ liệu biểu đồ',
+    enum: BookingChartGroupBy,
+    required: false,
+    default: BookingChartGroupBy.AUTO,
+  })
+  @IsOptional()
+  @IsEnum(BookingChartGroupBy)
+  groupBy?: BookingChartGroupBy = BookingChartGroupBy.AUTO;
 }
 
 export class BookingOverviewResponseDto implements BookingOverviewStatistics {
@@ -115,6 +140,13 @@ export class BookingOverviewResponseDto implements BookingOverviewStatistics {
 
   @ApiProperty({ description: 'Thống kê theo trạng thái' })
   statusBreakdown: BookingStatusStatistics;
+
+  @ApiProperty({
+    description: 'Dữ liệu biểu đồ doanh thu/ngày',
+    type: [Object],
+    required: false,
+  })
+  chartData?: BookingChartDataPoint[];
 }
 
 export class BookingFinancialResponseDto implements BookingFinancialStatistics {

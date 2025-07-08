@@ -21,7 +21,16 @@ import { Booking } from '../booking/schemas/booking.schema';
 import { Review } from '../reviews/schemas/review.schema';
 import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { Transaction } from '../transactions/schemas/transaction.schema';
-import { ListingStatistics } from './dto/listing-statistics.dto';
+import {
+  ListingStatistics,
+  ChartDataPoint,
+} from './dto/listing-statistics.dto';
+import {
+  getDefaultDateRange,
+  determineGroupBy,
+  getGroupFormat,
+  generateLabels,
+} from '../../utils/date.util';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -304,7 +313,7 @@ export class ListingService {
           _id: null,
           total: { $sum: 1 },
           averageRating: { $avg: '$rating' },
-          ratings: { $push: '$rating' },
+          ratingDistribution: { $push: '$rating' },
         },
       },
     ]);
@@ -317,28 +326,28 @@ export class ListingService {
       };
     }
 
-    const { total, averageRating, ratings } = stats[0] as {
+    const { total, averageRating, ratingDistribution } = stats[0] as {
       total: number;
       averageRating: number;
-      ratings: number[];
+      ratingDistribution: number[];
     };
 
     // Tính phân bố rating
-    const ratingDistribution: { [key: number]: number } = {
+    const ratingDistributionResult: { [key: number]: number } = {
       1: 0,
       2: 0,
       3: 0,
       4: 0,
       5: 0,
     };
-    ratings.forEach((rating: number) => {
-      ratingDistribution[rating]++;
+    ratingDistribution.forEach((rating: number) => {
+      ratingDistributionResult[rating]++;
     });
 
     return {
       total,
       averageRating: Math.round(averageRating * 10) / 10,
-      ratingDistribution,
+      ratingDistribution: ratingDistributionResult,
     };
   }
 
@@ -381,12 +390,12 @@ export class ListingService {
 
         // Cập nhật listing trực tiếp qua model
         const mongoose = await import('mongoose');
-        await mongoose
+        await (mongoose
           .model('Listing')
           .findByIdAndUpdate((listing as Listing)._id, {
             average_rating: Math.round(averageRating * 10) / 10,
             reviews_count: reviewsCount,
-          });
+          }) as any);
 
         updatedCount++;
       } catch (error) {
@@ -516,9 +525,87 @@ export class ListingService {
     listingId: string,
     startDate?: Date,
     endDate?: Date,
-  ): Promise<ListingStatistics> {
+    groupBy?: string,
+  ): Promise<ListingStatistics & { chartData: ChartDataPoint[] }> {
     const { Types } = await import('mongoose');
     const listingIdObj = new Types.ObjectId(listingId);
+
+    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
+    let actualStartDate = startDate;
+    let actualEndDate = endDate;
+    if (!startDate && !endDate) {
+      const defaultRange = getDefaultDateRange();
+      actualStartDate = defaultRange.startDate;
+      actualEndDate = defaultRange.endDate;
+    }
+
+    const finalGroupBy = determineGroupBy(
+      actualStartDate!,
+      actualEndDate!,
+      groupBy,
+    );
+    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+
+    // Lấy dữ liệu cho biểu đồ
+    const chartMatch: any = {
+      listingId: listingIdObj,
+      isDeleted: false,
+      status: { $in: ['confirmed', 'completed'] },
+    };
+    if (actualStartDate || actualEndDate) {
+      chartMatch.created_at = {};
+      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
+      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
+    }
+
+    const chartDataAgg = await this.bookingModel.aggregate([
+      { $match: chartMatch },
+      {
+        $group: {
+          _id: {
+            group: {
+              $dateToString: { format: groupFormat, date: '$created_at' },
+            },
+          },
+          revenue: { $sum: '$final_amount' },
+          bookings: { $sum: 1 },
+          nights: { $sum: '$nights' },
+        },
+      },
+      { $sort: { '_id.group': 1 } },
+    ]);
+
+    // Chuẩn hóa dữ liệu cho biểu đồ
+    const labelMap = new Map<
+      string,
+      { revenue: number; bookings: number; nights: number }
+    >();
+    chartDataAgg.forEach((item) => {
+      labelMap.set(item._id.group, {
+        revenue: item.revenue,
+        bookings: item.bookings,
+        nights: item.nights,
+      });
+    });
+
+    const labels = generateLabels(
+      actualStartDate!,
+      actualEndDate!,
+      finalGroupBy,
+    );
+    const chartData: ChartDataPoint[] = labels.map((label) => {
+      const data = labelMap.get(label) || {
+        revenue: 0,
+        bookings: 0,
+        nights: 0,
+      };
+      return {
+        label: labelFn(label),
+        revenue: data.revenue,
+        bookings: data.bookings,
+        occupancyRate: data.nights > 0 ? 100 : 0,
+      };
+    });
 
     // Lấy thông tin listing
     const listing = await this.findOne(listingId);
@@ -526,12 +613,12 @@ export class ListingService {
       throw new NotFoundException(`Listing with ID ${listingId} not found.`);
     }
 
-    // Tạo filter date nếu có
+    // Sử dụng cùng khoảng thời gian cho thống kê chính
     const dateFilter: any = {};
-    if (startDate || endDate) {
+    if (actualStartDate || actualEndDate) {
       dateFilter.created_at = {};
-      if (startDate) dateFilter.created_at.$gte = startDate;
-      if (endDate) dateFilter.created_at.$lte = endDate;
+      if (actualStartDate) dateFilter.created_at.$gte = actualStartDate;
+      if (actualEndDate) dateFilter.created_at.$lte = actualEndDate;
     }
 
     // 1. Thống kê booking
@@ -558,22 +645,23 @@ export class ListingService {
       },
     ]);
 
-    // 2. Tính tỉ lệ lấp đầy (occupancy rate) - theo khoảng thời gian được chọn
+    // 2. Tính tỉ lệ lấp đầy và doanh thu theo khoảng thời gian được chọn
     let occupancyRate = 0;
-    let monthlyRevenueAmount = 0;
+    let revenueAmount = 0;
 
-    if (startDate && endDate) {
-      // Tính occupancy rate theo khoảng thời gian được chọn
-      const totalDays = Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      );
+    if (actualStartDate && actualEndDate) {
+      const totalDays =
+        Math.ceil(
+          (actualEndDate.getTime() - actualStartDate.getTime()) /
+            (1000 * 60 * 60 * 24),
+        ) + 1;
 
       const periodBookings = await this.bookingModel.aggregate([
         {
           $match: {
             listingId: listingIdObj,
             isDeleted: false,
-            created_at: { $gte: startDate, $lte: endDate },
+            created_at: { $gte: actualStartDate, $lte: actualEndDate },
             status: { $in: ['confirmed', 'completed'] },
           },
         },
@@ -591,52 +679,7 @@ export class ListingService {
         occupancyRate = Math.round(
           (periodBooking.totalNights / totalDays) * 100,
         );
-        monthlyRevenueAmount = periodBooking.totalRevenue;
-      }
-    } else {
-      // Fallback: tính theo tháng hiện tại nếu không có khoảng thời gian
-      const currentMonth = new Date();
-      const firstDayOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        1,
-      );
-      const lastDayOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-      );
-
-      const monthlyBookings = await this.bookingModel.aggregate([
-        {
-          $match: {
-            listingId: listingIdObj,
-            isDeleted: false,
-            created_at: { $gte: firstDayOfMonth, $lte: lastDayOfMonth },
-            status: { $in: ['confirmed', 'completed'] },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            totalNights: { $sum: '$nights' },
-            totalRevenue: { $sum: '$final_amount' },
-          },
-        },
-      ]);
-
-      const daysInMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0,
-      ).getDate();
-
-      if (monthlyBookings.length > 0) {
-        const monthlyBooking = monthlyBookings[0];
-        occupancyRate = Math.round(
-          (monthlyBooking.totalNights / daysInMonth) * 100,
-        );
-        monthlyRevenueAmount = monthlyBooking.totalRevenue;
+        revenueAmount = periodBooking.totalRevenue;
       }
     }
 
@@ -741,7 +784,7 @@ export class ListingService {
       businessPerformance: {
         totalBookings: bookingData.totalBookings,
         occupancyRate,
-        monthlyRevenue: monthlyRevenueAmount,
+        monthlyRevenue: revenueAmount, // Đổi tên từ monthlyRevenueAmount thành revenueAmount
         cancellationRate:
           bookingData.totalBookings > 0
             ? Math.round(
@@ -765,6 +808,7 @@ export class ListingService {
         totalDiscountAmount,
         mostPopularVoucher,
       },
+      chartData,
     };
   }
 
