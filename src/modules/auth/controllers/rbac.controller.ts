@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Param,
   Body,
   UseGuards,
@@ -16,6 +17,8 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { CreatePermissionDto } from '../dto/create-permission.dto';
+import { UpdateRoleDto } from '../dto/update-role.dto';
+import { UpdatePermissionDto } from '../dto/update-permission.dto';
 import {
   AssignRoleToUserDto,
   AssignPermissionToRoleDto,
@@ -214,5 +217,52 @@ export class RbacController {
       userId,
       permissionKey,
     );
+  }
+
+  @Patch('roles/:roleKey')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Cập nhật vai trò tùy chỉnh' })
+  @ApiResponse({ status: 200, description: 'Vai trò được cập nhật thành công' })
+  @ApiBody({ type: UpdateRoleDto })
+  @ResponseMessage('Cập nhật vai trò thành công.')
+  async updateRole(
+    @Param('roleKey') roleKey: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ) {
+    return this.rbacManagementService.updateCustomRole(roleKey, updateRoleDto);
+  }
+
+  @Delete('roles/:roleKey')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Xóa vai trò tùy chỉnh' })
+  @ApiResponse({ status: 200, description: 'Vai trò được xóa thành công' })
+  @ResponseMessage('Xóa vai trò thành công.')
+  async deleteRole(@Param('roleKey') roleKey: string) {
+    return this.rbacManagementService.deleteCustomRole(roleKey);
+  }
+
+  @Patch('permissions/:permissionKey')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Cập nhật quyền' })
+  @ApiResponse({ status: 200, description: 'Quyền được cập nhật thành công' })
+  @ApiBody({ type: UpdatePermissionDto })
+  @ResponseMessage('Cập nhật quyền thành công.')
+  async updatePermission(
+    @Param('permissionKey') permissionKey: string,
+    @Body() updatePermissionDto: UpdatePermissionDto,
+  ) {
+    return this.rbacManagementService.updatePermission(
+      permissionKey,
+      updatePermissionDto,
+    );
+  }
+
+  @Delete('permissions/:permissionKey')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Xóa quyền' })
+  @ApiResponse({ status: 200, description: 'Quyền được xóa thành công' })
+  @ResponseMessage('Xóa quyền thành công.')
+  async deletePermission(@Param('permissionKey') permissionKey: string) {
+    return this.rbacManagementService.deletePermission(permissionKey);
   }
 }
