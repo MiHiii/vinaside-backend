@@ -7,7 +7,6 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { FilterQuery, Types, SortOrder, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';

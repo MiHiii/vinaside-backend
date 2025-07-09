@@ -395,9 +395,9 @@ export class ServicesService {
    * Tìm service theo room ID
    * @deprecated Services không còn liên kết trực tiếp với room. Sử dụng Listing.service_ids thay thế.
    */
-  async findByRoom(roomId: string): Promise<Service[]> {
+  findByRoom(roomId: string): never {
     throw new BadRequestException(
-      'Services không còn liên kết trực tiếp với room. Sử dụng Listing.service_ids để quản lý services cho từng listing.',
+      `Services không còn liên kết trực tiếp với room (${roomId}). Sử dụng Listing.service_ids để quản lý services cho từng listing.`,
     );
   }
 
