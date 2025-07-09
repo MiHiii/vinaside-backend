@@ -27,6 +27,14 @@ export class CreateHouseRuleDto {
   description?: string;
 
   @ApiPropertyOptional({
+    description: 'URL icon cho quy tắc nhà',
+    example: 'https://example.com/icons/no-smoking.svg',
+  })
+  @IsOptional()
+  @IsString({ message: 'Icon URL phải là chuỗi' })
+  icon_url?: string;
+
+  @ApiPropertyOptional({
     description: 'Quy tắc có được chọn mặc định khi tạo listing không',
     example: true,
     default: false,
@@ -34,4 +42,13 @@ export class CreateHouseRuleDto {
   @IsOptional()
   @IsBoolean({ message: 'Default checked phải là boolean' })
   default_checked?: boolean = false;
+
+  @ApiPropertyOptional({
+    description: 'Trạng thái hoạt động của tiện ích',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
+  is_active?: boolean = true;
 }

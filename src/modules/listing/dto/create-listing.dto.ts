@@ -70,6 +70,11 @@ export class CreateListingDto {
   @IsOptional()
   safety_features?: string[];
 
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  service_ids?: string[];
+
   @IsEnum(CancelPolicy)
   @IsOptional()
   cancel_policy?: CancelPolicy = CancelPolicy.FLEXIBLE;

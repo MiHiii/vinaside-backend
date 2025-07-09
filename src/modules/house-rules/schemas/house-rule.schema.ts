@@ -22,6 +22,12 @@ export class HouseRule extends Document {
   description?: string;
 
   @Prop({
+    type: String,
+    trim: true,
+  })
+  icon_url?: string;
+
+  @Prop({
     type: Boolean,
     default: false,
   })

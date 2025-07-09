@@ -186,15 +186,8 @@ export class ServicesService {
     createServiceDto: CreateServiceDto,
     user?: JwtPayload,
   ): Promise<Service> {
-    const {
-      name,
-      description,
-      default_price,
-      unit,
-      property_id,
-      room_id,
-      ...rest
-    } = createServiceDto;
+    const { name, description, default_price, unit, property_id, ...rest } =
+      createServiceDto;
 
     // Validation
     await this.validateServiceName(name);
@@ -209,7 +202,6 @@ export class ServicesService {
       default_price,
       unit,
       property_id: new Types.ObjectId(property_id),
-      ...(room_id && { room_id: new Types.ObjectId(room_id) }),
     };
 
     return this.servicesRepo.create(serviceData, user?._id);
@@ -278,7 +270,7 @@ export class ServicesService {
       this.validateDescription(updateServiceDto.description);
     }
 
-    const { property_id, room_id, ...updateData } = updateServiceDto;
+    const { property_id, ...updateData } = updateServiceDto;
 
     const serviceData = {
       ...updateData,
@@ -286,7 +278,6 @@ export class ServicesService {
         ? this.sanitizeServiceName(updateServiceDto.name)
         : undefined,
       ...(property_id && { property_id: new Types.ObjectId(property_id) }),
-      ...(room_id && { room_id: new Types.ObjectId(room_id) }),
     };
 
     const updated = await this.servicesRepo.updateById(
@@ -402,9 +393,12 @@ export class ServicesService {
 
   /**
    * Tìm service theo room ID
+   * @deprecated Services không còn liên kết trực tiếp với room. Sử dụng Listing.service_ids thay thế.
    */
-  async findByRoom(roomId: string): Promise<Service[]> {
-    return this.servicesRepo.findByRoom(roomId);
+  findByRoom(roomId: string): never {
+    throw new BadRequestException(
+      `Services không còn liên kết trực tiếp với room (${roomId}). Sử dụng Listing.service_ids để quản lý services cho từng listing.`,
+    );
   }
 
   /**

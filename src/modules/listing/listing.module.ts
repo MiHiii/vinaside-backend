@@ -13,6 +13,7 @@ import {
   Transaction,
   TransactionSchema,
 } from '../transactions/schemas/transaction.schema';
+import { Service, ServiceSchema } from '../services/schemas/service.schema';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import {
       { name: Review.name, schema: ReviewSchema },
       { name: Wishlist.name, schema: WishlistSchema },
       { name: Transaction.name, schema: TransactionSchema },
+      { name: Service.name, schema: ServiceSchema },
     ]),
     LocationModule,
     PropertyModule,
