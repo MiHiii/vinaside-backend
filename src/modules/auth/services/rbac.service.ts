@@ -330,4 +330,128 @@ export class RbacService {
 
     return userRoles.map((ur) => ur.userId.toString());
   }
+
+  // Update custom role
+  async updateCustomRole(
+    roleKey: string,
+    updateData: { name?: string; description?: string },
+  ): Promise<CustomRole> {
+    const role = await this.customRoleModel.findOne({
+      key: roleKey,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    if (!role) {
+      throw new Error(`Role with key "${roleKey}" not found`);
+    }
+
+    const updatedRole = await this.customRoleModel.findByIdAndUpdate(
+      role._id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedRole) {
+      throw new Error('Failed to update role');
+    }
+
+    return updatedRole;
+  }
+
+  // Delete custom role (soft delete)
+  async deleteCustomRole(roleKey: string): Promise<void> {
+    const role = await this.customRoleModel.findOne({
+      key: roleKey,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    if (!role) {
+      throw new Error(`Role with key "${roleKey}" not found`);
+    }
+
+    // Check if role is assigned to any users
+    const userRolesCount = await this.userCustomRoleModel.countDocuments({
+      customRoleId: role._id,
+      isDeleted: false,
+    });
+
+    if (userRolesCount > 0) {
+      throw new Error(
+        `Cannot delete role "${roleKey}" as it is assigned to ${userRolesCount} user(s)`,
+      );
+    }
+
+    // Soft delete the role
+    await this.customRoleModel.findByIdAndUpdate(role._id, {
+      isDeleted: true,
+      deletedAt: new Date(),
+    });
+
+    // Also soft delete all role-permission assignments
+    await this.customRolePermissionModel.updateMany(
+      { customRoleId: role._id, isDeleted: false },
+      {
+        isDeleted: true,
+        deletedAt: new Date(),
+      },
+    );
+  }
+
+  // Update permission
+  async updatePermission(
+    permissionKey: string,
+    updateData: { module?: string; action?: string; description?: string },
+  ): Promise<Permission> {
+    const permission = await this.permissionModel.findOne({
+      key: permissionKey,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    if (!permission) {
+      throw new Error(`Permission with key "${permissionKey}" not found`);
+    }
+
+    const updatedPermission = await this.permissionModel.findByIdAndUpdate(
+      permission._id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedPermission) {
+      throw new Error('Failed to update permission');
+    }
+
+    return updatedPermission;
+  }
+
+  // Delete permission (soft delete)
+  async deletePermission(permissionKey: string): Promise<void> {
+    const permission = await this.permissionModel.findOne({
+      key: permissionKey,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    if (!permission) {
+      throw new Error(`Permission with key "${permissionKey}" not found`);
+    }
+
+    // Check if permission is assigned to any roles
+    const rolePermissionsCount =
+      await this.customRolePermissionModel.countDocuments({
+        permissionId: permission._id,
+        isDeleted: false,
+      });
+
+    if (rolePermissionsCount > 0) {
+      throw new Error(
+        `Cannot delete permission "${permissionKey}" as it is assigned to ${rolePermissionsCount} role(s)`,
+      );
+    }
+
+    // Soft delete the permission
+    await this.permissionModel.findByIdAndUpdate(permission._id, {
+      isDeleted: true,
+      deletedAt: new Date(),
+    });
+  }
 }

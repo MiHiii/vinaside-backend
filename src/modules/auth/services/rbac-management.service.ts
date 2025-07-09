@@ -4,6 +4,8 @@ import { CustomRole } from '../schemas/custom-role.schema';
 import { Permission } from '../schemas/permission.schema';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { CreatePermissionDto } from '../dto/create-permission.dto';
+import { UpdateRoleDto } from '../dto/update-role.dto';
+import { UpdatePermissionDto } from '../dto/update-permission.dto';
 import {
   AssignRoleDto,
   BulkAssignRolesDto,
@@ -266,6 +268,87 @@ export class RbacManagementService {
     } catch {
       throw new HttpException(
         'Failed to check user permission',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async updateCustomRole(
+    roleKey: string,
+    updateRoleDto: UpdateRoleDto,
+  ): Promise<CustomRole> {
+    try {
+      return await this.rbacService.updateCustomRole(roleKey, updateRoleDto);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found')) {
+        throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
+      }
+      throw new HttpException(
+        'Failed to update role',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async deleteCustomRole(roleKey: string): Promise<{ success: boolean }> {
+    try {
+      await this.rbacService.deleteCustomRole(roleKey);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found')) {
+        throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
+      }
+      if (errorMessage.includes('Cannot delete role')) {
+        throw new HttpException(errorMessage, HttpStatus.CONFLICT);
+      }
+      throw new HttpException(
+        'Failed to delete role',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async updatePermission(
+    permissionKey: string,
+    updatePermissionDto: UpdatePermissionDto,
+  ): Promise<Permission> {
+    try {
+      return await this.rbacService.updatePermission(
+        permissionKey,
+        updatePermissionDto,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found')) {
+        throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
+      }
+      throw new HttpException(
+        'Failed to update permission',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async deletePermission(permissionKey: string): Promise<{ success: boolean }> {
+    try {
+      await this.rbacService.deletePermission(permissionKey);
+      return { success: true };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('not found')) {
+        throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
+      }
+      if (errorMessage.includes('Cannot delete permission')) {
+        throw new HttpException(errorMessage, HttpStatus.CONFLICT);
+      }
+      throw new HttpException(
+        'Failed to delete permission',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
