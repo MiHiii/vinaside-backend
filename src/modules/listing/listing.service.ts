@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilterQuery, Types, SortOrder, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
@@ -21,6 +22,8 @@ import { Booking } from '../booking/schemas/booking.schema';
 import { Review } from '../reviews/schemas/review.schema';
 import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { Transaction } from '../transactions/schemas/transaction.schema';
+import { Service } from '../services/schemas/service.schema';
+
 import {
   ListingStatistics,
   ChartDataPoint,
@@ -64,6 +67,7 @@ export class ListingService {
     @InjectModel(Wishlist.name) private readonly wishlistModel: Model<Wishlist>,
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<Transaction>,
+    @InjectModel(Service.name) private readonly serviceModel: Model<Service>,
   ) {}
 
   async create(
@@ -599,11 +603,13 @@ export class ListingService {
         bookings: 0,
         nights: 0,
       };
+      let chartOccupancyRate = data.nights > 0 ? 100 : 0;
+      if (chartOccupancyRate > 100) chartOccupancyRate = 100;
       return {
         label: labelFn(label),
         revenue: data.revenue,
         bookings: data.bookings,
-        occupancyRate: data.nights > 0 ? 100 : 0,
+        occupancyRate: chartOccupancyRate,
       };
     });
 
@@ -679,6 +685,7 @@ export class ListingService {
         occupancyRate = Math.round(
           (periodBooking.totalNights / totalDays) * 100,
         );
+        if (occupancyRate > 100) occupancyRate = 100;
         revenueAmount = periodBooking.totalRevenue;
       }
     }

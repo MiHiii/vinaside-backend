@@ -18,6 +18,10 @@ export class CreateServiceDto {
   @IsString({ message: 'Mô tả phải là chuỗi văn bản' })
   description?: string;
 
+  @IsOptional()
+  @IsString({ message: 'Icon URL phải là chuỗi văn bản' })
+  icon_url?: string;
+
   @IsString({ message: 'Đơn vị phải là chuỗi văn bản' })
   @IsNotEmpty({ message: 'Đơn vị không được để trống' })
   unit: string;
@@ -33,8 +37,4 @@ export class CreateServiceDto {
 
   @IsMongoId({ message: 'Property ID phải có định dạng hợp lệ' })
   property_id: string;
-
-  @IsOptional()
-  @IsMongoId({ message: 'Room ID phải có định dạng hợp lệ' })
-  room_id?: string;
 }

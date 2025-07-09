@@ -251,13 +251,4 @@ export class ServicesController {
   findByProperty(@Param('propertyId') propertyId: string) {
     return this.servicesService.findByProperty(propertyId);
   }
-
-  @Get('room/:roomId')
-  @Public()
-  @ApiOperation({ summary: 'Lấy dịch vụ theo room ID' })
-  @ApiResponse({ status: 200, description: 'Danh sách dịch vụ theo room' })
-  @ResponseMessage('Lấy dịch vụ theo room thành công')
-  findByRoom(@Param('roomId') roomId: string) {
-    return this.servicesService.findByRoom(roomId);
-  }
 }

@@ -4,6 +4,7 @@ export interface IHouseRule {
   _id?: Types.ObjectId | string;
   name: string;
   description?: string;
+  icon_url?: string;
   default_checked: boolean;
   is_active: boolean;
   isDeleted: boolean;

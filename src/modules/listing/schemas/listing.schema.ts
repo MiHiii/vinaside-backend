@@ -72,6 +72,9 @@ export class Listing extends Document {
   })
   safety_features: Types.ObjectId[];
 
+  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Service' }] })
+  service_ids: Types.ObjectId[];
+
   @Prop({ type: [String], default: [] })
   other_rules: string[];
 
@@ -129,3 +132,4 @@ ListingSchema.index({ status: 1 });
 ListingSchema.index({ price_per_night: 1 });
 ListingSchema.index({ isDeleted: 1 });
 ListingSchema.index({ viewCount: -1 }); // Index cho view count để tối ưu truy vấn top viewed
+ListingSchema.index({ service_ids: 1 }); // Index cho service_ids để tối ưu truy vấn services
