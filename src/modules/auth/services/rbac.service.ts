@@ -12,6 +12,14 @@ import {
   UserCustomRoleDocument,
 } from '../schemas/user-custom-role.schema';
 
+// Danh sách permissions bị cấm - không cho phép gán cho custom roles
+const FORBIDDEN_PERMISSIONS = [
+  'system.manage', // Quản lý hệ thống - chỉ dành cho super admin
+  'upload.manage', // Quản lý upload file - quyền hệ thống
+  'user.manage_roles', // Quản lý vai trò người dùng - quyền cao cấp
+  'user.view_private_info', // Xem thông tin cá nhân nhạy cảm
+] as string[];
+
 // Helper interfaces for populated documents
 interface PopulatedPermission {
   key: string;
@@ -169,6 +177,11 @@ export class RbacService {
     roleKey: string,
     permissionKey: string,
   ): Promise<void> {
+    // Kiểm tra permission có bị cấm không
+    if (FORBIDDEN_PERMISSIONS.includes(permissionKey)) {
+      throw new Error(`Permission "${permissionKey}" is forbidden and cannot be assigned to custom roles`);
+    }
+
     const role = await this.customRoleModel.findOne({
       key: roleKey,
       $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
@@ -201,30 +214,62 @@ export class RbacService {
     roleKey: string,
     permissionKey: string,
   ): Promise<void> {
+    console.log(`Attempting to remove permission ${permissionKey} from role ${roleKey}`);
+    
     const role = await this.customRoleModel.findOne({
       key: roleKey,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
+    
+    if (!role) {
+      console.log(`Role with key "${roleKey}" not found`);
+      throw new Error(`Role with key "${roleKey}" not found`);
+    }
+    
     const permission = await this.permissionModel.findOne({
       key: permissionKey,
-      isDeleted: false,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
-
-    if (!role || !permission) {
-      throw new Error('Role or Permission not found');
+    
+    if (!permission) {
+      console.log(`Permission with key "${permissionKey}" not found`);
+      throw new Error(`Permission with key "${permissionKey}" not found`);
     }
 
-    await this.customRolePermissionModel.updateOne(
+    console.log(`Found role: ${role.key}, permission: ${permission.key}`);
+
+    // Kiểm tra xem assignment có tồn tại không
+    const existingAssignment = await this.customRolePermissionModel.findOne({
+      customRoleId: role._id,
+      permissionId: permission._id,
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    if (!existingAssignment) {
+      console.log(`No assignment found for role ${roleKey} and permission ${permissionKey}`);
+      // Trả về success thay vì throw error vì mục đích cuối cùng đã đạt được (permission không được gán)
+      return;
+    }
+
+    const result = await this.customRolePermissionModel.updateOne(
       {
         customRoleId: role._id,
         permissionId: permission._id,
-        isDeleted: false,
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
       },
       {
         isDeleted: true,
         deletedAt: new Date(),
       },
     );
+
+    console.log(`Update result: ${result.modifiedCount} documents modified`);
+    
+    if (result.modifiedCount === 0) {
+      console.log(`No assignment found for role ${roleKey} and permission ${permissionKey}`);
+      // Trả về success thay vì throw error
+      return;
+    }
   }
 
   // Get all custom roles (not deleted)
@@ -234,8 +279,20 @@ export class RbacService {
     });
   }
 
-  // Get all permissions (not deleted)
+  // Get all permissions (not deleted) - filtered for regular users
   async getAllPermissions(): Promise<Permission[]> {
+    const allPermissions = await this.permissionModel.find({
+      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
+    });
+
+    // Lọc bỏ permissions bị cấm
+    return allPermissions.filter(permission => 
+      !FORBIDDEN_PERMISSIONS.includes(permission.key)
+    );
+  }
+
+  // Get all permissions including forbidden ones - for admin only
+  async getAllPermissionsForAdmin(): Promise<Permission[]> {
     return this.permissionModel.find({
       $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
