@@ -79,7 +79,7 @@ export class MessagesController {
   ): Promise<unknown[]> {
     try {
       const result = await this.messagesService.findAll(query, req.user);
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in findAll controller:', error);
       return [];

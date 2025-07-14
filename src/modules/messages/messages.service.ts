@@ -21,11 +21,8 @@ import {
   createRealtimeMessage,
 } from './utils/message.util';
 import {
-  FormattedMessageWithReactions,
   ReplyToMessage,
-  PopulatedReaction,
   UserProfileResponse,
-  ToggleReactionResponse,
 } from './interfaces/message.interface';
 
 // ============= TYPE DEFINITIONS =============
@@ -93,7 +90,7 @@ export class MessagesService {
     }
 
     // Convert string IDs to ObjectId before saving
-    const messageData: any = {
+    const messageData: Record<string, unknown> = {
       ...createMessageDto,
       sender_id: new Types.ObjectId(user._id),
       receiver_id: new Types.ObjectId(createMessageDto.receiver_id),
@@ -103,7 +100,7 @@ export class MessagesService {
 
     // Add reply_to_message_id if provided
     if (createMessageDto.reply_to_message_id) {
-      messageData.reply_to_message_id = new Types.ObjectId(
+      messageData['reply_to_message_id'] = new Types.ObjectId(
         createMessageDto.reply_to_message_id,
       );
     }
@@ -942,24 +939,40 @@ export class MessagesService {
    * Utility để format reaction response với emoji
    */
   private formatReactionResponse(message: Message): unknown {
-    const emojiMap = {
-      [ReactionType.LIKE]: '👍',
-      [ReactionType.LOVE]: '❤️',
-      [ReactionType.LAUGH]: '😂',
-      [ReactionType.WOW]: '😮',
-      [ReactionType.SAD]: '😢',
-      [ReactionType.ANGRY]: '😡',
-    };
-
     const formattedReactions = message.reactions.map((reaction) => {
-      const populatedUser = reaction.user_id as any;
+      const populatedUser = reaction.user_id as unknown;
+      const userObj = populatedUser as {
+        _id?: unknown;
+        username?: string;
+        name?: string;
+      };
+
       return {
         userId:
-          populatedUser?._id?.toString() ||
-          reaction.user_id?.toString() ||
-          'unknown',
+          typeof userObj === 'object' &&
+          userObj &&
+          '_id' in userObj &&
+          typeof userObj._id === 'object' &&
+          userObj._id &&
+          'toString' in userObj._id
+            ? (userObj._id as { toString(): string }).toString()
+            : typeof reaction.user_id === 'object' &&
+                reaction.user_id &&
+                'toString' in reaction.user_id
+              ? (reaction.user_id as { toString(): string }).toString()
+              : 'unknown',
         username:
-          populatedUser?.username || populatedUser?.name || 'Unknown User',
+          typeof userObj === 'object' &&
+          userObj &&
+          'username' in userObj &&
+          typeof userObj.username === 'string'
+            ? userObj.username
+            : typeof userObj === 'object' &&
+                userObj &&
+                'name' in userObj &&
+                typeof userObj.name === 'string'
+              ? userObj.name
+              : 'Unknown User',
         type: reaction.type,
         created_at:
           reaction.created_at?.toISOString() || new Date().toISOString(),
@@ -969,26 +982,70 @@ export class MessagesService {
     // Format reply message if exists
     let formattedReply: ReplyToMessage | null = null;
     if (message.reply_to_message_id) {
-      const replyMessage = message.reply_to_message_id as any;
-      formattedReply = {
-        message_id: replyMessage._id?.toString() || '',
-        content: replyMessage.content || '',
-        sender_id:
-          replyMessage.sender_id?._id?.toString() ||
-          replyMessage.sender_id?.toString() ||
-          '',
-        sender_name:
-          replyMessage.sender_id?.name ||
-          replyMessage.sender_id?.username ||
-          'Unknown',
-        sent_at: replyMessage.sent_at || new Date(),
+      const replyMessage = message.reply_to_message_id as unknown;
+      const replyObj = replyMessage as {
+        _id?: unknown;
+        content?: string;
+        sender_id?: unknown;
+        sent_at?: Date;
       };
+
+      if (typeof replyObj === 'object' && replyObj) {
+        const senderId = replyObj.sender_id;
+        const senderObj = senderId as {
+          _id?: unknown;
+          name?: string;
+          username?: string;
+          toString?(): string;
+        };
+
+        formattedReply = {
+          message_id:
+            typeof replyObj._id === 'object' &&
+            replyObj._id &&
+            'toString' in replyObj._id
+              ? (replyObj._id as { toString(): string }).toString()
+              : '',
+          content: replyObj.content || '',
+          sender_id:
+            typeof senderObj === 'object' &&
+            senderObj &&
+            '_id' in senderObj &&
+            typeof senderObj._id === 'object' &&
+            senderObj._id &&
+            'toString' in senderObj._id
+              ? (senderObj._id as { toString(): string }).toString()
+              : typeof senderObj === 'object' &&
+                  senderObj &&
+                  'toString' in senderObj &&
+                  typeof senderObj.toString === 'function'
+                ? senderObj.toString()
+                : '',
+          sender_name:
+            typeof senderObj === 'object' &&
+            senderObj &&
+            'name' in senderObj &&
+            typeof senderObj.name === 'string'
+              ? senderObj.name
+              : typeof senderObj === 'object' &&
+                  senderObj &&
+                  'username' in senderObj &&
+                  typeof senderObj.username === 'string'
+                ? senderObj.username
+                : 'Unknown',
+          sent_at: replyObj.sent_at || new Date(),
+        };
+      }
     }
 
-    const messageObject = message.toObject();
+    const messageObject = message.toObject() as Record<string, unknown>;
+    const messageId = messageObject._id;
     return {
       ...messageObject,
-      _id: messageObject._id.toString(),
+      _id:
+        typeof messageId === 'object' && messageId && 'toString' in messageId
+          ? (messageId as { toString(): string }).toString()
+          : '',
       reactions: formattedReactions,
       reply_to: formattedReply,
       reply_to_message_id: undefined,
@@ -1109,9 +1166,7 @@ export class MessagesService {
     }
 
     // Format response với emoji mapping
-    const formattedMessage = this.formatReactionResponse(
-      updatedMessage,
-    ) as unknown;
+    const formattedMessage = this.formatReactionResponse(updatedMessage);
 
     return {
       action,
