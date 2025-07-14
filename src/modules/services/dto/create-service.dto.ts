@@ -54,4 +54,13 @@ export class CreateServiceDto {
   @IsBoolean()
   @IsOptional()
   is_active?: boolean = true;
+
+  @ApiProperty({
+    example: 'https://example.com/icon.png',
+    description: 'Đường dẫn icon của dịch vụ',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  icon_url?: string;
 }
