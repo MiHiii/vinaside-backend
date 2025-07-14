@@ -48,29 +48,22 @@ export class ServicesService {
       maxPrice !== undefined &&
       minPrice > maxPrice
     ) {
-      throw new BadRequestException(
-        'Giá tối thiểu không được lớn hơn giá tối đa',
-      );
+      throw new BadRequestException('Giá tối thiểu phải nhỏ hơn giá tối đa');
     }
   }
 
   /**
-   * Validate tên dịch vụ và kiểm tra trùng lặp
+   * Validate tên service không trùng
    */
   private async validateServiceName(
     name: string,
     excludeId?: string,
   ): Promise<void> {
-    if (!name || name.trim().length === 0) {
-      throw new BadRequestException('Tên dịch vụ không được để trống');
-    }
-
-    const nameExists = await this.servicesRepo.checkNameExists(
-      name.trim(),
-      excludeId,
-    );
-    if (nameExists) {
-      throw new ConflictException(`Dịch vụ ${name} đã tồn tại`);
+    const exists = await this.servicesRepo.checkNameExists(name, excludeId);
+    if (exists) {
+      throw new ConflictException(
+        `Dịch vụ với tên "${name}" đã tồn tại trong hệ thống`,
+      );
     }
   }
 
@@ -79,61 +72,68 @@ export class ServicesService {
    */
   private validateIds(ids: string[]): void {
     if (!ids || ids.length === 0) {
-      throw new BadRequestException('Danh sách ID không được để trống');
+      throw new BadRequestException('Danh sách IDs không được rỗng');
     }
 
-    // Validate MongoDB ObjectId format
-    const objectIdPattern = /^[0-9a-fA-F]{24}$/;
-    const invalidIds = ids.filter((id) => !objectIdPattern.test(id));
-
+    const invalidIds = ids.filter((id) => !Types.ObjectId.isValid(id));
     if (invalidIds.length > 0) {
       throw new BadRequestException(
-        `ID không hợp lệ: ${invalidIds.join(', ')}`,
+        `Các ID không hợp lệ: ${invalidIds.join(', ')}`,
       );
     }
   }
 
   /**
-   * Validate limit và page parameters
+   * Validate pagination parameters
    */
   private validatePagination(page?: number, limit?: number): void {
-    if (page !== undefined && (page < 1 || !Number.isInteger(page))) {
-      throw new BadRequestException('Trang phải là số nguyên dương');
+    if (page !== undefined && page < 1) {
+      throw new BadRequestException('Trang phải từ 1 trở lên');
     }
 
-    if (
-      limit !== undefined &&
-      (limit < 1 || limit > 100 || !Number.isInteger(limit))
-    ) {
-      throw new BadRequestException('Limit phải là số nguyên từ 1 đến 100');
+    if (limit !== undefined && (limit < 1 || limit > 100)) {
+      throw new BadRequestException('Limit phải từ 1 đến 100');
     }
   }
 
   /**
-   * Validate service unit
+   * Validate unit
    */
   private validateUnit(unit: string): void {
     if (!unit || unit.trim().length === 0) {
       throw new BadRequestException('Đơn vị không được để trống');
     }
 
+    // List of valid units
     const validUnits = [
       '/ngày',
-      '/người',
-      '/lần',
       '/giờ',
+      '/phút',
+      '/tuần',
       '/tháng',
       '/năm',
-      '/km',
+      '/lần',
+      '/người',
+      '/phòng',
       '/kg',
+      '/lít',
+      '/m2',
+      '/m3',
+      '/bộ',
+      '/cái',
+      '/gói',
+      '/hộp',
+      '/chai',
+      '/ly',
+      '/suất',
+      '/tour',
+      '/chuyến',
+      '/đêm',
     ];
-    const isValidUnit = validUnits.some((validUnit) =>
-      unit.toLowerCase().includes(validUnit.toLowerCase()),
-    );
 
-    if (!isValidUnit) {
+    if (!validUnits.includes(unit)) {
       throw new BadRequestException(
-        `Đơn vị không hợp lệ. Các đơn vị được chấp nhận: ${validUnits.join(', ')}`,
+        `Đơn vị "${unit}" không hợp lệ. Các đơn vị hợp lệ: ${validUnits.join(', ')}`,
       );
     }
   }
@@ -143,33 +143,35 @@ export class ServicesService {
    */
   private validateSimilarPriceSearch(targetPrice: number, limit: number): void {
     if (targetPrice < 0) {
-      throw new BadRequestException('Giá phải là số dương');
+      throw new BadRequestException('Giá tham chiếu phải từ 0 trở lên');
     }
 
-    if (limit < 1 || limit > 20) {
-      throw new BadRequestException('Limit phải từ 1 đến 20');
+    if (limit < 1 || limit > 50) {
+      throw new BadRequestException('Limit phải từ 1 đến 50');
     }
   }
 
   /**
-   * Validate order parameter
+   * Validate sort order
    */
   private validateOrder(order: string): 'asc' | 'desc' {
-    if (order !== 'asc' && order !== 'desc') {
-      throw new BadRequestException('Thứ tự phải là asc hoặc desc');
+    if (!['asc', 'desc'].includes(order)) {
+      throw new BadRequestException(
+        'Thứ tự sắp xếp chỉ có thể là "asc" hoặc "desc"',
+      );
     }
-    return order;
+    return order as 'asc' | 'desc';
   }
 
   /**
-   * Sanitize và validate tên dịch vụ
+   * Sanitize service name
    */
   private sanitizeServiceName(name: string): string {
     return name.trim().replace(/\s+/g, ' ');
   }
 
   /**
-   * Validate description length
+   * Validate description
    */
   private validateDescription(description?: string): void {
     if (description && description.length > 500) {
@@ -177,85 +179,90 @@ export class ServicesService {
     }
   }
 
-  // =================== SERVICE METHODS ===================
+  // =================== MAIN CRUD METHODS ===================
 
   /**
-   * Tạo dịch vụ mới
+   * Tạo service mới
    */
   async create(
     createServiceDto: CreateServiceDto,
     user?: JwtPayload,
   ): Promise<Service> {
-    const { name, description, default_price, unit, property_id, ...rest } =
-      createServiceDto;
-
     // Validation
-    await this.validateServiceName(name);
-    this.validatePrice(default_price);
-    this.validateUnit(unit);
-    this.validateDescription(description);
+    this.validatePrice(createServiceDto.default_price);
+    this.validateUnit(createServiceDto.unit || '/ngày');
+    this.validateDescription(createServiceDto.description);
 
+    // Sanitize name
+    const sanitizedName = this.sanitizeServiceName(createServiceDto.name);
+    await this.validateServiceName(sanitizedName);
+
+    // Create service
     const serviceData = {
-      ...rest,
-      name: this.sanitizeServiceName(name),
-      description,
-      default_price,
-      unit,
-      property_id: new Types.ObjectId(property_id),
+      ...createServiceDto,
+      name: sanitizedName,
+      unit: createServiceDto.unit || '/ngày',
+      is_active: createServiceDto.is_active ?? true,
+      ...(user && { createdBy: new Types.ObjectId(user._id) }),
     };
 
-    return this.servicesRepo.create(serviceData, user?._id);
+    return this.servicesRepo.create(serviceData);
   }
 
   /**
-   * Lấy danh sách dịch vụ với phân trang và bộ lọc
+   * Lấy danh sách services với pagination và filter
    */
   async findAll(queryDto: QueryServiceDto): Promise<PaginatedServices> {
     // Validation
     this.validatePagination(queryDto.page, queryDto.limit);
+    this.validatePriceRange(queryDto.minPrice, queryDto.maxPrice);
 
     return this.servicesRepo.findAllWithFilters(queryDto);
   }
 
   /**
-   * Lấy dịch vụ theo ID
+   * Lấy service theo ID
    */
   async findOne(id: string): Promise<Service> {
-    const service = await this.servicesRepo.findById(id);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
+    }
 
-    if (!service || service.isDeleted) {
-      throw new NotFoundException(`Không tìm thấy dịch vụ với ID ${id}`);
+    const service = await this.servicesRepo.findById(id);
+    if (!service) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID: ${id}`);
     }
 
     return service;
   }
 
   /**
-   * Lấy dịch vụ theo tên
+   * Tìm service theo tên
    */
   async findByName(name: string): Promise<Service> {
-    const service = await this.servicesRepo.findByName(name);
+    if (!name || name.trim().length === 0) {
+      throw new BadRequestException('Tên dịch vụ không được để trống');
+    }
 
+    const service = await this.servicesRepo.findByName(name.trim());
     if (!service) {
-      throw new NotFoundException(`Không tìm thấy dịch vụ với tên ${name}`);
+      throw new NotFoundException(`Không tìm thấy dịch vụ với tên: ${name}`);
     }
 
     return service;
   }
 
   /**
-   * Cập nhật dịch vụ
+   * Cập nhật service
    */
   async update(
     id: string,
     updateServiceDto: UpdateServiceDto,
     user?: JwtPayload,
   ): Promise<Service> {
-    await this.findOne(id);
-
     // Validation
-    if (updateServiceDto.name) {
-      await this.validateServiceName(updateServiceDto.name, id);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
     }
 
     if (updateServiceDto.default_price !== undefined) {
@@ -266,89 +273,105 @@ export class ServicesService {
       this.validateUnit(updateServiceDto.unit);
     }
 
-    if (updateServiceDto.description !== undefined) {
-      this.validateDescription(updateServiceDto.description);
+    this.validateDescription(updateServiceDto.description);
+
+    // Check if service exists
+    const existingService = await this.servicesRepo.findById(id);
+    if (!existingService) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID: ${id}`);
     }
 
-    const { property_id, ...updateData } = updateServiceDto;
+    // Validate name if provided
+    if (updateServiceDto.name) {
+      const sanitizedName = this.sanitizeServiceName(updateServiceDto.name);
+      await this.validateServiceName(sanitizedName, id);
+      updateServiceDto.name = sanitizedName;
+    }
 
-    const serviceData = {
-      ...updateData,
-      name: updateServiceDto.name
-        ? this.sanitizeServiceName(updateServiceDto.name)
-        : undefined,
-      ...(property_id && { property_id: new Types.ObjectId(property_id) }),
+    // Update service
+    const updateData = {
+      ...updateServiceDto,
+      ...(user && { updatedBy: new Types.ObjectId(user._id) }),
     };
 
-    const updated = await this.servicesRepo.updateById(
+    const updatedService = await this.servicesRepo.updateById(
       id,
-      serviceData,
+      updateData,
       user?._id,
     );
-    if (!updated) {
-      throw new NotFoundException(`Không thể cập nhật dịch vụ với ID ${id}`);
+    if (!updatedService) {
+      throw new NotFoundException(`Không thể cập nhật dịch vụ với ID: ${id}`);
     }
-    return updated;
+
+    return updatedService;
   }
 
   /**
-   * Xóa mềm dịch vụ
+   * Xóa service (soft delete)
    */
   async remove(id: string, user?: JwtPayload): Promise<{ success: boolean }> {
-    await this.findOne(id);
-    if (user?._id) {
-      await this.servicesRepo.softDelete(id, user._id);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
     }
+
+    // Use user._id if available, otherwise use a default value
+    const userId = user?._id || 'system';
+    await this.servicesRepo.softDelete(id, userId);
     return { success: true };
   }
 
   /**
-   * Khôi phục dịch vụ đã xóa
+   * Khôi phục service đã xóa
    */
   async restore(id: string): Promise<Service> {
-    const restored = await this.servicesRepo.restore(id);
-    if (!restored) {
-      throw new NotFoundException(`Không thể khôi phục dịch vụ với ID ${id}`);
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
     }
-    return restored;
+
+    const restoredService = await this.servicesRepo.restore(id);
+    if (!restoredService) {
+      throw new NotFoundException(`Không thể khôi phục dịch vụ với ID: ${id}`);
+    }
+
+    return restoredService;
   }
 
   /**
-   * Lấy danh sách dịch vụ đang hoạt động
+   * Lấy tất cả services đang hoạt động
    */
   async getActiveServices(): Promise<Service[]> {
     return this.servicesRepo.getActiveServices();
   }
 
   /**
-   * Lấy dịch vụ theo khoảng giá với validation
+   * Lấy services theo khoảng giá
    */
   async getServicesByPriceRange(
     minPrice?: number,
     maxPrice?: number,
   ): Promise<Service[]> {
-    // Validation
     this.validatePriceRange(minPrice, maxPrice);
-
     return this.servicesRepo.findByPriceRange(minPrice, maxPrice);
   }
 
   /**
-   * Thay đổi trạng thái hoạt động của dịch vụ
+   * Toggle trạng thái service
    */
   async toggleStatus(id: string, user?: JwtPayload): Promise<Service> {
-    await this.findOne(id);
-    const toggled = await this.servicesRepo.toggleServiceStatus(id, user?._id);
-    if (!toggled) {
-      throw new NotFoundException(
-        `Không thể thay đổi trạng thái dịch vụ với ID ${id}`,
-      );
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
     }
-    return toggled;
+
+    const service = await this.servicesRepo.toggleServiceStatus(id, user?._id);
+    if (!service) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID: ${id}`);
+    }
+
+    return service;
   }
 
   /**
-   * Lấy thống kê service theo đơn vị
+   * Lấy thống kê services theo unit
    */
   async getStatsByUnit(): Promise<
     {
@@ -364,7 +387,7 @@ export class ServicesService {
   }
 
   /**
-   * Lấy thống kê số lượng theo trạng thái
+   * Lấy thống kê services theo trạng thái
    */
   async getStatusStats(): Promise<{
     active: number;
@@ -375,46 +398,29 @@ export class ServicesService {
   }
 
   /**
-   * Tìm service theo đơn vị
+   * Tìm services theo unit
    */
   async findByUnit(unit: string): Promise<Service[]> {
-    // Validation
-    this.validateUnit(unit);
+    if (!unit || unit.trim().length === 0) {
+      throw new BadRequestException('Đơn vị không được để trống');
+    }
 
-    return this.servicesRepo.findByUnit(unit);
+    return this.servicesRepo.findByUnit(unit.trim());
   }
 
   /**
-   * Tìm service theo property ID
-   */
-  async findByProperty(propertyId: string): Promise<Service[]> {
-    return this.servicesRepo.findByProperty(propertyId);
-  }
-
-  /**
-   * Tìm service theo room ID
-   * @deprecated Services không còn liên kết trực tiếp với room. Sử dụng Listing.service_ids thay thế.
-   */
-  findByRoom(roomId: string): never {
-    throw new BadRequestException(
-      `Services không còn liên kết trực tiếp với room (${roomId}). Sử dụng Listing.service_ids để quản lý services cho từng listing.`,
-    );
-  }
-
-  /**
-   * Lấy service theo thứ tự giá
+   * Lấy services theo thứ tự giá
    */
   async getServicesByPriceOrder(
     order: 'asc' | 'desc' = 'asc',
   ): Promise<Service[]> {
     // Validation
-    this.validateOrder(order);
-
-    return this.servicesRepo.getServicesByPriceOrder(order);
+    const validOrder = this.validateOrder(order);
+    return this.servicesRepo.getServicesByPriceOrder(validOrder);
   }
 
   /**
-   * Tìm service có giá tương tự
+   * Tìm services có giá gần giá target
    */
   async findSimilarPriceServices(
     targetPrice: number,
@@ -422,12 +428,11 @@ export class ServicesService {
   ): Promise<Service[]> {
     // Validation
     this.validateSimilarPriceSearch(targetPrice, limit);
-
     return this.servicesRepo.findSimilarPriceServices(targetPrice, limit);
   }
 
   /**
-   * Cập nhật trạng thái hàng loạt
+   * Bulk update trạng thái services
    */
   async bulkUpdateStatus(
     ids: string[],
@@ -440,9 +445,7 @@ export class ServicesService {
     upsertedCount: number;
     matchedCount: number;
   }> {
-    // Validation
     this.validateIds(ids);
-
     return this.servicesRepo.bulkUpdateStatus(ids, isActive, user?._id);
   }
 }

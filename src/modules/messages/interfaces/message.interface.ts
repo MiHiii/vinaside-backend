@@ -8,7 +8,22 @@ export interface PopulatedUser {
   _id: Types.ObjectId;
   username: string;
   email: string;
-  avatar?: string;
+  name?: string;
+  avatar_url?: string;
+  role?: string;
+}
+
+/**
+ * Interface cho User response trong APIs
+ */
+export interface UserResponse {
+  _id: string;
+  username?: string;
+  email: string;
+  name?: string;
+  avatar_url?: string;
+  role?: string;
+  lastMessageAt?: Date;
 }
 
 /**
@@ -20,11 +35,15 @@ export interface PopulatedMessage {
     _id: string;
     username: string;
     email: string;
+    name?: string;
+    avatar_url?: string;
   };
   receiver_id: {
     _id: string;
     username: string;
     email: string;
+    name?: string;
+    avatar_url?: string;
   };
   content: string;
   sent_at: Date;
@@ -126,6 +145,8 @@ export interface PopulatedReaction {
     _id: string;
     username: string;
     email: string;
+    name?: string;
+    avatar_url?: string;
   };
   type: ReactionType;
   created_at: Date;
@@ -136,4 +157,23 @@ export interface FormattedReaction {
   username?: string;
   type: ReactionType;
   created_at: string;
+}
+
+export interface ReplyToMessage {
+  message_id: string;
+  content: string;
+  sender_id: string;
+  sender_name: string;
+  sent_at: Date;
+}
+
+export interface MessageWithReply {
+  _id: string;
+  sender_id: any;
+  receiver_id: any;
+  content: string;
+  sent_at: Date;
+  is_read: string;
+  reactions: any[];
+  reply_to?: ReplyToMessage | null;
 }

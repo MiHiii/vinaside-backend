@@ -4,7 +4,7 @@ import { Model, FilterQuery, Types } from 'mongoose';
 import { Service } from './schemas/service.schema';
 import { BaseRepo } from '../../database/repo/base.repo';
 import { QueryServiceDto } from './dto/query-service.dto';
-import { PaginatedServices } from './service.interface';
+import { PaginatedServices, ServiceInterface } from './service.interface';
 
 @Injectable()
 export class ServicesRepo extends BaseRepo<Service> {
@@ -72,46 +72,58 @@ export class ServicesRepo extends BaseRepo<Service> {
       priceFilter.$lte = maxPrice;
     }
 
-    const query: FilterQuery<Service> = {
-      isDeleted: false,
-      is_active: true,
-    };
-
-    if (Object.keys(priceFilter).length > 0) {
-      query.default_price = priceFilter;
-    }
-
-    return this.serviceModel.find(query).sort({ default_price: 1 }).exec();
+    return this.serviceModel
+      .find({
+        isDeleted: false,
+        is_active: true,
+        ...(Object.keys(priceFilter).length > 0 && {
+          default_price: priceFilter,
+        }),
+      })
+      .sort({ default_price: 1 })
+      .exec();
   }
 
   /**
-   * Lấy service với phân trang và filter phức tạp
+   * Tìm service với filters và pagination
    */
   async findAllWithFilters(
     queryDto: QueryServiceDto,
   ): Promise<PaginatedServices> {
-    const { page = 1, limit = 10, include_deleted, ...filters } = queryDto;
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      includeDeleted = false,
+      ...filters
+    } = queryDto;
+
     const skip = (page - 1) * limit;
+    const filterQuery = this.buildFilterQuery(filters, includeDeleted);
 
-    // Build filter query
-    const filterQuery = this.buildFilterQuery(filters, include_deleted);
+    const sortObj: Record<string, 1 | -1> = {};
+    sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-    const [data, total] = await Promise.all([
+    const [services, totalCount] = await Promise.all([
       this.serviceModel
         .find(filterQuery)
-        .sort({ created_at: -1 })
+        .sort(sortObj)
         .skip(skip)
         .limit(limit)
         .exec(),
-      this.serviceModel.countDocuments(filterQuery).exec(),
+      this.serviceModel.countDocuments(filterQuery),
     ]);
 
+    const totalPages = Math.ceil(totalCount / limit);
+
     return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      services: services as ServiceInterface[],
+      totalCount,
+      currentPage: page,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
     };
   }
 
@@ -140,33 +152,23 @@ export class ServicesRepo extends BaseRepo<Service> {
       filterQuery.is_active = filters.is_active;
     }
 
-    if (filters.min_price !== undefined || filters.max_price !== undefined) {
+    if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
       const priceFilter: Record<string, number> = {};
-      if (filters.min_price !== undefined) {
-        priceFilter.$gte = filters.min_price;
+      if (filters.minPrice !== undefined) {
+        priceFilter.$gte = filters.minPrice;
       }
-      if (filters.max_price !== undefined) {
-        priceFilter.$lte = filters.max_price;
+      if (filters.maxPrice !== undefined) {
+        priceFilter.$lte = filters.maxPrice;
       }
       filterQuery.default_price = priceFilter;
     }
 
-    if (filters.search) {
+    if (filters.keyword) {
       filterQuery.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { description: { $regex: filters.search, $options: 'i' } },
-        { unit: { $regex: filters.search, $options: 'i' } },
+        { name: { $regex: filters.keyword, $options: 'i' } },
+        { description: { $regex: filters.keyword, $options: 'i' } },
+        { unit: { $regex: filters.keyword, $options: 'i' } },
       ];
-    }
-
-    // Filter theo property_id
-    if (filters.property_id) {
-      filterQuery.property_id = new Types.ObjectId(filters.property_id);
-    }
-
-    // Filter theo room_id
-    if (filters.room_id) {
-      filterQuery.room_id = new Types.ObjectId(filters.room_id);
     }
 
     return filterQuery;
@@ -180,32 +182,6 @@ export class ServicesRepo extends BaseRepo<Service> {
     return this.serviceModel
       .find({
         _id: { $in: objectIds },
-        isDeleted: false,
-      })
-      .exec();
-  }
-
-  /**
-   * Tìm service theo property ID
-   */
-  async findByProperty(propertyId: string): Promise<Service[]> {
-    return this.serviceModel
-      .find({
-        property_id: new Types.ObjectId(propertyId),
-        isDeleted: false,
-        is_active: true,
-      })
-      .sort({ name: 1 })
-      .exec();
-  }
-
-  /**
-   * Tìm service theo room ID
-   */
-  async findByRoom(roomId: string): Promise<Service[]> {
-    return this.serviceModel
-      .find({
-        room_id: new Types.ObjectId(roomId),
         isDeleted: false,
         is_active: true,
       })
@@ -221,33 +197,43 @@ export class ServicesRepo extends BaseRepo<Service> {
     inactive: number;
     total: number;
   }> {
-    const [active, inactive, total] = await Promise.all([
-      this.serviceModel.countDocuments({ isDeleted: false, is_active: true }),
-      this.serviceModel.countDocuments({ isDeleted: false, is_active: false }),
-      this.serviceModel.countDocuments({ isDeleted: false }),
+    const results = await this.serviceModel.aggregate([
+      { $match: { isDeleted: false } },
+      {
+        $group: {
+          _id: '$is_active',
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
-    return { active, inactive, total };
+    const active = results.find((r) => r._id === true)?.count || 0;
+    const inactive = results.find((r) => r._id === false)?.count || 0;
+
+    return {
+      active,
+      inactive,
+      total: active + inactive,
+    };
   }
 
   /**
-   * Lấy service có giá cao nhất/thấp nhất
+   * Lấy service theo thứ tự giá
    */
   async getServicesByPriceOrder(
     order: 'asc' | 'desc' = 'asc',
   ): Promise<Service[]> {
-    const sortOrder = order === 'asc' ? 1 : -1;
     return this.serviceModel
       .find({
         isDeleted: false,
         is_active: true,
       })
-      .sort({ default_price: sortOrder })
+      .sort({ default_price: order === 'asc' ? 1 : -1 })
       .exec();
   }
 
   /**
-   * Tìm service theo unit (đơn vị)
+   * Tìm service theo unit
    */
   async findByUnit(unit: string): Promise<Service[]> {
     return this.serviceModel
@@ -273,50 +259,49 @@ export class ServicesRepo extends BaseRepo<Service> {
       activeCount: number;
     }[]
   > {
-    const results = await this.serviceModel
-      .aggregate([
-        { $match: { isDeleted: false } },
-        {
-          $group: {
-            _id: '$unit',
-            count: { $sum: 1 },
-            avgPrice: { $avg: '$default_price' },
-            minPrice: { $min: '$default_price' },
-            maxPrice: { $max: '$default_price' },
-            activeCount: {
-              $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
-            },
+    return this.serviceModel.aggregate([
+      { $match: { isDeleted: false } },
+      {
+        $group: {
+          _id: '$unit',
+          count: { $sum: 1 },
+          avgPrice: { $avg: '$default_price' },
+          minPrice: { $min: '$default_price' },
+          maxPrice: { $max: '$default_price' },
+          activeCount: {
+            $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
           },
         },
-        { $sort: { count: -1 } },
-      ])
-      .exec();
-
-    return results as {
-      _id: string;
-      count: number;
-      avgPrice: number;
-      minPrice: number;
-      maxPrice: number;
-      activeCount: number;
-    }[];
+      },
+      { $sort: { count: -1 } },
+    ]);
   }
 
   /**
-   * Toggle status của service
+   * Toggle trạng thái service
    */
   async toggleServiceStatus(
     id: string,
     userId?: string,
   ): Promise<Service | null> {
-    const service = await this.findById(id);
+    const service = await this.serviceModel.findById(id);
     if (!service) return null;
 
-    return this.updateById(id, { is_active: !service.is_active }, userId);
+    const updatedService = await this.serviceModel.findByIdAndUpdate(
+      id,
+      {
+        is_active: !service.is_active,
+        updated_at: new Date(),
+        ...(userId && { updatedBy: new Types.ObjectId(userId) }),
+      },
+      { new: true },
+    );
+
+    return updatedService;
   }
 
   /**
-   * Bulk update status của nhiều services
+   * Bulk update trạng thái services
    */
   async bulkUpdateStatus(
     ids: string[],
@@ -330,41 +315,48 @@ export class ServicesRepo extends BaseRepo<Service> {
     matchedCount: number;
   }> {
     const objectIds = ids.map((id) => new Types.ObjectId(id));
-
-    return this.serviceModel
-      .updateMany(
-        { _id: { $in: objectIds }, isDeleted: false },
-        {
-          is_active: isActive,
-          updatedBy: userId ? new Types.ObjectId(userId) : undefined,
-          updated_at: new Date(),
-        },
-      )
-      .exec();
+    return this.serviceModel.updateMany(
+      { _id: { $in: objectIds }, isDeleted: false },
+      {
+        is_active: isActive,
+        updated_at: new Date(),
+        ...(userId && { updatedBy: new Types.ObjectId(userId) }),
+      },
+    );
   }
 
   /**
-   * Tìm service có giá gần nhất với giá cho trước
+   * Tìm service có giá gần giá target
    */
   async findSimilarPriceServices(
     targetPrice: number,
     limit: number = 5,
   ): Promise<Service[]> {
-    const results = await this.serviceModel
-      .aggregate([
-        { $match: { isDeleted: false, is_active: true } },
-        {
-          $addFields: {
-            priceDifference: {
-              $abs: { $subtract: ['$default_price', targetPrice] },
-            },
+    return this.serviceModel.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          is_active: true,
+        },
+      },
+      {
+        $addFields: {
+          priceDifference: {
+            $abs: { $subtract: ['$default_price', targetPrice] },
           },
         },
-        { $sort: { priceDifference: 1 } },
-        { $limit: limit },
-      ])
-      .exec();
-
-    return results as Service[];
+      },
+      {
+        $sort: { priceDifference: 1 },
+      },
+      {
+        $limit: limit,
+      },
+      {
+        $project: {
+          priceDifference: 0, // Remove the temporary field
+        },
+      },
+    ]);
   }
 }

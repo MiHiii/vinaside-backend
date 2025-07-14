@@ -1,71 +1,124 @@
+import { Transform, Type } from 'class-transformer';
 import {
   IsOptional,
-  IsBoolean,
   IsString,
   IsNumber,
+  IsBoolean,
   Min,
-  IsMongoId,
+  Max,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class QueryServiceDto {
+  @ApiProperty({
+    example: 1,
+    description: 'Số trang',
+    required: false,
+    default: 1,
+  })
   @IsOptional()
-  @IsNumber({}, { message: 'Trang phải là số' })
-  @Min(1, { message: 'Trang phải từ 1 trở lên' })
-  @Transform(({ value }: { value: string }) => parseInt(value))
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
   page?: number = 1;
 
+  @ApiProperty({
+    example: 10,
+    description: 'Số lượng item trên mỗi trang',
+    required: false,
+    default: 10,
+  })
   @IsOptional()
-  @IsNumber({}, { message: 'Limit phải là số' })
-  @Min(1, { message: 'Limit phải từ 1 trở lên' })
-  @Transform(({ value }: { value: string }) => parseInt(value))
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
   limit?: number = 10;
 
+  @ApiProperty({
+    example: 'name',
+    description: 'Trường để sắp xếp',
+    required: false,
+  })
   @IsOptional()
-  @IsString({ message: 'Tên dịch vụ phải là chuỗi văn bản' })
+  @IsString()
+  sortBy?: string = 'created_at';
+
+  @ApiProperty({
+    example: 'desc',
+    description: 'Thứ tự sắp xếp',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @ApiProperty({
+    example: 'WiFi',
+    description: 'Tìm kiếm theo tên dịch vụ',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
   name?: string;
 
+  @ApiProperty({
+    example: '/ngày',
+    description: 'Lọc theo đơn vị',
+    required: false,
+  })
   @IsOptional()
-  @IsString({ message: 'Đơn vị phải là chuỗi văn bản' })
+  @IsString()
   unit?: string;
 
-  @IsOptional()
-  @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
-  @Transform(({ value }: { value: string | boolean }) => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return Boolean(value);
+  @ApiProperty({
+    example: 10000,
+    description: 'Giá tối thiểu',
+    required: false,
   })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  minPrice?: number;
+
+  @ApiProperty({
+    example: 100000,
+    description: 'Giá tối đa',
+    required: false,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  maxPrice?: number;
+
+  @ApiProperty({
+    example: true,
+    description: 'Lọc theo trạng thái hoạt động',
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
   is_active?: boolean;
 
-  @IsOptional()
-  @IsBoolean({ message: 'Bao gồm đã xóa phải là boolean' })
-  @Transform(({ value }: { value: string | boolean }) => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return Boolean(value);
+  @ApiProperty({
+    example: false,
+    description: 'Bao gồm item đã xóa',
+    required: false,
   })
-  include_deleted?: boolean = false;
-
   @IsOptional()
-  @IsString({ message: 'Từ khóa tìm kiếm phải là chuỗi văn bản' })
-  search?: string;
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  includeDeleted?: boolean;
 
+  @ApiProperty({
+    example: 'wifi miễn phí',
+    description: 'Từ khóa tìm kiếm',
+    required: false,
+  })
   @IsOptional()
-  @IsNumber({}, { message: 'Giá tối thiểu phải là số' })
-  @Transform(({ value }: { value: string }) => parseFloat(value))
-  min_price?: number;
-
-  @IsOptional()
-  @IsNumber({}, { message: 'Giá tối đa phải là số' })
-  @Transform(({ value }: { value: string }) => parseFloat(value))
-  max_price?: number;
-
-  @IsOptional()
-  @IsMongoId({ message: 'Property ID phải có định dạng hợp lệ' })
-  property_id?: string;
-
-  @IsOptional()
-  @IsMongoId({ message: 'Room ID phải có định dạng hợp lệ' })
-  room_id?: string;
+  @IsString()
+  keyword?: string;
 }

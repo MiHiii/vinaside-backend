@@ -46,14 +46,6 @@ export class Service extends Document {
   })
   is_active: boolean;
 
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: 'Property',
-    required: true,
-    index: true,
-  })
-  property_id: Types.ObjectId;
-
   @Prop({ default: false })
   isDeleted: boolean;
 
@@ -83,4 +75,3 @@ ServiceSchema.index({ name: 1 });
 ServiceSchema.index({ is_active: 1 });
 ServiceSchema.index({ isDeleted: 1 });
 ServiceSchema.index({ created_at: -1 });
-ServiceSchema.index({ property_id: 1 });
