@@ -231,9 +231,7 @@ export class MessagesController {
         userId,
         req.user._id,
       );
-      return (
-        (result as UserProfileResponseDto) || ({} as UserProfileResponseDto)
-      );
+      return result || ({} as UserProfileResponseDto);
     } catch (error) {
       console.error('Error in getUserProfile controller:', error);
       return {} as UserProfileResponseDto;

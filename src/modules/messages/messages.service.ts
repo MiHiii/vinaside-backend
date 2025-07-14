@@ -97,7 +97,7 @@ export class MessagesService {
     // Add reply_to_message_id if provided
     if (createMessageDto.reply_to_message_id) {
       messageData.reply_to_message_id = new Types.ObjectId(
-        createMessageDto.reply_to_message_id,
+        createMessageDto.reply_to_message_id as string,
       );
     }
 
@@ -156,10 +156,7 @@ export class MessagesService {
   /**
    * Lấy tất cả tin nhắn với phân trang
    */
-  async findAll(
-    queryDto?: MessageQueryDto,
-    user?: JwtPayload,
-  ): Promise<Message[]> {
+  async findAll(queryDto?: MessageQueryDto, user?: JwtPayload): Promise<any[]> {
     try {
       let messages: Message[];
 
@@ -730,7 +727,7 @@ export class MessagesService {
     userId: string,
     otherUserId: string,
     query?: ConversationQueryDto,
-  ): Promise<Message[]> {
+  ): Promise<any[]> {
     try {
       const messages = await this.findConversation(userId, otherUserId);
 
@@ -753,10 +750,7 @@ export class MessagesService {
   /**
    * Tìm kiếm tin nhắn
    */
-  async search(
-    searchDto: MessageSearchDto,
-    user: JwtPayload,
-  ): Promise<Message[]> {
+  async search(searchDto: MessageSearchDto, user: JwtPayload): Promise<any[]> {
     try {
       const userObjectId = new Types.ObjectId(user._id);
 
@@ -954,23 +948,23 @@ export class MessagesService {
       created_at: reaction.created_at,
     }));
 
-    // Format reply data if exists
+    // Format reply message if exists
     let formattedReply: any = null;
     if (message.reply_to_message_id) {
-      const replyMessage = message.reply_to_message_id as any;
+      const replyMessage = message.reply_to_message_id as any; // Type assertion for populated message
       formattedReply = {
-        message_id: replyMessage._id,
-        content: replyMessage.content,
-        sender_id: replyMessage.sender_id?._id || replyMessage.sender_id,
-        sender_name:
-          replyMessage.sender_id?.name ||
-          replyMessage.sender_id?.username ||
-          'Unknown',
-        sent_at: replyMessage.sent_at,
+        message_id: (replyMessage as any)._id as string,
+        content: (replyMessage as any).content as string,
+        sender_id: ((replyMessage as any).sender_id?._id ||
+          (replyMessage as any).sender_id) as string,
+        sender_name: ((replyMessage as any).sender_id?.name ||
+          (replyMessage as any).sender_id?.username ||
+          'Unknown') as string,
+        sent_at: (replyMessage as any).sent_at as Date,
       };
     }
 
-    const messageObject = message.toObject();
+    const messageObject = message.toObject() as any;
     return {
       ...messageObject,
       reactions: formattedReactions,
@@ -991,7 +985,7 @@ export class MessagesService {
     messageId: string,
     reactionType: ReactionType,
     user: JwtPayload,
-  ): Promise<{ action: 'added' | 'removed'; message: Message }> {
+  ): Promise<{ action: 'added' | 'removed'; message: any }> {
     if (!isValidObjectId(messageId)) {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
@@ -1098,7 +1092,7 @@ export class MessagesService {
 
     return {
       action,
-      message: formattedMessage as Message,
+      message: formattedMessage,
     };
   }
 

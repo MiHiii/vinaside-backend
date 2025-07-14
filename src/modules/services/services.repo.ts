@@ -197,7 +197,12 @@ export class ServicesRepo extends BaseRepo<Service> {
     inactive: number;
     total: number;
   }> {
-    const results = await this.serviceModel.aggregate([
+    interface StatusAggregationResult {
+      _id: boolean;
+      count: number;
+    }
+
+    const results = await this.serviceModel.aggregate<StatusAggregationResult>([
       { $match: { isDeleted: false } },
       {
         $group: {
