@@ -54,8 +54,8 @@ export class Message extends Document {
   @Prop({ type: Date })
   recalled_at?: Date;
 
-  @Prop({ type: Boolean, default: false })
-  pinned?: boolean;
+  @Prop({ type: Types.ObjectId, ref: 'Message', required: false })
+  reply_to_message_id?: Types.ObjectId;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

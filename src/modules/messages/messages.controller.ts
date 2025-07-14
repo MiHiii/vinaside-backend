@@ -19,6 +19,10 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/reaction.dto';
 import { QueryMessageDto } from './dto/query-message.dto';
 import { SearchMessageDto } from './dto/search-message.dto';
+import {
+  UserProfileResponseDto,
+  UserResponseDto,
+} from './dto/user-response.dto';
 import { ReactionType } from './schemas/message.schema';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -46,8 +50,16 @@ export class MessagesController {
 
   @Post()
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Gửi tin nhắn mới' })
-  @ApiResponse({ status: 201, description: 'Tin nhắn được gửi thành công' })
+  @ApiOperation({
+    summary: 'Gửi tin nhắn mới hoặc reply tin nhắn',
+    description:
+      'Tạo tin nhắn mới. Có thể bao gồm reply_to_message_id để reply một tin nhắn cụ thể.',
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Tin nhắn được gửi thành công. Response bao gồm thông tin reply nếu có.',
+  })
   @ResponseMessage('Gửi tin nhắn thành công')
   create(
     @Body() createMessageDto: CreateMessageDto,
@@ -64,10 +76,10 @@ export class MessagesController {
   async findAll(
     @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
-  ) {
+  ): Promise<unknown[]> {
     try {
       const result = await this.messagesService.findAll(query, req.user);
-      return Array.isArray(result) ? result : [];
+      return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (error) {
       console.error('Error in findAll controller:', error);
       return [];
@@ -93,8 +105,13 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({
     summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể',
+    description:
+      'Trả về danh sách tin nhắn bao gồm thông tin reply và reactions với emoji.',
   })
-  @ApiResponse({ status: 200, description: 'Tin nhắn trong cuộc trò chuyện' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tin nhắn trong cuộc trò chuyện với đầy đủ thông tin reply',
+  })
   @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
   async getConversation(
     @Request() req: RequestWithUser,
@@ -156,12 +173,18 @@ export class MessagesController {
   @Get('all-users')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy danh sách tất cả người dùng để nhắn tin' })
-  @ApiResponse({ status: 200, description: 'Danh sách người dùng' })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách người dùng',
+    type: [UserResponseDto],
+  })
   @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
-  async getAllUsers(@Request() req: RequestWithUser): Promise<unknown[]> {
+  async getAllUsers(
+    @Request() req: RequestWithUser,
+  ): Promise<UserResponseDto[]> {
     try {
       const result = await this.messagesService.getAllUsers(req.user._id);
-      return Array.isArray(result) ? (result as unknown[]) : [];
+      return Array.isArray(result) ? (result as UserResponseDto[]) : [];
     } catch (error) {
       console.error('Error in getAllUsers controller:', error);
       return [];
@@ -174,15 +197,46 @@ export class MessagesController {
   @ApiResponse({
     status: 200,
     description: 'Danh sách người dùng có lịch sử chat',
+    type: [UserResponseDto],
   })
   @ResponseMessage('Lấy danh sách người dùng có lịch sử chat thành công')
-  async getAvailableUsers(@Request() req: RequestWithUser): Promise<unknown[]> {
+  async getAvailableUsers(
+    @Request() req: RequestWithUser,
+  ): Promise<UserResponseDto[]> {
     try {
       const result = await this.messagesService.getAvailableUsers(req.user._id);
-      return Array.isArray(result) ? (result as unknown[]) : [];
+      return Array.isArray(result) ? (result as UserResponseDto[]) : [];
     } catch (error) {
       console.error('Error in getAvailableUsers controller:', error);
       return [];
+    }
+  }
+
+  @Get('user/:userId')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Lấy thông tin profile của người dùng' })
+  @ApiParam({ name: 'userId', description: 'ID của người dùng' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin người dùng',
+    type: UserProfileResponseDto,
+  })
+  @ResponseMessage('Lấy thông tin người dùng thành công')
+  async getUserProfile(
+    @Param('userId') userId: string,
+    @Request() req: RequestWithUser,
+  ): Promise<UserProfileResponseDto> {
+    try {
+      const result = await this.messagesService.getUserProfile(
+        userId,
+        req.user._id,
+      );
+      return (
+        (result as UserProfileResponseDto) || ({} as UserProfileResponseDto)
+      );
+    } catch (error) {
+      console.error('Error in getUserProfile controller:', error);
+      return {} as UserProfileResponseDto;
     }
   }
 
@@ -244,24 +298,6 @@ export class MessagesController {
       type as ReactionType,
       req.user,
     );
-  }
-
-  @Patch(':id/pin')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Ghim tin nhắn quan trọng' })
-  @ApiResponse({ status: 200, description: 'Tin nhắn được ghim thành công' })
-  @ResponseMessage('Ghim tin nhắn thành công')
-  pinMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.pinMessage(id, req.user);
-  }
-
-  @Patch(':id/unpin')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Bỏ ghim tin nhắn' })
-  @ApiResponse({ status: 200, description: 'Bỏ ghim tin nhắn thành công' })
-  @ResponseMessage('Bỏ ghim tin nhắn thành công')
-  unpinMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.unpinMessage(id, req.user);
   }
 
   @Post(':id/recall')

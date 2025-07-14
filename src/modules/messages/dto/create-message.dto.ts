@@ -12,4 +12,11 @@ export class CreateMessageDto {
   @IsOptional()
   @IsEnum(MessageStatus)
   is_read?: MessageStatus;
+
+  @IsOptional()
+  @IsString()
+  @IsMongoId({
+    message: 'reply_to_message_id must be a valid MongoDB ObjectId',
+  })
+  reply_to_message_id?: string;
 }
