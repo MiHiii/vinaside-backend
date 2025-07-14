@@ -20,6 +20,13 @@ import {
   isValidObjectId,
   createRealtimeMessage,
 } from './utils/message.util';
+import {
+  FormattedMessageWithReactions,
+  ReplyToMessage,
+  PopulatedReaction,
+  UserProfileResponse,
+  ToggleReactionResponse,
+} from './interfaces/message.interface';
 
 // ============= TYPE DEFINITIONS =============
 
@@ -97,7 +104,7 @@ export class MessagesService {
     // Add reply_to_message_id if provided
     if (createMessageDto.reply_to_message_id) {
       messageData.reply_to_message_id = new Types.ObjectId(
-        createMessageDto.reply_to_message_id as string,
+        createMessageDto.reply_to_message_id,
       );
     }
 
@@ -654,7 +661,10 @@ export class MessagesService {
   /**
    * Lấy thông tin profile của user cụ thể
    */
-  async getUserProfile(userId: string, currentUserId: string): Promise<any> {
+  async getUserProfile(
+    userId: string,
+    currentUserId: string,
+  ): Promise<UserProfileResponse> {
     try {
       if (!isValidObjectId(userId)) {
         throw new BadRequestException('Định dạng ID người dùng không hợp lệ');
@@ -700,7 +710,7 @@ export class MessagesService {
       return {
         ...user,
         hasMessageHistory: hasMessageHistory > 0,
-      };
+      } as unknown as UserProfileResponse;
     } catch (error) {
       console.error('Error getting user profile:', error);
       if (
@@ -931,7 +941,7 @@ export class MessagesService {
   /**
    * Utility để format reaction response với emoji
    */
-  private formatReactionResponse(message: Message) {
+  private formatReactionResponse(message: Message): unknown {
     const emojiMap = {
       [ReactionType.LIKE]: '👍',
       [ReactionType.LOVE]: '❤️',
@@ -941,35 +951,46 @@ export class MessagesService {
       [ReactionType.ANGRY]: '😡',
     };
 
-    const formattedReactions = message.reactions.map((reaction) => ({
-      user_id: reaction.user_id,
-      type: reaction.type,
-      emoji: emojiMap[reaction.type] || '👍',
-      created_at: reaction.created_at,
-    }));
+    const formattedReactions = message.reactions.map((reaction) => {
+      const populatedUser = reaction.user_id as any;
+      return {
+        userId:
+          populatedUser?._id?.toString() ||
+          reaction.user_id?.toString() ||
+          'unknown',
+        username:
+          populatedUser?.username || populatedUser?.name || 'Unknown User',
+        type: reaction.type,
+        created_at:
+          reaction.created_at?.toISOString() || new Date().toISOString(),
+      };
+    });
 
     // Format reply message if exists
-    let formattedReply: any = null;
+    let formattedReply: ReplyToMessage | null = null;
     if (message.reply_to_message_id) {
-      const replyMessage = message.reply_to_message_id as any; // Type assertion for populated message
+      const replyMessage = message.reply_to_message_id as any;
       formattedReply = {
-        message_id: (replyMessage as any)._id as string,
-        content: (replyMessage as any).content as string,
-        sender_id: ((replyMessage as any).sender_id?._id ||
-          (replyMessage as any).sender_id) as string,
-        sender_name: ((replyMessage as any).sender_id?.name ||
-          (replyMessage as any).sender_id?.username ||
-          'Unknown') as string,
-        sent_at: (replyMessage as any).sent_at as Date,
+        message_id: replyMessage._id?.toString() || '',
+        content: replyMessage.content || '',
+        sender_id:
+          replyMessage.sender_id?._id?.toString() ||
+          replyMessage.sender_id?.toString() ||
+          '',
+        sender_name:
+          replyMessage.sender_id?.name ||
+          replyMessage.sender_id?.username ||
+          'Unknown',
+        sent_at: replyMessage.sent_at || new Date(),
       };
     }
 
-    const messageObject = message.toObject() as any;
+    const messageObject = message.toObject();
     return {
       ...messageObject,
+      _id: messageObject._id.toString(),
       reactions: formattedReactions,
       reply_to: formattedReply,
-      // Remove raw reply_to_message_id to keep response clean
       reply_to_message_id: undefined,
     };
   }
@@ -977,7 +998,7 @@ export class MessagesService {
   /**
    * Utility để format array of messages với emoji reactions
    */
-  private formatMessagesWithReactions(messages: Message[]): any[] {
+  private formatMessagesWithReactions(messages: Message[]): unknown[] {
     return messages.map((message) => this.formatReactionResponse(message));
   }
 
@@ -985,7 +1006,7 @@ export class MessagesService {
     messageId: string,
     reactionType: ReactionType,
     user: JwtPayload,
-  ): Promise<{ action: 'added' | 'removed'; message: any }> {
+  ): Promise<{ action: 'added' | 'removed'; message: unknown }> {
     if (!isValidObjectId(messageId)) {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
@@ -1088,7 +1109,9 @@ export class MessagesService {
     }
 
     // Format response với emoji mapping
-    const formattedMessage = this.formatReactionResponse(updatedMessage);
+    const formattedMessage = this.formatReactionResponse(
+      updatedMessage,
+    ) as unknown;
 
     return {
       action,

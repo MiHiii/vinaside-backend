@@ -177,3 +177,31 @@ export interface MessageWithReply {
   reactions: any[];
   reply_to?: ReplyToMessage | null;
 }
+
+export interface FormattedMessageWithReactions {
+  _id: string;
+  sender_id: any;
+  receiver_id: any;
+  content: string;
+  sent_at: Date;
+  is_read: string;
+  reactions: FormattedReaction[];
+  reply_to?: ReplyToMessage | null;
+  reply_to_message_id?: undefined;
+}
+
+export interface UserProfileResponse {
+  _id: string;
+  username?: string;
+  email: string;
+  name?: string;
+  avatar_url?: string;
+  role?: string;
+  lastMessageAt?: Date;
+  hasMessageHistory?: boolean;
+}
+
+export interface ToggleReactionResponse {
+  action: 'added' | 'removed';
+  message: FormattedMessageWithReactions;
+}

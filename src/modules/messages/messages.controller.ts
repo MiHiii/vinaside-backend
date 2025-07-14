@@ -76,7 +76,7 @@ export class MessagesController {
   async findAll(
     @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
-  ) {
+  ): Promise<unknown[]> {
     try {
       const result = await this.messagesService.findAll(query, req.user);
       return Array.isArray(result) ? result : [];
@@ -231,7 +231,9 @@ export class MessagesController {
         userId,
         req.user._id,
       );
-      return result || ({} as UserProfileResponseDto);
+      return (
+        (result as UserProfileResponseDto) || ({} as UserProfileResponseDto)
+      );
     } catch (error) {
       console.error('Error in getUserProfile controller:', error);
       return {} as UserProfileResponseDto;
