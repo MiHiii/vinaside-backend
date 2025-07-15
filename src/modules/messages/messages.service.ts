@@ -15,11 +15,7 @@ import { Message, MessageStatus, ReactionType } from './schemas/message.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { MessagesGateway } from './messages.gateway';
 import { removeUndefinedObject } from '../../utils/common.util';
-import {
-  extractMessageId,
-  isValidObjectId,
-  createRealtimeMessage,
-} from './utils/message.util';
+import { extractMessageId, isValidObjectId } from './utils/message.util';
 import {
   ReplyToMessage,
   UserProfileResponse,
@@ -113,6 +109,7 @@ export class MessagesService {
       .findById(savedMessage._id)
       .populate('sender_id', 'username email name avatar_url')
       .populate('receiver_id', 'username email name avatar_url')
+      .populate('reactions.user_id', 'username email name avatar_url')
       .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
       .populate({
         path: 'reply_to_message_id',
@@ -126,20 +123,19 @@ export class MessagesService {
     // Emit realtime notification
     try {
       const messageId = extractMessageId(savedMessage);
-      if (messageId) {
-        const realtimeMessage = createRealtimeMessage({
-          messageId,
-          content: createMessageDto.content,
-          senderId: user._id,
-          receiverId: createMessageDto.receiver_id,
-          is_read: MessageStatus.SENT,
-        });
+      if (messageId && populatedMessage) {
+        // Format message với đầy đủ thông tin reply và reactions
+        const formattedMessage = this.formatReactionResponse(populatedMessage);
 
-        // Emit thông báo new message
+        // Emit realtime đơn giản - CHỈ SỬ DỤNG new_message EVENT
+        // Emit đến người nhận
         this.messagesGateway.emitNewMessage(
-          realtimeMessage,
+          formattedMessage,
           createMessageDto.receiver_id,
         );
+
+        // Emit đến người gửi (sync across devices)
+        this.messagesGateway.emitNewMessage(formattedMessage, user._id);
 
         // Update delivered status nếu user online
         if (this.messagesGateway.isUserOnline(createMessageDto.receiver_id)) {
@@ -265,7 +261,7 @@ export class MessagesService {
   async findConversation(
     userId: string,
     otherUserId: string,
-  ): Promise<Message[]> {
+  ): Promise<unknown[]> {
     if (!isValidObjectId(otherUserId)) {
       throw new BadRequestException('Định dạng ID người dùng không hợp lệ');
     }
@@ -303,7 +299,8 @@ export class MessagesService {
         .sort({ sent_at: 1 })
         .exec();
 
-      return messages || [];
+      // Format all messages với emoji reactions
+      return this.formatMessagesWithReactions(messages || []);
     } catch (error) {
       console.error('Error in findConversation:', error);
       return [];
@@ -738,16 +735,13 @@ export class MessagesService {
     try {
       const messages = await this.findConversation(userId, otherUserId);
 
-      // Format all messages với emoji reactions
-      const formattedMessages = this.formatMessagesWithReactions(messages);
-
       // Chỉ áp dụng limit khi user chủ động truyền vào
       if (query?.limit && typeof query.limit === 'number' && query.limit > 0) {
-        return formattedMessages.slice(0, query.limit);
+        return messages.slice(0, query.limit);
       }
 
       // Trả về toàn bộ tin nhắn với reactions đã format
-      return formattedMessages || [];
+      return messages || [];
     } catch (error) {
       console.error('Error in getConversation:', error);
       return [];
@@ -804,17 +798,19 @@ export class MessagesService {
     messageId: string,
     addReactionDto: AddReactionDto,
     user: JwtPayload,
-  ): Promise<Message> {
+  ): Promise<unknown> {
     const dto = { ...addReactionDto, message_id: messageId };
-    return await this.addReactionInternal(dto, user);
+    const message = await this.addReactionInternal(dto, user);
+    return this.formatReactionResponse(message);
   }
 
   /**
    * Xóa reaction với messageId
    */
-  async removeReaction(messageId: string, user: JwtPayload): Promise<Message> {
+  async removeReaction(messageId: string, user: JwtPayload): Promise<unknown> {
     const removeReactionDto: RemoveReactionDto = { message_id: messageId };
-    return await this.removeReactionInternal(removeReactionDto, user);
+    const message = await this.removeReactionInternal(removeReactionDto, user);
+    return this.formatReactionResponse(message);
   }
 
   // ==================== REACTIONS METHODS ====================
@@ -939,41 +935,35 @@ export class MessagesService {
    * Utility để format reaction response với emoji
    */
   private formatReactionResponse(message: Message): unknown {
+    // Emoji mapping cho reactions
+    const emojiMap = {
+      [ReactionType.LIKE]: '👍',
+      [ReactionType.LOVE]: '❤️',
+      [ReactionType.LAUGH]: '😂',
+      [ReactionType.WOW]: '😮',
+      [ReactionType.SAD]: '😢',
+      [ReactionType.ANGRY]: '😡',
+    };
+
     const formattedReactions = message.reactions.map((reaction) => {
-      const populatedUser = reaction.user_id as unknown;
-      const userObj = populatedUser as {
-        _id?: unknown;
+      // Type assertion with proper interface
+      const populatedUser = reaction.user_id as unknown as {
+        _id?: Types.ObjectId;
         username?: string;
         name?: string;
+        avatar_url?: string;
       };
 
       return {
         userId:
-          typeof userObj === 'object' &&
-          userObj &&
-          '_id' in userObj &&
-          typeof userObj._id === 'object' &&
-          userObj._id &&
-          'toString' in userObj._id
-            ? (userObj._id as { toString(): string }).toString()
-            : typeof reaction.user_id === 'object' &&
-                reaction.user_id &&
-                'toString' in reaction.user_id
-              ? (reaction.user_id as { toString(): string }).toString()
-              : 'unknown',
+          populatedUser?._id?.toString() ||
+          reaction.user_id?.toString() ||
+          'unknown',
         username:
-          typeof userObj === 'object' &&
-          userObj &&
-          'username' in userObj &&
-          typeof userObj.username === 'string'
-            ? userObj.username
-            : typeof userObj === 'object' &&
-                userObj &&
-                'name' in userObj &&
-                typeof userObj.name === 'string'
-              ? userObj.name
-              : 'Unknown User',
+          populatedUser?.username || populatedUser?.name || 'Unknown User',
+        avatar_url: populatedUser?.avatar_url || null,
         type: reaction.type,
+        emoji: emojiMap[reaction.type] || '👍',
         created_at:
           reaction.created_at?.toISOString() || new Date().toISOString(),
       };
@@ -982,73 +972,40 @@ export class MessagesService {
     // Format reply message if exists
     let formattedReply: ReplyToMessage | null = null;
     if (message.reply_to_message_id) {
-      const replyMessage = message.reply_to_message_id as unknown;
-      const replyObj = replyMessage as {
-        _id?: unknown;
+      // Type assertion with proper interface
+      const replyMessage = message.reply_to_message_id as unknown as {
+        _id?: Types.ObjectId;
         content?: string;
-        sender_id?: unknown;
+        sender_id?: {
+          _id?: Types.ObjectId;
+          name?: string;
+          username?: string;
+        };
         sent_at?: Date;
       };
 
-      if (typeof replyObj === 'object' && replyObj) {
-        const senderId = replyObj.sender_id;
-        const senderObj = senderId as {
-          _id?: unknown;
-          name?: string;
-          username?: string;
-          toString?(): string;
-        };
-
-        formattedReply = {
-          message_id:
-            typeof replyObj._id === 'object' &&
-            replyObj._id &&
-            'toString' in replyObj._id
-              ? (replyObj._id as { toString(): string }).toString()
-              : '',
-          content: replyObj.content || '',
-          sender_id:
-            typeof senderObj === 'object' &&
-            senderObj &&
-            '_id' in senderObj &&
-            typeof senderObj._id === 'object' &&
-            senderObj._id &&
-            'toString' in senderObj._id
-              ? (senderObj._id as { toString(): string }).toString()
-              : typeof senderObj === 'object' &&
-                  senderObj &&
-                  'toString' in senderObj &&
-                  typeof senderObj.toString === 'function'
-                ? senderObj.toString()
-                : '',
-          sender_name:
-            typeof senderObj === 'object' &&
-            senderObj &&
-            'name' in senderObj &&
-            typeof senderObj.name === 'string'
-              ? senderObj.name
-              : typeof senderObj === 'object' &&
-                  senderObj &&
-                  'username' in senderObj &&
-                  typeof senderObj.username === 'string'
-                ? senderObj.username
-                : 'Unknown',
-          sent_at: replyObj.sent_at || new Date(),
-        };
-      }
+      formattedReply = {
+        message_id: replyMessage._id?.toString() || '',
+        content: replyMessage.content || '',
+        sender_id:
+          replyMessage.sender_id?._id?.toString() ||
+          (replyMessage.sender_id as unknown as Types.ObjectId)?.toString() ||
+          '',
+        sender_name:
+          replyMessage.sender_id?.name ||
+          replyMessage.sender_id?.username ||
+          'Unknown',
+        sent_at: replyMessage.sent_at || new Date(),
+      };
     }
 
     const messageObject = message.toObject() as Record<string, unknown>;
-    const messageId = messageObject._id;
     return {
       ...messageObject,
-      _id:
-        typeof messageId === 'object' && messageId && 'toString' in messageId
-          ? (messageId as { toString(): string }).toString()
-          : '',
+      _id: (messageObject._id as Types.ObjectId).toString(),
       reactions: formattedReactions,
       reply_to: formattedReply,
-      reply_to_message_id: undefined,
+      reply_to_message_id: undefined, // Remove this to avoid duplication
     };
   }
 
@@ -1162,7 +1119,7 @@ export class MessagesService {
       const otherUserId = user._id === senderId ? receiverId : senderId;
       this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
     } catch (error) {
-      console.error('❌ Failed to emit reaction update:', error);
+      console.error('Failed to emit reaction update:', error);
     }
 
     // Format response với emoji mapping
