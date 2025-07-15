@@ -1,40 +1,66 @@
 import {
   IsString,
-  IsNumber,
-  IsOptional,
-  IsBoolean,
   IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsBoolean,
   Min,
-  IsMongoId,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateServiceDto {
-  @IsString({ message: 'Tên dịch vụ phải là chuỗi văn bản' })
-  @IsNotEmpty({ message: 'Tên dịch vụ không được để trống' })
+  @ApiProperty({
+    example: 'WiFi miễn phí',
+    description: 'Tên dịch vụ',
+  })
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
+  @ApiProperty({
+    example: 'Kết nối internet tốc độ cao',
+    description: 'Mô tả dịch vụ',
+    required: false,
+  })
+  @IsString()
   @IsOptional()
-  @IsString({ message: 'Mô tả phải là chuỗi văn bản' })
   description?: string;
 
-  @IsString({ message: 'Đơn vị phải là chuỗi văn bản' })
-  @IsNotEmpty({ message: 'Đơn vị không được để trống' })
-  unit: string;
+  @ApiProperty({
+    example: '/ngày',
+    description: 'Đơn vị tính',
+    default: '/ngày',
+  })
+  @IsString()
+  @IsOptional()
+  unit?: string = '/ngày';
 
+  @ApiProperty({
+    example: 50000,
+    description: 'Giá mặc định',
+    minimum: 0,
+  })
   @Type(() => Number)
-  @IsNumber({}, { message: 'Giá mặc định phải là số' })
-  @Min(0, { message: 'Giá mặc định phải từ 0 trở lên' })
+  @IsNumber()
+  @Min(0)
   default_price: number;
 
+  @ApiProperty({
+    example: true,
+    description: 'Trạng thái hoạt động',
+    default: true,
+  })
+  @IsBoolean()
   @IsOptional()
-  @IsBoolean({ message: 'Trạng thái hoạt động phải là boolean' })
   is_active?: boolean = true;
 
-  @IsMongoId({ message: 'Property ID phải có định dạng hợp lệ' })
-  property_id: string;
-
+  @ApiProperty({
+    example: 'https://example.com/icon.png',
+    description: 'Đường dẫn icon của dịch vụ',
+    required: false,
+  })
+  @IsString()
   @IsOptional()
-  @IsMongoId({ message: 'Room ID phải có định dạng hợp lệ' })
-  room_id?: string;
+  icon_url?: string;
 }

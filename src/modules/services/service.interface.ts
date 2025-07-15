@@ -1,27 +1,26 @@
-import { Types } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
-export interface IService {
-  _id: any; // Using any to match mongoose Document type
-  name: string;
-  description?: string;
-  unit: string;
-  default_price: number;
-  is_active: boolean;
-  property_id: Types.ObjectId;
-  room_id?: Types.ObjectId;
-  isDeleted: boolean;
-  created_at: Date;
-  updated_at: Date;
-  createdBy?: Types.ObjectId;
-  updatedBy?: Types.ObjectId;
-  deletedBy?: Types.ObjectId;
-  deletedAt?: Date;
+export interface ServiceInterface extends Document {
+  readonly _id: Types.ObjectId;
+  readonly name: string;
+  readonly description?: string;
+  readonly unit: string;
+  readonly default_price: number;
+  readonly is_active: boolean;
+  readonly isDeleted: boolean;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+  readonly createdBy?: Types.ObjectId;
+  readonly updatedBy?: Types.ObjectId;
+  readonly deletedBy?: Types.ObjectId;
+  readonly deletedAt?: Date;
 }
 
 export interface PaginatedServices {
-  data: IService[];
-  total: number;
-  page: number;
-  limit: number;
+  services: ServiceInterface[];
+  totalCount: number;
+  currentPage: number;
   totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
 }

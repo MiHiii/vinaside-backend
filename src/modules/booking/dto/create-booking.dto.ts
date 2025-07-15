@@ -7,6 +7,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateBookingDto {
   @IsMongoId()
@@ -27,11 +28,13 @@ export class CreateBookingDto {
 
   @IsInt()
   @Min(1)
+  @Type(() => Number)
   guests: number;
 
   @IsInt()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   infants?: number = 0;
 
   @IsString()

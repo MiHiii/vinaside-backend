@@ -12,15 +12,13 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SocketMessageDto } from './dto/socket-message.dto';
 import { MessageStatus, Message } from './schemas/message.schema';
-import {
-  ConnectedUser,
-  FormattedMessage,
-} from './interfaces/message.interface';
+import { ConnectedUser } from './interfaces/message.interface';
 import {
   extractUserIdFromAuth,
   handleSocketError,
   buildUserRoom,
 } from './utils/message.util';
+import { Types } from 'mongoose';
 
 @WebSocketGateway({
   cors: {
@@ -125,8 +123,9 @@ export class MessagesGateway
   }
 
   // Method public để emit message từ controller
-  emitNewMessage(formattedMessage: FormattedMessage, receiverId: string): void {
+  emitNewMessage(formattedMessage: unknown, receiverId: string): void {
     const receiverRoom = buildUserRoom(receiverId);
+
     this.server.to(receiverRoom).emit('new_message', formattedMessage);
     this.logger.log(`Emitted new_message to ${receiverRoom}`);
   }
@@ -134,9 +133,44 @@ export class MessagesGateway
   // Method public để emit reaction update
   emitReactionUpdate(message: Message, receiverId: string): void {
     const receiverRoom = buildUserRoom(receiverId);
+
+    // Format reactions với emoji mapping
+    const emojiMap = {
+      like: '👍',
+      love: '❤️',
+      laugh: '😂',
+      wow: '😮',
+      sad: '😢',
+      angry: '😡',
+    };
+
+    const formattedReactions = message.reactions.map((reaction) => {
+      // Type assertion with proper interface
+      const populatedUser = reaction.user_id as unknown as {
+        _id?: Types.ObjectId;
+        username?: string;
+        name?: string;
+        avatar_url?: string;
+      };
+
+      return {
+        userId:
+          populatedUser?._id?.toString() ||
+          (reaction.user_id as unknown as Types.ObjectId)?.toString() ||
+          'unknown',
+        username:
+          populatedUser?.username || populatedUser?.name || 'Unknown User',
+        avatar_url: populatedUser?.avatar_url || null,
+        type: reaction.type,
+        emoji: emojiMap[reaction.type] || '👍',
+        created_at:
+          reaction.created_at?.toISOString() || new Date().toISOString(),
+      };
+    });
+
     this.server.to(receiverRoom).emit('reaction_update', {
       messageId: message._id?.toString(),
-      reactions: message.reactions || [],
+      reactions: formattedReactions,
       timestamp: new Date().toISOString(),
     });
     this.logger.log(`Emitted reaction_update to ${receiverRoom}`);

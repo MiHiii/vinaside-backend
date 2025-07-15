@@ -25,6 +25,7 @@ import { RequirePermission } from '../../decorators/require-permission.decorator
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from './schemas/booking.schema';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
@@ -44,7 +45,7 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Booking Management')
 @Controller('bookings')
-@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard, RolesGuard)
 @ApiBearerAuth()
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}

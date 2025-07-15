@@ -128,6 +128,23 @@ export class UsersController {
   }
 
   @RequirePermission('user.edit')
+  @Patch('me')
+  @ApiOperation({ summary: 'Cập nhật thông tin cá nhân (user tự cập nhật)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin cá nhân được cập nhật',
+  })
+  @ResponseMessage('Cập nhật thông tin cá nhân thành công.')
+  updateMe(
+    @Body() updateUserDto: UpdateUserDto,
+    @Request() req: RequestWithUser,
+  ): Promise<ApiResponse<any>> {
+    const userId = req.user._id;
+    console.log('PATCH /users/me', { userId, updateUserDto });
+    return this.usersService.updatePartial(userId, updateUserDto, req.user);
+  }
+
+  @RequirePermission('user.edit')
   @Patch(':id')
   @ApiOperation({ summary: 'Cập nhật một phần thông tin người dùng' })
   @ApiResponse({

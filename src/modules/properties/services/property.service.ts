@@ -497,9 +497,9 @@ export class PropertyService {
     );
     const chartData: PropertyChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
-        revenue: 0,
-        bookings: 0,
-        nights: 0,
+        revenue: 100,
+        bookings: 30,
+        nights: 10,
       };
       return {
         label: labelFn(label),
