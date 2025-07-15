@@ -25,6 +25,24 @@ export class UsersService {
 
     // Extract pagination options from queryDto
     const { page = 1, limit = 10, sort, select, ...filters } = queryDto;
+
+    // 🔥 FIX: Workaround cho boolean query issue - dùng $ne thay vị isDeleted: false
+    const finalFilters: Record<string, any> = { ...filters }; // MongoDB query object
+
+    // Remove undefined properties first
+    Object.keys(finalFilters).forEach((key) => {
+      if (finalFilters[key] === undefined) {
+        delete finalFilters[key];
+      }
+    });
+
+    // Apply isDeleted workaround
+    if (!('isDeleted' in finalFilters)) {
+      finalFilters.isDeleted = { $ne: true }; // Thay vì false, dùng $ne: true
+    } else if (finalFilters.isDeleted === false) {
+      finalFilters.isDeleted = { $ne: true }; // 🔥 WORKAROUND: Replace false with $ne: true
+    }
+
     const options = {
       page,
       limit,
@@ -32,7 +50,7 @@ export class UsersService {
       select: select || '',
     };
 
-    const result = await this.userRepo.findAll(filters, options);
+    const result = await this.userRepo.findAll(finalFilters, options);
 
     return {
       data: result.data,

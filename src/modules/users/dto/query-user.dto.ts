@@ -49,7 +49,12 @@ export class QueryUserDto {
   @ApiProperty({ required: false, description: 'Trạng thái xác minh email' })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (typeof value === 'boolean') return value;
+    return undefined; // Return undefined for invalid values
+  })
   is_verified?: boolean;
 
   @ApiProperty({
@@ -58,7 +63,12 @@ export class QueryUserDto {
   })
   @IsOptional()
   @IsBoolean()
-  @Transform(({ value }) => value === 'true')
+  @Transform(({ value }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    if (typeof value === 'boolean') return value;
+    return undefined; // Return undefined for invalid values
+  })
   isDeleted?: boolean;
 
   @IsOptional()
