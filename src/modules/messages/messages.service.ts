@@ -15,11 +15,7 @@ import { Message, MessageStatus, ReactionType } from './schemas/message.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { MessagesGateway } from './messages.gateway';
 import { removeUndefinedObject } from '../../utils/common.util';
-import {
-  extractMessageId,
-  isValidObjectId,
-  createRealtimeMessage,
-} from './utils/message.util';
+import { extractMessageId, isValidObjectId } from './utils/message.util';
 import {
   ReplyToMessage,
   UserProfileResponse,
@@ -259,7 +255,7 @@ export class MessagesService {
     }
 
     // Format reactions với emoji
-    return this.formatReactionResponse(message) as unknown as Message;
+    return this.formatReactionResponse(message) as Message;
   }
 
   async findConversation(
@@ -950,7 +946,13 @@ export class MessagesService {
     };
 
     const formattedReactions = message.reactions.map((reaction) => {
-      const populatedUser = reaction.user_id as any;
+      // Type assertion with proper interface
+      const populatedUser = reaction.user_id as unknown as {
+        _id?: Types.ObjectId;
+        username?: string;
+        name?: string;
+        avatar_url?: string;
+      };
 
       return {
         userId:
@@ -970,13 +972,24 @@ export class MessagesService {
     // Format reply message if exists
     let formattedReply: ReplyToMessage | null = null;
     if (message.reply_to_message_id) {
-      const replyMessage = message.reply_to_message_id as any;
+      // Type assertion with proper interface
+      const replyMessage = message.reply_to_message_id as unknown as {
+        _id?: Types.ObjectId;
+        content?: string;
+        sender_id?: {
+          _id?: Types.ObjectId;
+          name?: string;
+          username?: string;
+        };
+        sent_at?: Date;
+      };
+
       formattedReply = {
         message_id: replyMessage._id?.toString() || '',
         content: replyMessage.content || '',
         sender_id:
           replyMessage.sender_id?._id?.toString() ||
-          replyMessage.sender_id?.toString() ||
+          (replyMessage.sender_id as unknown as Types.ObjectId)?.toString() ||
           '',
         sender_name:
           replyMessage.sender_id?.name ||
@@ -986,10 +999,10 @@ export class MessagesService {
       };
     }
 
-    const messageObject = message.toObject();
+    const messageObject = message.toObject() as Record<string, unknown>;
     return {
       ...messageObject,
-      _id: messageObject._id.toString(),
+      _id: (messageObject._id as Types.ObjectId).toString(),
       reactions: formattedReactions,
       reply_to: formattedReply,
       reply_to_message_id: undefined, // Remove this to avoid duplication
