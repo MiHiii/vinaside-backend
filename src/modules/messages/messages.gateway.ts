@@ -125,8 +125,12 @@ export class MessagesGateway
   }
 
   // Method public để emit message từ controller
-  emitNewMessage(formattedMessage: FormattedMessage, receiverId: string): void {
+  emitNewMessage(
+    formattedMessage: FormattedMessage | unknown,
+    receiverId: string,
+  ): void {
     const receiverRoom = buildUserRoom(receiverId);
+
     this.server.to(receiverRoom).emit('new_message', formattedMessage);
     this.logger.log(`Emitted new_message to ${receiverRoom}`);
   }
@@ -134,9 +138,37 @@ export class MessagesGateway
   // Method public để emit reaction update
   emitReactionUpdate(message: Message, receiverId: string): void {
     const receiverRoom = buildUserRoom(receiverId);
+
+    // Format reactions với emoji mapping
+    const emojiMap = {
+      like: '👍',
+      love: '❤️',
+      laugh: '😂',
+      wow: '😮',
+      sad: '😢',
+      angry: '😡',
+    };
+
+    const formattedReactions = message.reactions.map((reaction) => {
+      const populatedUser = reaction.user_id as any;
+      return {
+        userId:
+          populatedUser?._id?.toString() ||
+          reaction.user_id?.toString() ||
+          'unknown',
+        username:
+          populatedUser?.username || populatedUser?.name || 'Unknown User',
+        avatar_url: populatedUser?.avatar_url || null,
+        type: reaction.type,
+        emoji: emojiMap[reaction.type] || '👍',
+        created_at:
+          reaction.created_at?.toISOString() || new Date().toISOString(),
+      };
+    });
+
     this.server.to(receiverRoom).emit('reaction_update', {
       messageId: message._id?.toString(),
-      reactions: message.reactions || [],
+      reactions: formattedReactions,
       timestamp: new Date().toISOString(),
     });
     this.logger.log(`Emitted reaction_update to ${receiverRoom}`);
