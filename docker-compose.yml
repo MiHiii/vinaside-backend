@@ -10,7 +10,7 @@ services:
     ports:
       - 27020:27017
     volumes:
-      - mongodb_data_container:/data/db
+      - mongodb_data:/data/db
     restart: unless-stopped
 
   redis:
@@ -20,18 +20,28 @@ services:
       - 6380:6379
     restart: unless-stopped
 
-  file-server:
-    image: node:22
-    container_name: file-server
-    working_dir: /app
-    volumes:
-      - ./uploads:/app/uploads
-      - ./server.js:/app/server.js
+  backend:
+    build: ./backend
+    container_name: vinaside-backend
+    env_file:
+      - ./backend/.env
     ports:
-      - 3000:3000
-    command: >
-      sh -c "npm install express multer && node server.js"
+      - 8080:8080
+    depends_on:
+      - mongodb
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: vinaside-frontend
+    env_file:
+      - ./frontend/.env
+    ports:
+      - 5173:5173
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:
-  mongodb_data_container:
+  mongodb_data:

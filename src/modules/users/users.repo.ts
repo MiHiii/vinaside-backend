@@ -61,7 +61,7 @@ export class UserRepo {
    * Tìm tất cả người dùng với phân trang và lọc
    */
   async findAll(
-    query: FilterQuery<UserDocument> = {},
+    query: FilterQuery<User> = {},
     options: {
       page?: number;
       limit?: number;
