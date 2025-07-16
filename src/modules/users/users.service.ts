@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserDocument } from './schemas/user.schema';
@@ -233,6 +237,12 @@ export class UsersService {
    * Tạo người dùng mới
    */
   async create(createUserDto: CreateUserDto): Promise<UserDocument> {
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await this.userRepo.findByEmail(createUserDto.email);
+    if (existingUser) {
+      throw new ConflictException('Email đã tồn tại trong hệ thống');
+    }
+
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
     // Prepare data for database
     const dataForDB = {
