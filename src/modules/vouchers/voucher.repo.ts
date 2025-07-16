@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, FilterQuery } from 'mongoose';
+import { Model, FilterQuery, Types } from 'mongoose';
 import { Voucher } from './schemas/voucher.schema';
+import { VoucherUsage } from './schemas/voucher-usage.schema';
 import { BaseRepo } from '../../database/repo/base.repo';
 
 @Injectable()
@@ -9,6 +10,8 @@ export class VoucherRepo extends BaseRepo<Voucher> {
   constructor(
     @InjectModel(Voucher.name)
     private readonly voucherModel: Model<Voucher>,
+    @InjectModel(VoucherUsage.name)
+    private readonly voucherUsageModel: Model<VoucherUsage>,
   ) {
     super(voucherModel);
   }
@@ -445,5 +448,112 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       },
     };
     /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+  }
+
+  /**
+   * Kiểm tra số lần user đã sử dụng voucher
+   */
+  async getUserUsageCount(voucherId: string, userId: string): Promise<number> {
+    return this.voucherUsageModel.countDocuments({
+      voucher_id: new Types.ObjectId(voucherId),
+      user_id: new Types.ObjectId(userId),
+    });
+  }
+
+  /**
+   * Lưu lại việc sử dụng voucher của user
+   */
+  async trackVoucherUsage(
+    voucherId: string,
+    userId: string,
+    bookingId: string,
+    discountAmount: number,
+    orderAmount: number,
+    createdBy?: string,
+  ): Promise<VoucherUsage> {
+    const voucherUsage = new this.voucherUsageModel({
+      voucher_id: new Types.ObjectId(voucherId),
+      user_id: new Types.ObjectId(userId),
+      booking_id: new Types.ObjectId(bookingId),
+      discount_amount: discountAmount,
+      order_amount: orderAmount,
+      used_at: new Date(),
+      createdBy: createdBy ? new Types.ObjectId(createdBy) : undefined,
+    });
+
+    return voucherUsage.save();
+  }
+
+  /**
+   * Lấy lịch sử sử dụng voucher của user
+   */
+  async getUserUsageHistory(
+    voucherId: string,
+    userId: string,
+  ): Promise<VoucherUsage[]> {
+    return this.voucherUsageModel
+      .find({
+        voucher_id: new Types.ObjectId(voucherId),
+        user_id: new Types.ObjectId(userId),
+      })
+      .sort({ used_at: -1 })
+      .populate('booking_id', 'checkInDate check_out_date final_amount')
+      .exec();
+  }
+
+  /**
+   * Lấy tổng số lần voucher đã được sử dụng bởi các user khác nhau
+   */
+  async getVoucherUsageStats(voucherId: string): Promise<{
+    totalUsage: number;
+    uniqueUsers: number;
+    averageUsagePerUser: number;
+  }> {
+    const stats = await this.voucherUsageModel.aggregate([
+      {
+        $match: {
+          voucher_id: new Types.ObjectId(voucherId),
+        },
+      },
+      {
+        $group: {
+          _id: '$user_id',
+          usageCount: { $sum: 1 },
+          totalDiscount: { $sum: '$discount_amount' },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalUsage: { $sum: '$usageCount' },
+          uniqueUsers: { $sum: 1 },
+          averageUsagePerUser: { $avg: '$usageCount' },
+        },
+      },
+    ]);
+
+    const result = stats[0] as
+      | {
+          totalUsage: number;
+          uniqueUsers: number;
+          averageUsagePerUser: number;
+        }
+      | undefined;
+
+    return result || { totalUsage: 0, uniqueUsers: 0, averageUsagePerUser: 0 };
+  }
+
+  /**
+   * Kiểm tra xem user có đang sử dụng voucher cho booking cụ thể không
+   */
+  async isVoucherUsedForBooking(
+    voucherId: string,
+    bookingId: string,
+  ): Promise<boolean> {
+    const count = await this.voucherUsageModel.countDocuments({
+      voucher_id: new Types.ObjectId(voucherId),
+      booking_id: new Types.ObjectId(bookingId),
+    });
+    return count > 0;
   }
 }
