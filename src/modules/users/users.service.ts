@@ -6,6 +6,7 @@ import { QueryUserDto } from './dto/query-user.dto';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { UserRepo } from './users.repo';
 import { compare } from 'bcryptjs';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
@@ -112,7 +113,7 @@ export class UsersService {
       throw new NotFoundException('Staff không thể tạo admin user');
     }
 
-    const user = await this.userRepo.create(createUserDto);
+    const user = await this.create(createUserDto); // Gọi method create để hash password
     return { data: user };
   }
 
@@ -232,7 +233,20 @@ export class UsersService {
    * Tạo người dùng mới
    */
   async create(createUserDto: CreateUserDto): Promise<UserDocument> {
-    return this.userRepo.create(createUserDto);
+    const passwordHash = await bcrypt.hash(createUserDto.password, 10);
+    // Prepare data for database
+    const dataForDB = {
+      name: createUserDto.name,
+      email: createUserDto.email,
+      phone: createUserDto.phone,
+      avatar_url: createUserDto.avatar_url,
+      role: createUserDto.role,
+      language: createUserDto.language,
+      is_verified: createUserDto.is_verified,
+      password_hash: passwordHash,
+    };
+    const result = await this.userRepo.create(dataForDB);
+    return result;
   }
 
   /**

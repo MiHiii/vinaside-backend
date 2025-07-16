@@ -2,9 +2,9 @@ import { PartialType, OmitType } from '@nestjs/mapped-types';
 import { CreateUserDto } from './create-user.dto';
 import { IsBoolean, IsOptional, IsString, Length } from 'class-validator';
 
-// Loại bỏ các trường không được phép cập nhật: email và password_hash
+// Loại bỏ các trường không được phép cập nhật: email và password
 export class UpdateUserDto extends PartialType(
-  OmitType(CreateUserDto, ['email', 'password_hash'] as const),
+  OmitType(CreateUserDto, ['email', 'password'] as const),
 ) {
   @IsOptional()
   @IsString({ message: 'Tên phải là một chuỗi hợp lệ' })

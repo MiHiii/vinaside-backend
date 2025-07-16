@@ -19,7 +19,8 @@ export class CreateUserDto {
 
   @IsNotEmpty()
   @IsString()
-  password_hash: string;
+  @Length(6, 100, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
+  password: string;
 
   @IsNotEmpty()
   @IsString()
@@ -33,7 +34,7 @@ export class CreateUserDto {
   @IsEnum(['guest', 'staff', 'admin'], {
     message: 'Vai trò phải là một trong các giá trị: guest, staff, admin',
   })
-  role?: string = 'guest';
+  role?: string = 'staff';
 
   @IsOptional()
   @IsEnum(['vi', 'en'], {

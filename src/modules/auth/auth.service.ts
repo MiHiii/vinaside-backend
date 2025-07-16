@@ -98,12 +98,12 @@ export class AuthService {
     }
 
     // Nếu chưa tồn tại => tạo mới
-    const hash = await bcryptjs.hash(dto.password, 10);
     const newUser = await this.usersService.create({
       name: dto.name,
       email: dto.email,
       phone: dto.phone,
-      password_hash: hash,
+      password: dto.password, // users.service sẽ tự hash password
+      role: 'guest', // Người đăng ký mặc định là guest
       is_verified: false,
     });
 

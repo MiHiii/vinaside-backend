@@ -281,6 +281,7 @@ export class VoucherService {
     totalAmount: number,
     listingId?: string,
     propertyId?: string,
+    userId?: string,
   ): Promise<VoucherValidationResult> {
     const voucher = await this.voucherRepo.findByCode(code);
 
@@ -310,6 +311,20 @@ export class VoucherService {
         valid: false,
         message: 'Mã voucher đã hết lượt sử dụng',
       };
+    }
+
+    // Kiểm tra giới hạn sử dụng per user
+    if (userId && voucher.max_uses_per_user && voucher.max_uses_per_user > 0) {
+      const userUsageCount = await this.voucherRepo.getUserUsageCount(
+        (voucher._id as any).toString(),
+        userId,
+      );
+      if (userUsageCount >= voucher.max_uses_per_user) {
+        return {
+          valid: false,
+          message: `Bạn đã sử dụng voucher này ${voucher.max_uses_per_user} lần (tối đa)`,
+        };
+      }
     }
 
     // Kiểm tra giá trị đơn hàng tối thiểu
@@ -354,14 +369,69 @@ export class VoucherService {
   }
 
   /**
-   * Sử dụng voucher (tăng uses_count)
+   * Sử dụng voucher (tăng uses_count và track usage)
    */
-  async useVoucher(voucherId: string): Promise<Voucher> {
+  async useVoucher(
+    voucherId: string,
+    userId?: string,
+    bookingId?: string,
+    discountAmount?: number,
+    orderAmount?: number,
+  ): Promise<Voucher> {
     const voucher = await this.voucherRepo.incrementUsesCount(voucherId);
     if (!voucher) {
       throw new NotFoundException('Không tìm thấy voucher');
     }
+
+    // Track usage nếu có đầy đủ thông tin
+    if (
+      userId &&
+      bookingId &&
+      discountAmount !== undefined &&
+      orderAmount !== undefined
+    ) {
+      await this.voucherRepo.trackVoucherUsage(
+        voucherId,
+        userId,
+        bookingId,
+        discountAmount,
+        orderAmount,
+        userId, // createdBy
+      );
+    }
+
     return voucher;
+  }
+
+  /**
+   * Lấy lịch sử sử dụng voucher của user
+   */
+  async getUserVoucherHistory(
+    voucherId: string,
+    userId: string,
+  ): Promise<any[]> {
+    return this.voucherRepo.getUserUsageHistory(voucherId, userId);
+  }
+
+  /**
+   * Lấy thống kê sử dụng voucher
+   */
+  async getVoucherUsageStats(voucherId: string): Promise<{
+    totalUsage: number;
+    uniqueUsers: number;
+    averageUsagePerUser: number;
+  }> {
+    return this.voucherRepo.getVoucherUsageStats(voucherId);
+  }
+
+  /**
+   * Kiểm tra voucher có được sử dụng cho booking cụ thể không
+   */
+  async isVoucherUsedForBooking(
+    voucherId: string,
+    bookingId: string,
+  ): Promise<boolean> {
+    return this.voucherRepo.isVoucherUsedForBooking(voucherId, bookingId);
   }
 
   /**

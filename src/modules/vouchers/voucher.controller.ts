@@ -78,7 +78,7 @@ export class VoucherController {
   @ApiOperation({
     summary: 'Kiểm tra tính hợp lệ của voucher',
     description:
-      'Kiểm tra voucher có hợp lệ không, bao gồm điều kiện giá trị đơn hàng tối thiểu',
+      'Kiểm tra voucher có hợp lệ không, bao gồm điều kiện giá trị đơn hàng tối thiểu và giới hạn sử dụng per user',
   })
   @ApiResponse({ status: 200, description: 'Thông tin voucher hợp lệ' })
   @ResponseMessage('Kiểm tra voucher thành công')
@@ -87,16 +87,22 @@ export class VoucherController {
     @Query('total_amount') totalAmount: string,
     @Query('listing_id') listingId?: string,
     @Query('property_id') propertyId?: string,
+    @Request() req?: any,
   ) {
     const amount = parseFloat(totalAmount);
     if (isNaN(amount) || amount <= 0) {
       throw new BadRequestException('Tổng tiền phải là số dương hợp lệ');
     }
+
+    // Lấy userId từ request nếu user đã đăng nhập
+    const userId = req?.user?._id;
+
     return this.voucherService.validateVoucher(
       code,
       amount,
       listingId,
       propertyId,
+      userId,
     );
   }
 
@@ -268,5 +274,56 @@ export class VoucherController {
   @ResponseMessage('Lấy thông tin min_order_value thành công')
   getVoucherMinOrderInfo(@Param('id') id: string) {
     return this.voucherService.getVoucherMinOrderInfo(id);
+  }
+
+  @Get(':id/usage-history/:userId')
+  @RequirePermission('booking.view')
+  @ApiOperation({
+    summary: 'Lấy lịch sử sử dụng voucher của user',
+    description: 'Trả về lịch sử sử dụng voucher của một user cụ thể',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lịch sử sử dụng voucher của user',
+  })
+  @ResponseMessage('Lấy lịch sử sử dụng voucher thành công')
+  getUserVoucherHistory(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    return this.voucherService.getUserVoucherHistory(id, userId);
+  }
+
+  @Get(':id/usage-stats')
+  @RequirePermission('booking.view')
+  @ApiOperation({
+    summary: 'Lấy thống kê sử dụng voucher',
+    description: 'Trả về thống kê tổng quan về việc sử dụng voucher',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê sử dụng voucher',
+  })
+  @ResponseMessage('Lấy thống kê sử dụng voucher thành công')
+  getVoucherUsageStats(@Param('id') id: string) {
+    return this.voucherService.getVoucherUsageStats(id);
+  }
+
+  @Get(':id/check-booking/:bookingId')
+  @RequirePermission('booking.view')
+  @ApiOperation({
+    summary: 'Kiểm tra voucher có được sử dụng cho booking cụ thể không',
+    description: 'Kiểm tra xem voucher đã được sử dụng cho booking này chưa',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Kết quả kiểm tra voucher cho booking',
+  })
+  @ResponseMessage('Kiểm tra voucher cho booking thành công')
+  checkVoucherForBooking(
+    @Param('id') id: string,
+    @Param('bookingId') bookingId: string,
+  ) {
+    return this.voucherService.isVoucherUsedForBooking(id, bookingId);
   }
 }

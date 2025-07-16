@@ -115,7 +115,7 @@ export class ListingService {
   async findAll(queryDto: QueryListingDto): Promise<PaginatedListings> {
     const {
       page = 1,
-      limit = 10,
+      limit = 14,
       sortBy = 'created_at',
       sortOrder = 'desc',
       ...filters

@@ -6,6 +6,7 @@ export interface IVoucher extends Document {
   discount_percent: number;
   max_uses: number;
   uses_count: number;
+  max_uses_per_user?: number;
   expiration_date: Date;
   is_active: boolean;
   description?: string;
