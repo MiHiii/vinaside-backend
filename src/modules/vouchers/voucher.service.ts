@@ -316,7 +316,7 @@ export class VoucherService {
     // Kiểm tra giới hạn sử dụng per user
     if (userId && voucher.max_uses_per_user && voucher.max_uses_per_user > 0) {
       const userUsageCount = await this.voucherRepo.getUserUsageCount(
-        (voucher._id as any).toString(),
+        String(voucher._id),
         userId,
       );
       if (userUsageCount >= voucher.max_uses_per_user) {

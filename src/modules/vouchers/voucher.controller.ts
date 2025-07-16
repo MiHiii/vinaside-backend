@@ -33,6 +33,10 @@ interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+interface RequestWithOptionalUser extends Request {
+  user?: JwtPayload;
+}
+
 @ApiTags('Vouchers')
 @Controller('vouchers')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -87,7 +91,7 @@ export class VoucherController {
     @Query('total_amount') totalAmount: string,
     @Query('listing_id') listingId?: string,
     @Query('property_id') propertyId?: string,
-    @Request() req?: any,
+    @Request() req?: RequestWithOptionalUser,
   ) {
     const amount = parseFloat(totalAmount);
     if (isNaN(amount) || amount <= 0) {

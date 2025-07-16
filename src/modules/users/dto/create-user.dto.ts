@@ -34,7 +34,7 @@ export class CreateUserDto {
   @IsEnum(['guest', 'staff', 'admin'], {
     message: 'Vai trò phải là một trong các giá trị: guest, staff, admin',
   })
-  role?: string = 'staff';
+  role?: string = 'guest';
 
   @IsOptional()
   @IsEnum(['vi', 'en'], {

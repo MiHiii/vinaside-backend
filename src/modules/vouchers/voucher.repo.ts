@@ -532,9 +532,15 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       },
     ]);
 
-    return (
-      stats[0] || { totalUsage: 0, uniqueUsers: 0, averageUsagePerUser: 0 }
-    );
+    const result = stats[0] as
+      | {
+          totalUsage: number;
+          uniqueUsers: number;
+          averageUsagePerUser: number;
+        }
+      | undefined;
+
+    return result || { totalUsage: 0, uniqueUsers: 0, averageUsagePerUser: 0 };
   }
 
   /**
