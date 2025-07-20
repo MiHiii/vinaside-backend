@@ -442,6 +442,40 @@ export class VoucherService {
   }
 
   /**
+   * Lấy danh sách vouchers hợp lệ cho user (lọc per user)
+   */
+  async getValidVouchersForUser(
+    userId?: string,
+    amount?: number,
+  ): Promise<Voucher[]> {
+    console.log('[Voucher BE] amount nhận được:', amount);
+    const allValid = await this.voucherRepo.getValidVouchers();
+    if (!userId) return allValid;
+    const result: Voucher[] = [];
+    for (const voucher of allValid) {
+      if (voucher.max_uses_per_user) {
+        const used = await this.voucherRepo.getUserUsageCount(
+          String(voucher._id),
+          userId,
+        );
+        if (used >= voucher.max_uses_per_user) continue;
+      }
+      if (
+        amount &&
+        voucher.min_order_value &&
+        amount < voucher.min_order_value
+      ) {
+        console.log(
+          `[Voucher BE] Bỏ voucher ${voucher.code} vì min_order_value=${voucher.min_order_value} > amount=${amount}`,
+        );
+        continue;
+      }
+      result.push(voucher);
+    }
+    return result;
+  }
+
+  /**
    * Lấy voucher với thông tin chi tiết về property và phòng
    */
   async getVoucherWithRooms(id: string): Promise<{

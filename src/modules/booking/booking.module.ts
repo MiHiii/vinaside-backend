@@ -7,6 +7,8 @@ import { BookingRepo } from './booking.repo';
 import { ListingModule } from '../listing/listing.module';
 import { PropertyModule } from '../properties/property.module';
 import { MailModule } from '../mail/mail.module';
+import { VoucherModule } from '../vouchers/voucher.module';
+import { ServicesModule } from '../services/services.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { MailModule } from '../mail/mail.module';
     ListingModule,
     PropertyModule,
     MailModule,
+    VoucherModule,
+    ServicesModule,
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingRepo],

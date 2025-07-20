@@ -43,9 +43,9 @@ export class Voucher extends Document {
   @Prop({
     type: Number,
     required: false,
-    default: 3,
+    default: 1,
     min: 1,
-    max: 10,
+    max: 1,
   })
   max_uses_per_user?: number;
 

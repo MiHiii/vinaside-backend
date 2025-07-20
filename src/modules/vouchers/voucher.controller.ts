@@ -69,12 +69,16 @@ export class VoucherController {
   }
 
   @Get('valid')
-  @Public()
   @ApiOperation({ summary: 'Lấy danh sách vouchers hợp lệ cho khách hàng' })
   @ApiResponse({ status: 200, description: 'Danh sách vouchers hợp lệ' })
   @ResponseMessage('Lấy danh sách vouchers hợp lệ thành công')
-  getValidVouchers() {
-    return this.voucherService.getValidVouchers();
+  getValidVouchers(
+    @Request() req: RequestWithUser,
+    @Query('total_amount') totalAmount?: string,
+  ) {
+    const userId = req.user._id;
+    const amount = totalAmount ? parseFloat(totalAmount) : undefined;
+    return this.voucherService.getValidVouchersForUser(userId, amount);
   }
 
   @Get('validate/:code')

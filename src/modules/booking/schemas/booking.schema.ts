@@ -120,6 +120,14 @@ export class Booking extends Document {
   @Prop({ type: MongooseSchema.Types.ObjectId })
   cancelled_by?: Types.ObjectId;
 
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Voucher',
+    required: false,
+    index: true,
+  })
+  voucher_id?: Types.ObjectId;
+
   @Prop({ default: false })
   isDeleted: boolean;
 

@@ -291,7 +291,7 @@ export class AmenitiesRepo {
     const query: FilterQuery<Amenity> = {
       isDeleted: { $ne: true },
       is_active: true,
-      default_checked: true,
+      // default_checked: true,
     };
 
     // Text search

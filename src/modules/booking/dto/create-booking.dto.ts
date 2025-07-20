@@ -40,4 +40,8 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   specialRequests?: string;
+
+  @IsMongoId()
+  @IsOptional()
+  voucher_id?: string;
 }
