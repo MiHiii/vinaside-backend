@@ -3,17 +3,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
-import {
-  RbacService,
-  CustomRoleResponse,
-} from '../../modules/auth/services/rbac.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    private configService: ConfigService,
-    private rbacService: RbacService,
-  ) {
+  constructor(private configService: ConfigService) {
     const jwtSecret = configService.get<string>('JWT_ACCESS_SECRET');
     if (!jwtSecret) {
       throw new Error(
@@ -27,45 +20,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: JwtPayload): Promise<JwtPayload> {
-    const { _id, email, name, role } = payload;
+  validate(payload: JwtPayload): JwtPayload {
+    const { _id, email, name, role, customRoles } = payload;
 
-    // Initialize with default arrays
-    let permissions: string[] = [];
-    let customRoles: string[] = [];
-
-    // Load user permissions and roles if they are staff (admin bypasses anyway)
-    if (role === 'staff') {
-      try {
-        // Load permissions and custom roles in parallel
-        const [userPermissions, userCustomRoles]: [
-          string[],
-          CustomRoleResponse[],
-        ] = await Promise.all([
-          this.rbacService.getUserPermissions(_id),
-          this.rbacService.getUserCustomRoles(_id),
-        ]);
-
-        permissions = userPermissions;
-        customRoles = userCustomRoles.map((r) => r.key);
-      } catch (error) {
-        console.error(
-          `Error loading permissions/roles for user ${_id}:`,
-          error,
-        );
-        // Don't throw error, just log and continue with empty arrays
-        permissions = [];
-        customRoles = [];
-      }
-    }
-
+    // Return user info from JWT payload
+    // Note: Permissions are checked real-time, not from JWT
     return {
       _id,
       email,
       name,
       role,
-      permissions,
-      customRoles,
+      customRoles: customRoles || [],
     };
   }
 }

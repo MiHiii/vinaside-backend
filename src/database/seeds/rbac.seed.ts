@@ -41,12 +41,6 @@ export class RbacSeedService {
           description: 'Xóa/khôi phục tài sản',
         },
         {
-          key: 'property.verify',
-          module: 'property',
-          action: 'verify',
-          description: 'Duyệt tài sản hiển thị công khai',
-        },
-        {
           key: 'property.manage_staff',
           module: 'property',
           action: 'manage_staff',
@@ -78,18 +72,6 @@ export class RbacSeedService {
           action: 'delete',
           description: 'Xóa listing',
         },
-        {
-          key: 'listing.verify',
-          module: 'listing',
-          action: 'verify',
-          description: 'Duyệt listing',
-        },
-        {
-          key: 'listing.manage_status',
-          module: 'listing',
-          action: 'manage_status',
-          description: 'Quản lý trạng thái listing (active/inactive)',
-        },
 
         // === BOOKING MANAGEMENT ===
         {
@@ -102,7 +84,7 @@ export class RbacSeedService {
           key: 'booking.create',
           module: 'booking',
           action: 'create',
-          description: 'Tạo booking mới (khách hàng)',
+          description: 'Tạo booking mới',
         },
         {
           key: 'booking.edit',
@@ -111,16 +93,10 @@ export class RbacSeedService {
           description: 'Chỉnh sửa thông tin booking',
         },
         {
-          key: 'booking.cancel',
+          key: 'booking.delete',
           module: 'booking',
-          action: 'cancel',
-          description: 'Hủy booking',
-        },
-        {
-          key: 'booking.confirm',
-          module: 'booking',
-          action: 'confirm',
-          description: 'Xác nhận booking',
+          action: 'delete',
+          description: 'Xóa booking',
         },
         {
           key: 'booking.manage_payment',
@@ -135,6 +111,12 @@ export class RbacSeedService {
           module: 'user',
           action: 'view',
           description: 'Xem thông tin người dùng',
+        },
+        {
+          key: 'user.create',
+          module: 'user',
+          action: 'create',
+          description: 'Tạo người dùng mới',
         },
         {
           key: 'user.edit',
@@ -154,12 +136,6 @@ export class RbacSeedService {
           action: 'manage_roles',
           description: 'Quản lý vai trò người dùng',
         },
-        {
-          key: 'user.view_private_info',
-          module: 'user',
-          action: 'view_private_info',
-          description: 'Xem thông tin cá nhân nhạy cảm',
-        },
 
         // === REVIEW MANAGEMENT ===
         {
@@ -169,16 +145,22 @@ export class RbacSeedService {
           description: 'Xem đánh giá/nhận xét',
         },
         {
-          key: 'review.moderate',
+          key: 'review.create',
           module: 'review',
-          action: 'moderate',
-          description: 'Kiểm duyệt đánh giá',
+          action: 'create',
+          description: 'Tạo đánh giá mới',
+        },
+        {
+          key: 'review.edit',
+          module: 'review',
+          action: 'edit',
+          description: 'Chỉnh sửa đánh giá',
         },
         {
           key: 'review.delete',
           module: 'review',
           action: 'delete',
-          description: 'Xóa đánh giá vi phạm',
+          description: 'Xóa đánh giá',
         },
 
         // === MESSAGE MANAGEMENT ===
@@ -189,67 +171,239 @@ export class RbacSeedService {
           description: 'Xem tin nhắn',
         },
         {
-          key: 'message.moderate',
+          key: 'message.create',
           module: 'message',
-          action: 'moderate',
-          description: 'Kiểm duyệt tin nhắn',
+          action: 'create',
+          description: 'Tạo tin nhắn mới',
         },
         {
-          key: 'message.send_admin',
+          key: 'message.edit',
           module: 'message',
-          action: 'send_admin',
-          description: 'Gửi tin nhắn với quyền admin',
+          action: 'edit',
+          description: 'Chỉnh sửa tin nhắn',
+        },
+        {
+          key: 'message.delete',
+          module: 'message',
+          action: 'delete',
+          description: 'Xóa tin nhắn',
         },
 
         // === NOTIFICATION MANAGEMENT ===
         {
-          key: 'notification.send',
+          key: 'notification.view',
           module: 'notification',
-          action: 'send',
-          description: 'Gửi thông báo',
-        },
-        {
-          key: 'notification.broadcast',
-          module: 'notification',
-          action: 'broadcast',
-          description: 'Gửi thông báo đến nhiều người',
-        },
-
-        // === CONTENT MANAGEMENT ===
-        {
-          key: 'amenity.manage',
-          module: 'amenity',
-          action: 'manage',
-          description: 'Quản lý tiện ích',
-        },
-        {
-          key: 'safety_feature.manage',
-          module: 'safety_feature',
-          action: 'manage',
-          description: 'Quản lý tính năng an toàn',
-        },
-        {
-          key: 'house_rule.manage',
-          module: 'house_rule',
-          action: 'manage',
-          description: 'Quản lý nội quy',
-        },
-
-        // === ANALYTICS & REPORTS ===
-        {
-          key: 'analytics.view',
-          module: 'analytics',
           action: 'view',
-          description: 'Xem báo cáo thống kê',
+          description: 'Xem thông báo',
         },
         {
-          key: 'analytics.export',
-          module: 'analytics',
-          action: 'export',
-          description: 'Xuất báo cáo',
+          key: 'notification.create',
+          module: 'notification',
+          action: 'create',
+          description: 'Tạo thông báo mới',
+        },
+        {
+          key: 'notification.edit',
+          module: 'notification',
+          action: 'edit',
+          description: 'Chỉnh sửa thông báo',
+        },
+        {
+          key: 'notification.delete',
+          module: 'notification',
+          action: 'delete',
+          description: 'Xóa thông báo',
         },
 
-        // === SYSTEM MANAGEMENT ===
+        // === AMENITY MANAGEMENT ===
+        {
+          key: 'amenity.view',
+          module: 'amenity',
+          action: 'view',
+          description: 'Xem tiện ích',
+        },
+        {
+          key: 'amenity.create',
+          module: 'amenity',
+          action: 'create',
+          description: 'Tạo tiện ích mới',
+        },
+        {
+          key: 'amenity.edit',
+          module: 'amenity',
+          action: 'edit',
+          description: 'Chỉnh sửa tiện ích',
+        },
+        {
+          key: 'amenity.delete',
+          module: 'amenity',
+          action: 'delete',
+          description: 'Xóa tiện ích',
+        },
+
+        // === SAFETY FEATURE MANAGEMENT ===
+        {
+          key: 'safety_feature.view',
+          module: 'safety_feature',
+          action: 'view',
+          description: 'Xem tính năng an toàn',
+        },
+        {
+          key: 'safety_feature.create',
+          module: 'safety_feature',
+          action: 'create',
+          description: 'Tạo tính năng an toàn mới',
+        },
+        {
+          key: 'safety_feature.edit',
+          module: 'safety_feature',
+          action: 'edit',
+          description: 'Chỉnh sửa tính năng an toàn',
+        },
+        {
+          key: 'safety_feature.delete',
+          module: 'safety_feature',
+          action: 'delete',
+          description: 'Xóa tính năng an toàn',
+        },
+
+        // === HOUSE RULE MANAGEMENT ===
+        {
+          key: 'house_rule.view',
+          module: 'house_rule',
+          action: 'view',
+          description: 'Xem nội quy',
+        },
+        {
+          key: 'house_rule.create',
+          module: 'house_rule',
+          action: 'create',
+          description: 'Tạo nội quy mới',
+        },
+        {
+          key: 'house_rule.edit',
+          module: 'house_rule',
+          action: 'edit',
+          description: 'Chỉnh sửa nội quy',
+        },
+        {
+          key: 'house_rule.delete',
+          module: 'house_rule',
+          action: 'delete',
+          description: 'Xóa nội quy',
+        },
+
+        // === VOUCHER MANAGEMENT ===
+        {
+          key: 'voucher.view',
+          module: 'voucher',
+          action: 'view',
+          description: 'Xem voucher',
+        },
+        {
+          key: 'voucher.create',
+          module: 'voucher',
+          action: 'create',
+          description: 'Tạo voucher mới',
+        },
+        {
+          key: 'voucher.edit',
+          module: 'voucher',
+          action: 'edit',
+          description: 'Chỉnh sửa voucher',
+        },
+        {
+          key: 'voucher.delete',
+          module: 'voucher',
+          action: 'delete',
+          description: 'Xóa voucher',
+        },
+
+        // === TRANSACTION MANAGEMENT ===
+        {
+          key: 'transaction.view',
+          module: 'transaction',
+          action: 'view',
+          description: 'Xem giao dịch',
+        },
+        {
+          key: 'transaction.create',
+          module: 'transaction',
+          action: 'create',
+          description: 'Tạo giao dịch mới',
+        },
+        {
+          key: 'transaction.edit',
+          module: 'transaction',
+          action: 'edit',
+          description: 'Chỉnh sửa giao dịch',
+        },
+        {
+          key: 'transaction.delete',
+          module: 'transaction',
+          action: 'delete',
+          description: 'Xóa giao dịch',
+        },
+
+        // === WISHLIST MANAGEMENT ===
+        {
+          key: 'wishlist.view',
+          module: 'wishlist',
+          action: 'view',
+          description: 'Xem danh sách yêu thích',
+        },
+        {
+          key: 'wishlist.create',
+          module: 'wishlist',
+          action: 'create',
+          description: 'Tạo danh sách yêu thích mới',
+        },
+        {
+          key: 'wishlist.edit',
+          module: 'wishlist',
+          action: 'edit',
+          description: 'Chỉnh sửa danh sách yêu thích',
+        },
+        {
+          key: 'wishlist.delete',
+          module: 'wishlist',
+          action: 'delete',
+          description: 'Xóa danh sách yêu thích',
+        },
+
+        // === SERVICE MANAGEMENT ===
+        {
+          key: 'service.view',
+          module: 'service',
+          action: 'view',
+          description: 'Xem dịch vụ',
+        },
+        {
+          key: 'service.create',
+          module: 'service',
+          action: 'create',
+          description: 'Tạo dịch vụ mới',
+        },
+        {
+          key: 'service.edit',
+          module: 'service',
+          action: 'edit',
+          description: 'Chỉnh sửa dịch vụ',
+        },
+        {
+          key: 'service.delete',
+          module: 'service',
+          action: 'delete',
+          description: 'Xóa dịch vụ',
+        },
+
+        // === SPECIAL PERMISSIONS ===
+        {
+          key: 'analytics.manage',
+          module: 'analytics',
+          action: 'manage',
+          description: 'Quản lý báo cáo thống kê',
+        },
         {
           key: 'system.manage',
           module: 'system',
@@ -299,12 +453,9 @@ export class RbacSeedService {
             'listing.view',
             'listing.create',
             'listing.edit',
-            'listing.manage_status',
             'booking.view',
-            'booking.confirm',
-            'booking.cancel',
             'user.view',
-            'analytics.view',
+            'analytics.manage',
             'upload.manage',
           ],
         },
@@ -314,15 +465,14 @@ export class RbacSeedService {
           description: 'Chuyên viên xử lý booking và thanh toán',
           permissions: [
             'booking.view',
+            'booking.create',
             'booking.edit',
-            'booking.confirm',
-            'booking.cancel',
             'booking.manage_payment',
             'property.view',
             'listing.view',
             'user.view',
-            'analytics.view',
-            'notification.send',
+            'analytics.manage',
+            'notification.create',
           ],
         },
         {
@@ -331,14 +481,14 @@ export class RbacSeedService {
           description: 'Kiểm duyệt listing, review, tin nhắn',
           permissions: [
             'listing.view',
-            'listing.verify',
+            'listing.edit',
             'property.view',
-            'property.verify',
             'review.view',
-            'review.moderate',
+            'review.edit',
             'review.delete',
             'message.view',
-            'message.moderate',
+            'message.edit',
+            'message.delete',
             'user.view',
           ],
         },
@@ -354,8 +504,8 @@ export class RbacSeedService {
             'property.view',
             'listing.view',
             'message.view',
-            'message.send_admin',
-            'notification.send',
+            'message.create',
+            'notification.create',
             'review.view',
           ],
         },
@@ -368,8 +518,8 @@ export class RbacSeedService {
             'listing.view',
             'booking.view',
             'user.view',
-            'analytics.view',
-            'notification.send',
+            'analytics.manage',
+            'notification.create',
             'upload.manage',
           ],
         },
@@ -378,9 +528,18 @@ export class RbacSeedService {
           name: 'Quản lý Nội dung',
           description: 'Quản lý nội dung trang web, tiện ích, nội quy',
           permissions: [
-            'amenity.manage',
-            'safety_feature.manage',
-            'house_rule.manage',
+            'amenity.view',
+            'amenity.create',
+            'amenity.edit',
+            'amenity.delete',
+            'safety_feature.view',
+            'safety_feature.create',
+            'safety_feature.edit',
+            'safety_feature.delete',
+            'house_rule.view',
+            'house_rule.create',
+            'house_rule.edit',
+            'house_rule.delete',
             'property.view',
             'listing.view',
             'upload.manage',
@@ -392,12 +551,12 @@ export class RbacSeedService {
           name: 'Chuyên viên Phân tích',
           description: 'Phân tích dữ liệu, tạo báo cáo',
           permissions: [
-            'analytics.view',
-            'analytics.export',
+            'analytics.manage',
             'property.view',
             'listing.view',
             'booking.view',
             'user.view',
+            'transaction.view',
           ],
         },
         {
@@ -407,25 +566,24 @@ export class RbacSeedService {
           permissions: [
             'property.view',
             'property.edit',
-            'property.verify',
             'listing.view',
             'listing.edit',
-            'listing.verify',
             'booking.view',
             'booking.edit',
-            'booking.confirm',
-            'booking.cancel',
             'user.view',
+            'user.create',
             'user.edit',
             'user.manage_roles',
             'review.view',
-            'review.moderate',
+            'review.edit',
+            'review.delete',
             'message.view',
-            'message.moderate',
-            'notification.send',
-            'notification.broadcast',
-            'analytics.view',
-            'analytics.export',
+            'message.edit',
+            'message.delete',
+            'notification.view',
+            'notification.create',
+            'notification.edit',
+            'analytics.manage',
             'upload.manage',
           ],
         },

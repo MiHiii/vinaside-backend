@@ -348,9 +348,9 @@ export class HouseRulesRepo {
   }
 
   /**
-   * Lấy house rules cho admin (có thể filter theo is_active, default_checked, includeDeleted)
+   * Lấy house rules với filter nâng cao (có thể filter theo is_active, default_checked, includeDeleted)
    */
-  async findAllForAdmin(
+  async findAllManagement(
     options: {
       page?: number;
       limit?: number;
@@ -449,9 +449,9 @@ export class HouseRulesRepo {
   }
 
   /**
-   * Tìm kiếm house rules cho admin (mặc định search tất cả trạng thái)
+   * Tìm kiếm house rules (mặc định search tất cả trạng thái)
    */
-  async searchAdmin(
+  async searchManagement(
     searchTerm: string,
     options: {
       is_active?: boolean;
@@ -517,9 +517,9 @@ export class HouseRulesRepo {
   }
 
   /**
-   * Tìm house rule theo ID cho admin (mặc định lấy tất cả trạng thái)
+   * Tìm house rule theo ID với options (mặc định lấy tất cả trạng thái)
    */
-  async findByIdForAdmin(
+  async findByIdManagement(
     id: string,
     includeDeleted = true,
   ): Promise<HouseRuleDocument | null> {

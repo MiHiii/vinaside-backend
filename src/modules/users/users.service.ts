@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { AdminCreateUserDto } from '../auth/dto/admin-create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserDocument } from './schemas/user.schema';
 import { QueryUserDto } from './dto/query-user.dto';
@@ -106,19 +108,47 @@ export class UsersService {
   }
 
   /**
-   * Tạo người dùng mới
+   * Admin tạo người dùng mới với custom roles
    */
-  async createUser(
-    createUserDto: CreateUserDto,
-    currentUser: JwtPayload,
-  ): Promise<{ data: UserDocument }> {
-    // Staff restrictions on role assignment
-    if (currentUser.role === 'staff' && createUserDto.role === 'admin') {
-      throw new NotFoundException('Staff không thể tạo admin user');
+  async createUser(createUserDto: AdminCreateUserDto): Promise<UserDocument> {
+    // Kiểm tra email đã tồn tại
+    const existingUser = await this.userRepo.findByEmail(createUserDto.email);
+    if (existingUser) {
+      throw new ConflictException('Email đã tồn tại trong hệ thống');
     }
 
-    const user = await this.create(createUserDto); // Gọi method create để hash password
-    return { data: user };
+    try {
+      const passwordHash = await bcrypt.hash(createUserDto.password, 10);
+
+      // Prepare data for database
+      const dataForDB = {
+        name: createUserDto.name,
+        email: createUserDto.email,
+        phone: createUserDto.phone,
+        avatar_url: createUserDto.avatar_url,
+        role: createUserDto.role || 'staff', // Default to staff for admin-created
+        customRoles: createUserDto.customRoles || [],
+        language: createUserDto.language,
+        is_verified: createUserDto.is_verified ?? true, // Auto-verify admin-created users
+        password_hash: passwordHash,
+      };
+
+      const result = await this.userRepo.create(dataForDB);
+      return result;
+    } catch (error: unknown) {
+      // Handle duplicate key errors (11000)
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 11000
+      ) {
+        throw new ConflictException('Email đã tồn tại trong hệ thống');
+      }
+
+      // Re-throw other errors
+      throw new BadRequestException('Không thể tạo người dùng');
+    }
   }
 
   /**
@@ -234,29 +264,45 @@ export class UsersService {
   }
 
   /**
-   * Tạo người dùng mới
+   * Register người dùng mới (public registration)
    */
-  async create(createUserDto: CreateUserDto): Promise<UserDocument> {
+  async register(createUserDto: CreateUserDto): Promise<UserDocument> {
     // Kiểm tra email đã tồn tại chưa
     const existingUser = await this.userRepo.findByEmail(createUserDto.email);
     if (existingUser) {
       throw new ConflictException('Email đã tồn tại trong hệ thống');
     }
 
-    const passwordHash = await bcrypt.hash(createUserDto.password, 10);
-    // Prepare data for database
-    const dataForDB = {
-      name: createUserDto.name,
-      email: createUserDto.email,
-      phone: createUserDto.phone,
-      avatar_url: createUserDto.avatar_url,
-      role: createUserDto.role,
-      language: createUserDto.language,
-      is_verified: createUserDto.is_verified,
-      password_hash: passwordHash,
-    };
-    const result = await this.userRepo.create(dataForDB);
-    return result;
+    try {
+      const passwordHash = await bcrypt.hash(createUserDto.password, 10);
+      // Prepare data for database
+      const dataForDB = {
+        name: createUserDto.name,
+        email: createUserDto.email,
+        phone: createUserDto.phone,
+        avatar_url: createUserDto.avatar_url,
+        role: createUserDto.role,
+        customRoles: createUserDto.customRoles || [],
+        language: createUserDto.language,
+        is_verified: createUserDto.is_verified,
+        password_hash: passwordHash,
+      };
+      const result = await this.userRepo.create(dataForDB);
+      return result;
+    } catch (error: unknown) {
+      // Handle duplicate key errors (11000)
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 11000
+      ) {
+        throw new ConflictException('Email đã tồn tại trong hệ thống');
+      }
+
+      // Re-throw other errors
+      throw new BadRequestException('Không thể đăng ký người dùng');
+    }
   }
 
   /**

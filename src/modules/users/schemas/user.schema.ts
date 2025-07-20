@@ -14,7 +14,7 @@ export class User {
   @Prop({ required: true })
   password_hash: string;
 
-  @Prop({ required: true })
+  @Prop()
   phone: string;
 
   @Prop()
@@ -22,6 +22,9 @@ export class User {
 
   @Prop({ enum: ['guest', 'staff', 'admin'], default: 'guest' })
   role: string;
+
+  @Prop({ type: [String], default: [] })
+  customRoles: string[];
 
   @Prop({ default: 'vi' })
   language: string;

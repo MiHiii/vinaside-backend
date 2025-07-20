@@ -19,7 +19,7 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { QueryUserDto } from './dto/query-user.dto';
-import { CreateUserDto } from './dto/create-user.dto';
+import { AdminCreateUserDto } from '../auth/dto/admin-create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import {
@@ -107,14 +107,11 @@ export class UsersController {
   @UseGuards(PermissionGuard)
   @RequirePermission('user.edit')
   @Post()
-  @ApiOperation({ summary: 'Tạo người dùng mới' })
+  @ApiOperation({ summary: 'Admin tạo người dùng mới với custom roles' })
   @ApiResponse({ status: 201, description: 'Người dùng được tạo thành công' })
   @ResponseMessage('Tạo người dùng thành công.')
-  create(
-    @Body() createUserDto: CreateUserDto,
-    @Request() req: RequestWithUser,
-  ): Promise<ApiResponse<any>> {
-    return this.usersService.createUser(createUserDto, req.user);
+  create(@Body() createUserDto: AdminCreateUserDto) {
+    return this.usersService.createUser(createUserDto);
   }
 
   @UseGuards(PermissionGuard)
@@ -149,6 +146,7 @@ export class UsersController {
 
   @Roles('guest', 'staff', 'admin')
   @Patch('me')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Cập nhật thông tin cá nhân (user tự cập nhật)' })
   @ApiResponse({
     status: 200,
@@ -159,9 +157,11 @@ export class UsersController {
     @Body() updateUserDto: UpdateUserDto,
     @Request() req: RequestWithUser,
   ): Promise<ApiResponse<any>> {
-    const userId = req.user._id;
-    console.log('PATCH /users/me', { userId, updateUserDto });
-    return this.usersService.updatePartial(userId, updateUserDto, req.user);
+    return this.usersService.updatePartial(
+      req.user._id,
+      updateUserDto,
+      req.user,
+    );
   }
 
   @UseGuards(PermissionGuard)

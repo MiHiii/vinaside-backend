@@ -61,39 +61,34 @@ export class AmenitiesController {
   // =================== PROTECTED ENDPOINTS ===================
 
   @Get()
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.view')
   @ApiOperation({ summary: 'Lấy danh sách tiện ích' })
   @ResponseMessage('Lấy danh sách tiện ích thành công')
-  findAll(@Query() queryDto: QueryAmenityDto, @Request() req: RequestWithUser) {
-    return this.amenitiesService.findAllAdmin(queryDto, req.user);
+  findAll(@Query() queryDto: QueryAmenityDto) {
+    return this.amenitiesService.findAll(queryDto);
   }
 
   @Get('search')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.view')
   @ApiOperation({ summary: 'Tìm kiếm tiện ích' })
   @ResponseMessage('Tìm kiếm tiện ích thành công')
-  search(
-    @Query('query') query: string,
-    @Query() filters: SearchFilters,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.amenitiesService.searchAdmin(query, req.user, filters);
+  search(@Query('query') query: string, @Query() filters: SearchFilters) {
+    return this.amenitiesService.search(query, filters);
   }
 
   @Get(':id')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.view')
   @ApiOperation({ summary: 'Lấy chi tiết tiện ích' })
   @ResponseMessage('Lấy tiện ích thành công')
   findOne(
     @Param('id') id: string,
     @Query('includeDeleted') includeDeleted: boolean = true,
-    @Request() req: RequestWithUser,
   ) {
-    return this.amenitiesService.findOneAdmin(id, req.user, includeDeleted);
+    return this.amenitiesService.findOne(id, includeDeleted);
   }
 
   @Post()
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.create')
   @ApiOperation({ summary: 'Tạo tiện ích mới' })
   @ResponseMessage('Tạo tiện ích thành công')
   create(@Body() createDto: CreateAmenityDto, @Request() req: RequestWithUser) {
@@ -101,7 +96,7 @@ export class AmenitiesController {
   }
 
   @Put(':id')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.edit')
   @ApiOperation({ summary: 'Cập nhật tiện ích' })
   @ResponseMessage('Cập nhật tiện ích thành công')
   update(
@@ -113,7 +108,7 @@ export class AmenitiesController {
   }
 
   @Delete(':id')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.delete')
   @ApiOperation({ summary: 'Xóa tiện ích' })
   @ResponseMessage('Xóa tiện ích thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -121,7 +116,7 @@ export class AmenitiesController {
   }
 
   @Put(':id/restore')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.edit')
   @ApiOperation({ summary: 'Khôi phục tiện ích' })
   @ResponseMessage('Khôi phục tiện ích thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -129,7 +124,7 @@ export class AmenitiesController {
   }
 
   @Put(':id/toggle-status')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.edit')
   @ApiOperation({ summary: 'Toggle trạng thái active/inactive' })
   @ResponseMessage('Toggle trạng thái thành công')
   toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -137,7 +132,7 @@ export class AmenitiesController {
   }
 
   @Put(':id/toggle-default')
-  @RequirePermission('amenity.manage')
+  @RequirePermission('amenity.edit')
   @ApiOperation({ summary: 'Toggle trạng thái default_checked' })
   @ResponseMessage('Toggle default_checked thành công')
   toggleDefaultChecked(

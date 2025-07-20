@@ -26,6 +26,7 @@ import {
 import { ReactionType } from './schemas/message.schema';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { Roles } from '../../decorators/roles.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -49,7 +50,7 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('message.create')
   @ApiOperation({
     summary: 'Gửi tin nhắn mới hoặc reply tin nhắn',
     description:
@@ -69,7 +70,7 @@ export class MessagesController {
   }
 
   @Get()
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('message.view')
   @ApiOperation({ summary: 'Lấy danh sách tin nhắn' })
   @ApiResponse({ status: 200, description: 'Danh sách tin nhắn' })
   @ResponseMessage('Lấy danh sách tin nhắn thành công')
@@ -355,7 +356,7 @@ export class MessagesController {
   // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================
 
   @Get(':id')
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('message.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết tin nhắn' })
   @ApiResponse({ status: 200, description: 'Thông tin tin nhắn' })
   @ResponseMessage('Lấy thông tin tin nhắn thành công')
@@ -364,7 +365,7 @@ export class MessagesController {
   }
 
   @Patch(':id')
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('message.edit')
   @ApiOperation({ summary: 'Cập nhật nội dung tin nhắn' })
   @ApiResponse({
     status: 200,
@@ -389,7 +390,7 @@ export class MessagesController {
   }
 
   @Delete(':id')
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('message.delete')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Xóa tin nhắn của mình' })
   @ApiResponse({ status: 204, description: 'Tin nhắn được xóa thành công' })
