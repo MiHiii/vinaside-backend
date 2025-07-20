@@ -113,12 +113,12 @@ export class BookingService {
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 3600 * 24),
     );
 
-    const totalPrice = populatedListing.price_per_night * nights;
-    const serviceFee = totalPrice * 0.1;
-    const taxAmount = totalPrice * 0.08;
-    const finalAmount = totalPrice + serviceFee + taxAmount;
+    const totalPrice = Math.round(populatedListing.price_per_night * nights);
+    const serviceFee = Math.round(totalPrice * 0.1);
+    const taxAmount = Math.round(totalPrice * 0.08);
+    const finalAmount = Math.round(totalPrice + serviceFee + taxAmount);
     const commissionRate = 0.1;
-    const finalPayoutAmount = totalPrice * (1 - commissionRate);
+    const finalPayoutAmount = Math.round(totalPrice * (1 - commissionRate));
 
     const bookingData = {
       propertyId,
