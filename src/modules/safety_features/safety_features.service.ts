@@ -21,11 +21,6 @@ export class SafetyFeaturesService {
 
   constructor(private readonly safetyFeaturesRepo: SafetyFeaturesRepo) {}
 
-  // Permission validation is now handled by PermissionGuard at controller level
-  private validateManagePermission(user: JwtPayload): void {
-    // No-op: PermissionGuard handles this at controller level
-  }
-
   /**
    * Validate MongoDB ObjectId
    */
@@ -42,7 +37,6 @@ export class SafetyFeaturesService {
     createDto: CreateSafetyFeatureDto,
     user: JwtPayload,
   ): Promise<ISafetyFeature> {
-
     try {
       const data = {
         ...createDto,
@@ -98,11 +92,7 @@ export class SafetyFeaturesService {
    */
   async findAllAdmin(
     queryDto?: QuerySafetyFeatureDto,
-    user?: JwtPayload,
   ): Promise<ISafetyFeatureResponse> {
-    if (user) {
-    }
-
     try {
       const {
         page = 1,
@@ -377,7 +367,6 @@ export class SafetyFeaturesService {
       isDeleted?: boolean;
     },
   ): Promise<{ data: ISafetyFeature[]; total: number }> {
-
     try {
       // Mặc định admin search tất cả trạng thái nếu không specify includeDeleted
       const defaultFilters = {

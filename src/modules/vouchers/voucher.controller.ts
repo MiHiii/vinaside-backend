@@ -37,6 +37,10 @@ interface RequestWithOptionalUser extends Request {
   user?: JwtPayload;
 }
 
+interface IVoucherService {
+  getValidVouchersForUser(userId?: string, amount?: number): Promise<any[]>;
+}
+
 @ApiTags('Vouchers')
 @Controller('vouchers')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -78,7 +82,10 @@ export class VoucherController {
   ) {
     const userId = req.user._id;
     const amount = totalAmount ? parseFloat(totalAmount) : undefined;
-    return this.voucherService.getValidVouchersForUser(userId, amount);
+    return (this.voucherService as IVoucherService).getValidVouchersForUser(
+      userId,
+      amount,
+    );
   }
 
   @Get('validate/:code')

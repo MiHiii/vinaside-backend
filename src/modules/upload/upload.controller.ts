@@ -29,7 +29,6 @@ import {
   ApiConsumes,
   ApiParam,
 } from '@nestjs/swagger';
-import { Roles } from 'src/decorators/roles.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;

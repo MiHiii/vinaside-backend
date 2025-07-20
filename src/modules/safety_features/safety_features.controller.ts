@@ -64,11 +64,8 @@ export class SafetyFeaturesController {
   @RequirePermission('safety_feature.view')
   @ApiOperation({ summary: 'Lấy danh sách tính năng an toàn' })
   @ResponseMessage('Lấy danh sách tính năng an toàn thành công')
-  findAll(
-    @Query() queryDto: QuerySafetyFeatureDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.safetyFeaturesService.findAllAdmin(queryDto, req.user);
+  findAll(@Query() queryDto: QuerySafetyFeatureDto) {
+    return this.safetyFeaturesService.findAll(queryDto);
   }
 
   @Get('search')
@@ -87,16 +84,8 @@ export class SafetyFeaturesController {
   @RequirePermission('safety_feature.view')
   @ApiOperation({ summary: 'Lấy chi tiết tính năng an toàn' })
   @ResponseMessage('Lấy tính năng an toàn thành công')
-  findOne(
-    @Param('id') id: string,
-    @Query('includeDeleted') includeDeleted: boolean = true,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.safetyFeaturesService.findOneAdmin(
-      id,
-      req.user,
-      includeDeleted,
-    );
+  findOne(@Param('id') id: string) {
+    return this.safetyFeaturesService.findOnePublic(id);
   }
 
   @Post()
