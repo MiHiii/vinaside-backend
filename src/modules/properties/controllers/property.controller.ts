@@ -22,7 +22,6 @@ import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
-import { Roles } from '../../../decorators/roles.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -42,7 +41,6 @@ export class PropertyController {
   constructor(private readonly propertyService: PropertyService) {}
 
   @Post()
-  @Roles('admin')
   @RequirePermission('property.create')
   @ApiOperation({ summary: 'Tạo tài sản mới (Chỉ Admin)' })
   @ApiResponse({ status: 201, description: 'Tài sản được tạo thành công' })
@@ -55,7 +53,6 @@ export class PropertyController {
   }
 
   @Get()
-  @Roles('admin')
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy tất cả tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
@@ -92,7 +89,6 @@ export class PropertyController {
   }
 
   @Get('stats')
-  @Roles('admin')
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy thống kê tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
@@ -120,7 +116,6 @@ export class PropertyController {
   }
 
   @Get('my-properties')
-  @Roles('admin')
   @RequirePermission('property.view')
   @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản của người dùng' })
@@ -133,7 +128,6 @@ export class PropertyController {
   }
 
   @Get('staff/:staffId')
-  @Roles('admin')
   @RequirePermission('property.view')
   @ApiOperation({
     summary: 'Lấy tài sản được gán cho một nhân viên (Chỉ Admin)',
@@ -147,8 +141,8 @@ export class PropertyController {
     return this.propertyService.findByStaff(staffId, queryDto);
   }
 
-  @Get(':id')
   @Public()
+  @Get(':id')
   @ApiOperation({ summary: 'Lấy tài sản theo ID' })
   @ApiResponse({ status: 200, description: 'Chi tiết tài sản' })
   @ResponseMessage('Lấy chi tiết tài sản thành công')
@@ -157,7 +151,6 @@ export class PropertyController {
   }
 
   @Patch(':id')
-  @Roles('admin')
   @RequirePermission('property.edit')
   @ApiOperation({ summary: 'Cập nhật tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Tài sản được cập nhật thành công' })
@@ -170,7 +163,6 @@ export class PropertyController {
   }
 
   @Patch(':id/status')
-  @Roles('admin')
   @RequirePermission('property.edit')
   @ApiOperation({ summary: 'Cập nhật trạng thái tài sản (Chỉ Admin)' })
   @ApiResponse({
@@ -183,7 +175,6 @@ export class PropertyController {
   }
 
   @Patch(':id/verify')
-  @Roles('admin')
   @RequirePermission('property.verify')
   @ApiOperation({ summary: 'Xác minh/hủy xác minh tài sản (Chỉ Admin)' })
   @ApiResponse({
@@ -196,7 +187,6 @@ export class PropertyController {
   }
 
   @Patch(':id/staff')
-  @Roles('admin')
   @RequirePermission('property.edit')
   @ApiOperation({ summary: 'Gán nhân viên cho tài sản (Chỉ Admin)' })
   @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
@@ -206,7 +196,6 @@ export class PropertyController {
   }
 
   @Delete(':id')
-  @Roles('admin')
   @RequirePermission('property.delete')
   @HttpCode(204)
   @ApiOperation({ summary: 'Xóa tài sản (xóa mềm) - Chỉ Admin' })
@@ -217,7 +206,6 @@ export class PropertyController {
   }
 
   @Patch(':id/restore')
-  @Roles('admin')
   @RequirePermission('property.delete')
   @ApiOperation({ summary: 'Khôi phục tài sản đã xóa (Chỉ Admin)' })
   @ApiResponse({

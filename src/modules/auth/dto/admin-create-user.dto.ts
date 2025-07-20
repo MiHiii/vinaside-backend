@@ -6,9 +6,10 @@ import {
   IsString,
   Length,
   IsArray,
+  IsBoolean,
 } from 'class-validator';
 
-export class CreateUserDto {
+export class AdminCreateUserDto {
   @IsNotEmpty()
   @IsString()
   @Length(2, 100)
@@ -35,7 +36,12 @@ export class CreateUserDto {
   @IsEnum(['guest', 'staff', 'admin'], {
     message: 'Vai trò phải là một trong các giá trị: guest, staff, admin',
   })
-  role?: string = 'guest';
+  role?: string = 'staff'; // Default to staff for admin-created users
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  customRoles?: string[] = [];
 
   @IsOptional()
   @IsEnum(['vi', 'en'], {
@@ -44,10 +50,6 @@ export class CreateUserDto {
   language?: string = 'vi';
 
   @IsOptional()
-  is_verified?: boolean = false;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  customRoles?: string[] = [];
+  @IsBoolean()
+  is_verified?: boolean = true; // Admin-created users are auto-verified
 }

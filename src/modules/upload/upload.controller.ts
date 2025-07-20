@@ -28,6 +28,7 @@ import {
   ApiConsumes,
   ApiParam,
 } from '@nestjs/swagger';
+import { Roles } from 'src/decorators/roles.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -41,7 +42,7 @@ export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
 
   @Post()
-  @RequirePermission('upload.create')
+  @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Tải lên 1 ảnh avatar' })
   @ApiConsumes('multipart/form-data')

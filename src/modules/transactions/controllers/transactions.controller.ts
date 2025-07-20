@@ -41,7 +41,7 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post()
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.create')
   @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({
     summary: 'Tạo giao dịch mới',
@@ -68,7 +68,7 @@ export class TransactionsController {
   }
 
   @Get()
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy danh sách giao dịch',
     description: 'Lấy danh sách giao dịch với lọc và phân trang',
@@ -113,7 +113,7 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy giao dịch theo ID',
     description: 'Lấy thông tin chi tiết giao dịch theo ID',
@@ -136,7 +136,7 @@ export class TransactionsController {
   }
 
   @Patch(':id/status')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.edit')
   @ApiOperation({
     summary: 'Cập nhật trạng thái giao dịch',
     description: 'Cập nhật trạng thái giao dịch và ghi log thay đổi',
@@ -171,7 +171,7 @@ export class TransactionsController {
   }
 
   @Get(':id/logs')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy lịch sử giao dịch',
     description: 'Lấy lịch sử thay đổi trạng thái của giao dịch',
@@ -194,7 +194,7 @@ export class TransactionsController {
   }
 
   @Get('reference/:type/:id')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy giao dịch theo tham chiếu',
     description:
@@ -222,7 +222,7 @@ export class TransactionsController {
   }
 
   @Delete(':id')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.delete')
   @ApiOperation({
     summary: 'Xóa giao dịch',
     description: 'Xóa mềm giao dịch (chỉ admin)',

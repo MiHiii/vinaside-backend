@@ -98,7 +98,7 @@ export class AuthService {
     }
 
     // Nếu chưa tồn tại => tạo mới
-    const newUser = await this.usersService.create({
+    const newUser = await this.usersService.register({
       name: dto.name,
       email: dto.email,
       phone: dto.phone,
@@ -474,24 +474,16 @@ export class AuthService {
   async login(user: User) {
     const { _id, role } = user;
 
-    // Initialize with default arrays
-    let permissions: string[] = [];
+    // Load custom roles for display purposes (permissions checked real-time)
     let customRoles: string[] = [];
 
-    // Load user permissions and roles if they are staff (admin bypasses anyway)
-    if (role === 'staff') {
+    if (role !== 'guest') {
       try {
-        // Load permissions and custom roles in parallel
-        const [userPermissions, userCustomRoles] = await Promise.all([
-          this.rbacService.getUserPermissions(_id),
-          this.rbacService.getUserCustomRoles(_id),
-        ]);
-
-        permissions = userPermissions;
+        const userCustomRoles = await this.rbacService.getUserCustomRoles(_id);
         customRoles = userCustomRoles.map((r) => r.key);
       } catch (error) {
         this.logger.warn(
-          `Failed to load RBAC data for user ${_id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to load custom roles for user ${_id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       }
     }
@@ -501,10 +493,11 @@ export class AuthService {
       email: user.email,
       name: user.name,
       role: user.role,
-      permissions,
-      customRoles,
+      customRoles, // Keep custom roles for display
+      // 🔄 Permissions removed - checked real-time via PermissionGuard
       iss: 'api',
     };
+
     const token = this.jwtService.sign(payload);
 
     return {

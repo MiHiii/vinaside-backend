@@ -265,4 +265,6 @@ export class RbacController {
   async deletePermission(@Param('permissionKey') permissionKey: string) {
     return this.rbacManagementService.deletePermission(permissionKey);
   }
+
+  // Cache management can be added later if needed
 }
