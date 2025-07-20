@@ -342,4 +342,14 @@ export class UsersService {
 
     await this.userRepo.softDelete(id);
   }
+
+  /**
+   * Cập nhật vai trò (role) của user theo id
+   */
+  async updateUserRoleById(
+    id: string,
+    role: string,
+  ): Promise<UserDocument | null> {
+    return this.userRepo.updateById(id, { role });
+  }
 }

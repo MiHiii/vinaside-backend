@@ -306,6 +306,11 @@ export class BookingService {
       sort,
       skip,
       limit,
+      populate: [
+        { path: 'propertyId', select: 'name' },
+        { path: 'listingId', select: 'title address images price_per_night' },
+        { path: 'guestId', select: 'name avatar email phone' },
+      ],
     });
 
     return {

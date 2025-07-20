@@ -537,4 +537,22 @@ export class AuthService {
       user: userInfo,
     };
   }
+
+  async getMyPermissions(user: UserDocument) {
+    const userId = toSafeString(user._id);
+    const permissions = await this.rbacService.getUserPermissions(userId);
+
+    return {
+      data: permissions,
+    };
+  }
+
+  async getMyRoles(user: UserDocument) {
+    const userId = toSafeString(user._id);
+    const roles = await this.rbacService.getUserCustomRoles(userId);
+
+    return {
+      data: roles,
+    };
+  }
 }

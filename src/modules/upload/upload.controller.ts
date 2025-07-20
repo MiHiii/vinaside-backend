@@ -16,6 +16,7 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { UploadService } from './upload.service';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { Roles } from '../../decorators/roles.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -36,7 +37,7 @@ interface RequestWithUser extends Request {
 
 @ApiTags('File Upload')
 @Controller('upload')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UploadController {
   constructor(private readonly uploadService: UploadService) {}
@@ -105,6 +106,7 @@ export class UploadController {
   }
 
   @Post('data')
+  @UseGuards(PermissionGuard)
   @RequirePermission('upload.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Tải lên file Excel/CSV (import)' })
@@ -132,9 +134,10 @@ export class UploadController {
   }
 
   @Post('banner')
+  @UseGuards(PermissionGuard)
   @RequirePermission('upload.create')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Tải lên ảnh banner' })
+  @ApiOperation({ summary: 'Tải lên ảnh banner (Staff/Admin only)' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({
     status: 200,
@@ -161,6 +164,7 @@ export class UploadController {
   }
 
   @Delete(':key')
+  @UseGuards(PermissionGuard)
   @RequirePermission('upload.delete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Xóa file' })
@@ -187,6 +191,7 @@ export class UploadController {
   }
 
   @Get('files')
+  @UseGuards(PermissionGuard)
   @RequirePermission('upload.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lấy danh sách tất cả file (Admin/Manager only)' })

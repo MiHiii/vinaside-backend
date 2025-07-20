@@ -306,7 +306,7 @@ export class HouseRulesRepo {
     // Base query cho public: chỉ lấy active, default_checked và không bị xóa
     const query: FilterQuery<HouseRuleDocument> = {
       is_active: true,
-      default_checked: true,
+      // default_checked: true,
       isDeleted: false,
     };
 

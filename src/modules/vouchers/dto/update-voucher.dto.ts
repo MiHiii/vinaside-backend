@@ -19,6 +19,6 @@ export class UpdateVoucherDto extends PartialType(CreateVoucherDto) {
   @Type(() => Number)
   @IsNumber()
   @Min(1, { message: 'Số lần sử dụng tối đa mỗi user phải từ 1 trở lên' })
-  @Max(10, { message: 'Số lần sử dụng tối đa mỗi user không được vượt quá 10' })
+  @Max(1, { message: 'Số lần sử dụng tối đa mỗi user không được vượt quá 1' })
   max_uses_per_user?: number;
 }
