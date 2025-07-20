@@ -317,8 +317,8 @@ export class BookingController {
     ) {
       return {
         bookingId,
-        paymentStatus: booking.payment_status,
-        amount: booking.final_amount,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
       };
     }
 
@@ -334,7 +334,7 @@ export class BookingController {
       return {
         bookingId: result.bookingId,
         paymentMethod: result.paymentMethod,
-        paymentStatus: booking.payment_status,
+        paymentStatus: booking.payment_status || 'pending',
         amount: result.amount,
         gatewayTransactionId: result.gatewayTransactionId,
         paidAt: result.paidAt,
@@ -345,8 +345,8 @@ export class BookingController {
       return {
         bookingId,
         paymentMethod,
-        paymentStatus: booking.payment_status,
-        amount: booking.final_amount,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
       };
     }
   }

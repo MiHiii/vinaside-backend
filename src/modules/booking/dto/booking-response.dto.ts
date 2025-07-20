@@ -34,6 +34,9 @@ export class BookingResponseDto {
   finalPayoutAmount?: number;
   status?: string;
   payment_status?: string;
+  payment_method?: string;
+  vnpay_order_id?: string;
+  momo_order_id?: string;
   guest_name?: string;
   guest_email?: string;
   guest_phone?: string;
