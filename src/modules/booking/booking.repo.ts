@@ -25,10 +25,11 @@ export class BookingRepo extends BaseRepo<Booking> {
       $or: [
         {
           checkInDate: { $lt: checkOutDate },
-          checkOutDate: { $gt: checkInDate },
+          check_out_date: { $gt: checkInDate },
         },
       ],
     };
+
     const count = await this.bookingModel.countDocuments(conflictQuery);
     return count > 0;
   }

@@ -13,7 +13,7 @@ import {
   VNPayCallbackDto,
   VNPayVerificationResponseDto,
 } from '../dto/vnpay-payment.dto';
-import { PaymentStatus } from '../schemas/booking.schema';
+import { PaymentStatus, BookingStatus } from '../schemas/booking.schema';
 import {
   PaymentMethod,
   PaymentProvider,
@@ -34,6 +34,7 @@ import { Document, Types } from 'mongoose';
 
 interface BookingDocument extends Document {
   _id: Types.ObjectId;
+  status: BookingStatus;
   payment_status: PaymentStatus;
   final_amount: number;
   guestId: Types.ObjectId;
@@ -300,6 +301,7 @@ export class VNPayService extends PaymentServiceInterface {
       );
       if (isSuccess) {
         updateData.payment_status = PaymentStatus.PAID;
+        updateData.status = BookingStatus.CONFIRMED; // Update status thành confirmed
         this.logger.log(
           `Payment successful for booking ${bookingId}, transaction: ${callbackData.vnp_TransactionNo}`,
         );
@@ -311,11 +313,15 @@ export class VNPayService extends PaymentServiceInterface {
       }
 
       // Cập nhật booking
-      await this.bookingRepo.updateById(
+      this.logger.debug(`Updating booking ${bookingId} with data:`, updateData);
+
+      const updatedBooking = await this.bookingRepo.updateById(
         bookingId,
         updateData,
         booking.guestId.toString(),
       );
+
+      this.logger.debug(`Booking update result:`, updatedBooking);
 
       // Cập nhật transaction status
       try {
