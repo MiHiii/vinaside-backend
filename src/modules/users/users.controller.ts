@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { Roles } from '../../decorators/roles.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
@@ -39,11 +40,12 @@ interface RequestWithUser extends Request {
 
 @ApiTags('User Management')
 @Controller('users')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.view')
   @Get()
   @ApiOperation({ summary: 'Lấy danh sách người dùng' })
@@ -56,6 +58,7 @@ export class UsersController {
     return this.usersService.findAllWithFilters(query, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.view')
   @Get('staff')
   @ApiOperation({ summary: 'Lấy danh sách tất cả nhân viên (staff)' })
@@ -76,6 +79,7 @@ export class UsersController {
     return this.usersService.findAllWithFilters(staffQuery, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.view')
   @Get('count/total')
   @ApiOperation({ summary: 'Đếm tổng số người dùng' })
@@ -87,6 +91,7 @@ export class UsersController {
     return this.usersService.count(req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.view')
   @Get(':id')
   @ApiOperation({ summary: 'Lấy thông tin người dùng theo ID' })
@@ -99,6 +104,7 @@ export class UsersController {
     return this.usersService.findOne(id, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.edit')
   @Post()
   @ApiOperation({ summary: 'Tạo người dùng mới' })
@@ -111,6 +117,7 @@ export class UsersController {
     return this.usersService.createUser(createUserDto, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.edit')
   @Put(':id')
   @ApiOperation({ summary: 'Cập nhật toàn bộ thông tin người dùng' })
@@ -127,7 +134,20 @@ export class UsersController {
     return this.usersService.updateFull(id, updateUserDto, req.user);
   }
 
-  @RequirePermission('user.edit')
+  @Roles('guest', 'staff', 'admin')
+  @Get('me')
+  @ApiOperation({ summary: 'Lấy thông tin cá nhân (user tự xem)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin cá nhân',
+  })
+  @ResponseMessage('Lấy thông tin cá nhân thành công.')
+  getMe(@Request() req: RequestWithUser): Promise<ApiResponse<any>> {
+    const userId = req.user._id;
+    return this.usersService.findOne(userId, req.user);
+  }
+
+  @Roles('guest', 'staff', 'admin')
   @Patch('me')
   @ApiOperation({ summary: 'Cập nhật thông tin cá nhân (user tự cập nhật)' })
   @ApiResponse({
@@ -144,6 +164,7 @@ export class UsersController {
     return this.usersService.updatePartial(userId, updateUserDto, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.edit')
   @Patch(':id')
   @ApiOperation({ summary: 'Cập nhật một phần thông tin người dùng' })
@@ -160,6 +181,7 @@ export class UsersController {
     return this.usersService.updatePartial(id, updateUserDto, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.edit')
   @Patch(':id/toggle-status')
   @ApiOperation({ summary: 'Thay đổi trạng thái người dùng (active/inactive)' })
@@ -175,6 +197,7 @@ export class UsersController {
     return this.usersService.toggleStatus(id, req.user);
   }
 
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.delete')
   @Delete(':id')
   @HttpCode(204)

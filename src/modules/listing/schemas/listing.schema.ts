@@ -75,6 +75,12 @@ export class Listing extends Document {
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Service' }] })
   service_ids: Types.ObjectId[];
 
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Voucher' }],
+    default: [],
+  })
+  voucher_ids: Types.ObjectId[];
+
   @Prop({ type: [String], default: [] })
   other_rules: string[];
 

@@ -870,8 +870,9 @@ export class MessagesService {
 
     // Emit real-time notification
     try {
-      const otherUserId = user._id === senderId ? receiverId : senderId;
-      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
+      // Emit to both sender and receiver (sync all devices)
+      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
+      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }
@@ -1116,8 +1117,9 @@ export class MessagesService {
 
     // Emit real-time notification
     try {
-      const otherUserId = user._id === senderId ? receiverId : senderId;
-      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
+      // Emit to both sender and receiver (sync all devices)
+      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
+      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }

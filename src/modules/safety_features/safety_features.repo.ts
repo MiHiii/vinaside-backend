@@ -528,7 +528,7 @@ export class SafetyFeaturesRepo {
     const query: FilterQuery<SafetyFeature> = {
       isDeleted: { $ne: true },
       is_active: true,
-      default_checked: true,
+      // default_checked: true,
     };
 
     // Text search

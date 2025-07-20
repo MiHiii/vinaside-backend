@@ -75,6 +75,16 @@ export class CreateListingDto {
   @IsOptional()
   service_ids?: string[];
 
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  house_rules_selected?: string[];
+
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  voucher_ids?: string[];
+
   @IsEnum(CancelPolicy)
   @IsOptional()
   cancel_policy?: CancelPolicy = CancelPolicy.FLEXIBLE;
