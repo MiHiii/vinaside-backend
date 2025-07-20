@@ -18,8 +18,6 @@ import { QueryBookingDto } from './dto/query-booking.dto';
 import {
   BookingStatisticsQueryDto,
   BookingOverviewResponseDto,
-  BookingFinancialResponseDto,
-  BookingCustomerResponseDto,
 } from './dto/booking-statistics.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
@@ -251,39 +249,48 @@ export class BookingController {
     );
   }
 
-  @Get('statistics/financial')
+  @Get('statistics/detailed')
   @RequirePermission('booking.view_statistics')
-  @ApiOperation({ summary: 'Lấy thống kê tài chính booking' })
+  @ApiOperation({
+    summary:
+      'Lấy thống kê chi tiết booking (financial, customers, vouchers, services)',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê tài chính booking được trả về thành công.',
-    type: BookingFinancialResponseDto,
+    description: 'Thống kê chi tiết được trả về thành công.',
   })
-  @ResponseMessage('Lấy thống kê tài chính booking thành công')
-  getFinancialStatistics(@Query() query: BookingStatisticsQueryDto) {
-    return this.bookingService.getFinancialStatistics(
+  @ResponseMessage('Lấy thống kê chi tiết thành công')
+  getDetailedStatistics(
+    @Query() query: BookingStatisticsQueryDto,
+    @Query('type') type: 'financial' | 'customers' | 'all' = 'all',
+  ): Promise<any> {
+    return this.bookingService.getDetailedStatistics(
       query.startDate,
       query.endDate,
       query.propertyId,
       query.listingId,
+      type,
     );
   }
 
-  @Get('statistics/customers')
+  @Get('statistics/user-analytics')
   @RequirePermission('booking.view_statistics')
-  @ApiOperation({ summary: 'Lấy thống kê khách hàng booking' })
+  @ApiOperation({ summary: 'Lấy phân tích hành vi user (services, vouchers)' })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê khách hàng booking được trả về thành công.',
-    type: BookingCustomerResponseDto,
+    description: 'Phân tích hành vi user được trả về thành công.',
   })
-  @ResponseMessage('Lấy thống kê khách hàng booking thành công')
-  getCustomerStatistics(@Query() query: BookingStatisticsQueryDto) {
-    return this.bookingService.getCustomerStatistics(
+  @ResponseMessage('Lấy phân tích hành vi user thành công')
+  getUserAnalytics(
+    @Query() query: BookingStatisticsQueryDto,
+    @Query('type') type: 'services' | 'vouchers' | 'all' = 'all',
+  ): Promise<any> {
+    return this.bookingService.getUserAnalytics(
       query.startDate,
       query.endDate,
       query.propertyId,
       query.listingId,
+      type,
     );
   }
 }

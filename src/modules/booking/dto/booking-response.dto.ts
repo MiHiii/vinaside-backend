@@ -1,0 +1,43 @@
+export class BookingServiceResponseDto {
+  service_id: string;
+  service_name: string;
+  service_price: number;
+  quantity: number;
+  total_price: number;
+}
+
+export class BookingResponseDto {
+  _id: string;
+  propertyId: string;
+  listingId: string;
+  guestId: string;
+  checkInDate: Date;
+  check_out_date: Date;
+  guests: number;
+  infants: number;
+  nights: number;
+  price_per_night: number;
+  total_price: number; // Giá phòng cơ bản
+  selected_services?: BookingServiceResponseDto[];
+  services_total_amount?: number;
+  subtotal_amount?: number; // total_price + services_total_amount
+  voucher_id?: string;
+  voucher_code?: string;
+  voucher_discount_amount?: number;
+  voucher_discount_percent?: number;
+  discount_amount?: number;
+  amount_after_discount?: number; // subtotal_amount - discount_amount
+  service_fee?: number; // 10% của amount_after_discount
+  tax_amount?: number; // 8% của amount_after_discount
+  final_amount?: number; // amount_after_discount + service_fee + tax_amount
+  commissionRate?: number;
+  finalPayoutAmount?: number;
+  status?: string;
+  payment_status?: string;
+  guest_name?: string;
+  guest_email?: string;
+  guest_phone?: string;
+  special_requests?: string;
+  created_at?: Date;
+  updated_at?: Date;
+}

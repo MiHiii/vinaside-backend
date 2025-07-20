@@ -20,6 +20,12 @@ import {
   ReplyToMessage,
   UserProfileResponse,
 } from './interfaces/message.interface';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationType,
+  RecipientType,
+  SentMethod,
+} from '../notifications/schemas/notification.schema';
 
 // ============= TYPE DEFINITIONS =============
 
@@ -48,6 +54,7 @@ export class MessagesService {
     @InjectModel(Message.name) private messageModel: Model<Message>,
     @Inject(forwardRef(() => MessagesGateway))
     private readonly messagesGateway: MessagesGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -143,6 +150,28 @@ export class MessagesService {
             messageId,
             { is_read: MessageStatus.DELIVERED },
             user,
+          );
+        }
+
+        // Tự động gửi thông báo cho người nhận
+        try {
+          const sender = populatedMessage.sender_id as {
+            name?: string;
+            username?: string;
+          };
+          const senderName = sender?.name || sender?.username || 'Someone';
+          await this.notificationsService.createAndSend({
+            user_id: createMessageDto.receiver_id,
+            recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
+            title: 'New Message',
+            message: `You have received a new message from ${senderName}`,
+            type: NotificationType.MESSAGE,
+            sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
+          });
+        } catch (notificationError) {
+          console.error(
+            'Failed to send message notification:',
+            notificationError,
           );
         }
       }

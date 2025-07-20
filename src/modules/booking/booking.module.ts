@@ -9,6 +9,9 @@ import { PropertyModule } from '../properties/property.module';
 import { MailModule } from '../mail/mail.module';
 import { VoucherModule } from '../vouchers/voucher.module';
 import { ServicesModule } from '../services/services.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { forwardRef } from '@nestjs/common';
+import { ReviewsModule } from '../reviews/reviews.module';
 
 @Module({
   imports: [
@@ -18,6 +21,8 @@ import { ServicesModule } from '../services/services.module';
     MailModule,
     VoucherModule,
     ServicesModule,
+    NotificationsModule,
+    forwardRef(() => ReviewsModule),
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingRepo],

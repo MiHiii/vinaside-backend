@@ -1,0 +1,87 @@
+### Test Reviews After Booking
+
+# 1. Tạo booking mới
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{listingId}}",
+  "checkInDate": "2024-01-01",
+  "checkOutDate": "2024-01-03",
+  "guests": 2,
+  "infants": 0,
+  "specialRequests": "Test booking for review"
+}
+
+###
+
+# 2. Cập nhật trạng thái booking thành COMPLETED (Staff)
+PATCH {{baseUrl}}/bookings/property/{{propertyId}}/{{bookingId}}/confirm
+Authorization: Bearer {{staffToken}}
+
+###
+
+# 3. Test đánh giá khi chưa checkout (sẽ bị từ chối)
+POST {{baseUrl}}/reviews
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "room_id": "{{listingId}}",
+  "rating": 5,
+  "comment": "Phòng rất đẹp và sạch sẽ!"
+}
+
+###
+
+# 4. Test đánh giá khi đã checkout (sẽ thành công)
+POST {{baseUrl}}/reviews
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "room_id": "{{listingId}}",
+  "rating": 5,
+  "comment": "Phòng rất đẹp và sạch sẽ! Dịch vụ tốt, nhân viên thân thiện."
+}
+
+###
+
+# 5. Test đánh giá lần thứ 2 (sẽ bị từ chối)
+POST {{baseUrl}}/reviews
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "room_id": "{{listingId}}",
+  "rating": 4,
+  "comment": "Đánh giá lần 2"
+}
+
+###
+
+# 6. Xem đánh giá của phòng
+GET {{baseUrl}}/reviews/rooms/{{listingId}}?page=1&limit=10
+
+###
+
+# 7. Xem đánh giá của tôi
+GET {{baseUrl}}/reviews?page=1&limit=10
+Authorization: Bearer {{userToken}}
+
+###
+
+# 8. Xem chi tiết đánh giá
+GET {{baseUrl}}/reviews/{{reviewId}}
+
+###
+
+# Variables (thay thế bằng giá trị thực)
+# @baseUrl = http://localhost:3000
+# @userToken = YOUR_USER_JWT_TOKEN
+# @staffToken = YOUR_STAFF_JWT_TOKEN
+# @listingId = YOUR_LISTING_ID
+# @propertyId = YOUR_PROPERTY_ID
+# @bookingId = BOOKING_ID_FROM_STEP_1
+# @reviewId = REVIEW_ID_FROM_STEP_4 
