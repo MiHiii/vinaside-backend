@@ -16,6 +16,16 @@ import { FilterQuery, Types } from 'mongoose';
 import { PropertyService } from '../properties/services/property.service';
 import { ListingService } from '../listing/listing.service';
 import { Listing } from '../listing/schemas/listing.schema';
+import { BookingService } from '../booking/booking.service';
+import { BookingStatus } from '../booking/schemas/booking.schema';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationType,
+  RecipientType,
+  NotificationStatus,
+  SentMethod,
+} from '../notifications/schemas/notification.schema';
+import { forwardRef, Inject } from '@nestjs/common';
 
 @Injectable()
 export class ReviewsService {
@@ -26,6 +36,9 @@ export class ReviewsService {
     private readonly propertyService: PropertyService,
     private readonly listingService: ListingService,
     @InjectModel(Listing.name) private readonly listingModel: Model<Listing>,
+    @Inject(forwardRef(() => BookingService))
+    private readonly bookingService: BookingService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -45,6 +58,9 @@ export class ReviewsService {
         'Bạn đã đánh giá phòng này rồi. Mỗi user chỉ được đánh giá một lần cho mỗi phòng.',
       );
     }
+
+    // Kiểm tra xem user đã đặt phòng và checkout chưa
+    await this.validateBookingForReview(user._id, createReviewDto.room_id);
 
     const review = await this.createReview(createReviewDto, user);
     return { review };
@@ -159,6 +175,54 @@ export class ReviewsService {
   // =========================== PRIVATE HELPER METHODS ===========================
 
   /**
+   * Kiểm tra xem user có thể đánh giá phòng này không
+   */
+  private async validateBookingForReview(
+    userId: string,
+    roomId: string,
+  ): Promise<void> {
+    try {
+      // Tìm booking của user cho phòng này với status COMPLETED
+      const bookings = await this.bookingService.findAll({
+        guestId: userId,
+        listingId: roomId,
+        status: BookingStatus.COMPLETED,
+        page: 1,
+        limit: 1,
+      });
+
+      if (bookings.data.length === 0) {
+        throw new BadRequestException(
+          'Bạn chỉ có thể đánh giá phòng sau khi đã đặt phòng và checkout hoàn thành. Vui lòng đợi đến khi chuyến đi kết thúc.',
+        );
+      }
+
+      // Kiểm tra xem booking đã hoàn thành chưa (checkout date đã qua)
+      const booking = bookings.data[0];
+      const checkoutDate = new Date(booking.check_out_date);
+      const currentDate = new Date();
+
+      if (checkoutDate > currentDate) {
+        throw new BadRequestException(
+          'Bạn chỉ có thể đánh giá phòng sau khi đã checkout. Vui lòng đợi đến khi chuyến đi kết thúc.',
+        );
+      }
+
+      this.logger.log(
+        `Booking validation passed for user ${userId} and room ${roomId}`,
+      );
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error(`Error validating booking for review: ${error}`);
+      throw new BadRequestException(
+        'Không thể kiểm tra thông tin đặt phòng. Vui lòng thử lại.',
+      );
+    }
+  }
+
+  /**
    * Tạo review mới (private)
    */
   private async createReview(
@@ -172,7 +236,7 @@ export class ReviewsService {
       const populatedReview = await this.reviewsRepo.findById(
         (review as { _id: { toString: () => string } })._id.toString(),
         [
-          { path: 'user_id', select: 'name avatar email' },
+          { path: 'user_id', select: 'name avatar_url email' },
           { path: 'room_id', select: 'title images address' },
         ],
       );
@@ -197,7 +261,7 @@ export class ReviewsService {
    */
   private async findReviewById(id: string): Promise<Review> {
     const review = await this.reviewsRepo.findById(id, [
-      { path: 'user_id', select: 'name avatar email' },
+      { path: 'user_id', select: 'name avatar_url email' },
       { path: 'room_id', select: 'title images address' },
     ]);
 
@@ -226,7 +290,7 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar email' },
+        { path: 'user_id', select: 'name avatar_url email' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -252,7 +316,7 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar email' },
+        { path: 'user_id', select: 'name avatar_url email' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -288,7 +352,7 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar email' },
+        { path: 'user_id', select: 'name avatar_url email' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -314,7 +378,7 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar email' },
+        { path: 'user_id', select: 'name avatar_url email' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -363,6 +427,53 @@ export class ReviewsService {
         error,
       );
       // Không throw error để không ảnh hưởng đến flow chính
+    }
+  }
+
+  /**
+   * Tạo thông báo đánh giá phòng khi booking status = COMPLETED
+   */
+  async createReviewNotification(bookingId: string): Promise<void> {
+    try {
+      // Lấy thông tin booking
+      const booking = await this.bookingService.findOne(bookingId);
+      if (!booking) {
+        this.logger.warn(
+          `Booking ${bookingId} not found for review notification`,
+        );
+        return;
+      }
+
+      // Kiểm tra xem user đã đánh giá phòng này chưa
+      const existingReview = await this.reviewsRepo.checkExistingReview(
+        booking.guestId,
+        booking.listingId,
+      );
+
+      if (existingReview) {
+        this.logger.log(
+          `User ${booking.guestId} already reviewed room ${booking.listingId}`,
+        );
+        return;
+      }
+
+      // Tạo thông báo đánh giá phòng
+      await this.notificationsService.create({
+        user_id: booking.guestId,
+        recipient_type: RecipientType.GUEST,
+        title: 'Đánh giá chuyến đi của bạn',
+        message: `Chuyến đi của bạn đã kết thúc. Hãy chia sẻ trải nghiệm của bạn về ${booking.listingId} để giúp chúng tôi cải thiện dịch vụ!`,
+        type: NotificationType.REMINDER,
+        status: NotificationStatus.SENT,
+        sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
+      });
+
+      this.logger.log(`Created review notification for booking ${bookingId}`);
+    } catch (error) {
+      this.logger.error(
+        `Error creating review notification for booking ${bookingId}:`,
+        error,
+      );
     }
   }
 }

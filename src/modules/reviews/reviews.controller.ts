@@ -27,6 +27,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { Roles } from 'src/decorators/roles.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -42,7 +43,7 @@ export class ReviewsController {
   // =========================== MAIN ROUTES ===========================
 
   @Post()
-  @RequirePermission('review.create')
+  @Roles('guest')
   @ApiResponse({ status: 201, description: 'Đánh giá được tạo thành công' })
   @ResponseMessage('Tạo đánh giá thành công')
   create(
