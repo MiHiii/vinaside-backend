@@ -99,6 +99,51 @@ export class Booking extends Document {
   @Prop()
   payment_id?: string;
 
+  // VNPay specific fields
+  @Prop()
+  vnpay_transaction_no?: string;
+
+  @Prop()
+  vnpay_bank_tran_no?: string;
+
+  @Prop()
+  vnpay_card_type?: string;
+
+  @Prop()
+  vnpay_order_id?: string;
+
+  @Prop()
+  vnpay_pay_date?: Date;
+
+  @Prop()
+  vnpay_response_code?: string;
+
+  // MoMo specific fields
+  @Prop()
+  momo_trans_id?: string;
+
+  @Prop()
+  momo_request_id?: string;
+
+  @Prop()
+  momo_order_id?: string;
+
+  @Prop()
+  momo_pay_type?: string;
+
+  @Prop()
+  momo_response_time?: Date;
+
+  @Prop()
+  momo_result_code?: number;
+
+  @Prop()
+  momo_extra_data?: string;
+
+  // Generic payment gateway fields
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  gateway_raw_response?: Record<string, any>;
+
   @Prop({ required: true })
   guest_name: string;
 
