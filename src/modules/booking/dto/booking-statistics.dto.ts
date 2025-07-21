@@ -9,6 +9,21 @@ export interface BookingOverviewStatistics {
   averageBookingValue: number;
   totalGuests: number;
   totalInfants: number;
+  // Voucher statistics
+  totalVouchersUsed: number;
+  totalVoucherDiscount: number;
+  averageVoucherDiscount: number;
+  voucherUsageRate: number;
+  // Services statistics
+  totalServicesRevenue: number;
+  totalServicesBooked: number;
+  averageServicesPerBooking: number;
+  topServicesUsed: Array<{
+    serviceId: string;
+    serviceName: string;
+    usageCount: number;
+    totalRevenue: number;
+  }>;
 }
 
 export interface BookingStatusStatistics {
@@ -28,10 +43,20 @@ export interface BookingFinancialStatistics {
   totalRefunds: number;
   netRevenue: number;
   averageBookingValue: number;
+  // Voucher financial data
+  totalVoucherDiscount: number;
+  totalRevenueBeforeVoucher: number;
+  voucherDiscountPercentage: number;
+  // Services financial data
+  totalServicesRevenue: number;
+  servicesRevenuePercentage: number;
+  averageServicesRevenuePerBooking: number;
   revenueByMonth: Array<{
     month: string;
     revenue: number;
     bookings: number;
+    voucherDiscount: number;
+    servicesRevenue: number;
   }>;
 }
 
@@ -41,6 +66,24 @@ export interface BookingCustomerStatistics {
   returningCustomers: number;
   averageNightsPerBooking: number;
   averageGuestsPerBooking: number;
+  // Voucher usage by customers
+  customersUsingVouchers: number;
+  averageVoucherUsagePerCustomer: number;
+  topVoucherUsers: Array<{
+    customerId: string;
+    customerName: string;
+    voucherUsageCount: number;
+    totalVoucherDiscount: number;
+  }>;
+  // Services usage by customers
+  customersUsingServices: number;
+  averageServicesUsagePerCustomer: number;
+  topServicesUsers: Array<{
+    customerId: string;
+    customerName: string;
+    servicesUsageCount: number;
+    totalServicesSpent: number;
+  }>;
   topCustomers: Array<{
     customerId: string;
     customerName: string;
@@ -138,6 +181,35 @@ export class BookingOverviewResponseDto implements BookingOverviewStatistics {
   @ApiProperty({ description: 'Tổng số trẻ em' })
   totalInfants: number;
 
+  @ApiProperty({ description: 'Tổng số voucher đã sử dụng' })
+  totalVouchersUsed: number;
+
+  @ApiProperty({ description: 'Tổng tiền giảm giá từ voucher' })
+  totalVoucherDiscount: number;
+
+  @ApiProperty({ description: 'Trung bình giảm giá voucher' })
+  averageVoucherDiscount: number;
+
+  @ApiProperty({ description: 'Tỉ lệ sử dụng voucher (%)' })
+  voucherUsageRate: number;
+
+  @ApiProperty({ description: 'Tổng doanh thu từ services' })
+  totalServicesRevenue: number;
+
+  @ApiProperty({ description: 'Tổng số services đã đặt' })
+  totalServicesBooked: number;
+
+  @ApiProperty({ description: 'Trung bình số services/booking' })
+  averageServicesPerBooking: number;
+
+  @ApiProperty({ description: 'Top services được sử dụng' })
+  topServicesUsed: Array<{
+    serviceId: string;
+    serviceName: string;
+    usageCount: number;
+    totalRevenue: number;
+  }>;
+
   @ApiProperty({ description: 'Thống kê theo trạng thái' })
   statusBreakdown: BookingStatusStatistics;
 
@@ -168,11 +240,31 @@ export class BookingFinancialResponseDto implements BookingFinancialStatistics {
   @ApiProperty({ description: 'Giá trị booking trung bình' })
   averageBookingValue: number;
 
+  @ApiProperty({ description: 'Tổng tiền giảm giá từ voucher' })
+  totalVoucherDiscount: number;
+
+  @ApiProperty({ description: 'Tổng doanh thu trước khi giảm giá voucher' })
+  totalRevenueBeforeVoucher: number;
+
+  @ApiProperty({ description: 'Tỉ lệ giảm giá voucher (%)' })
+  voucherDiscountPercentage: number;
+
+  @ApiProperty({ description: 'Tổng doanh thu từ services' })
+  totalServicesRevenue: number;
+
+  @ApiProperty({ description: 'Tỉ lệ doanh thu từ services (%)' })
+  servicesRevenuePercentage: number;
+
+  @ApiProperty({ description: 'Trung bình doanh thu services/booking' })
+  averageServicesRevenuePerBooking: number;
+
   @ApiProperty({ description: 'Doanh thu theo tháng' })
   revenueByMonth: Array<{
     month: string;
     revenue: number;
     bookings: number;
+    voucherDiscount: number;
+    servicesRevenue: number;
   }>;
 }
 
@@ -191,6 +283,34 @@ export class BookingCustomerResponseDto implements BookingCustomerStatistics {
 
   @ApiProperty({ description: 'Trung bình số khách/booking' })
   averageGuestsPerBooking: number;
+
+  @ApiProperty({ description: 'Số khách hàng sử dụng voucher' })
+  customersUsingVouchers: number;
+
+  @ApiProperty({ description: 'Trung bình số lần sử dụng voucher/khách' })
+  averageVoucherUsagePerCustomer: number;
+
+  @ApiProperty({ description: 'Top khách hàng sử dụng voucher' })
+  topVoucherUsers: Array<{
+    customerId: string;
+    customerName: string;
+    voucherUsageCount: number;
+    totalVoucherDiscount: number;
+  }>;
+
+  @ApiProperty({ description: 'Số khách hàng sử dụng services' })
+  customersUsingServices: number;
+
+  @ApiProperty({ description: 'Trung bình số lần sử dụng services/khách' })
+  averageServicesUsagePerCustomer: number;
+
+  @ApiProperty({ description: 'Top khách hàng sử dụng services' })
+  topServicesUsers: Array<{
+    customerId: string;
+    customerName: string;
+    servicesUsageCount: number;
+    totalServicesSpent: number;
+  }>;
 
   @ApiProperty({ description: 'Top khách hàng' })
   topCustomers: Array<{

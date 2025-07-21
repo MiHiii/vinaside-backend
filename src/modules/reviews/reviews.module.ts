@@ -7,6 +7,9 @@ import { Review, ReviewSchema } from './schemas/review.schema';
 import { PropertyModule } from '../properties/property.module';
 import { ListingModule } from '../listing/listing.module';
 import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
+import { forwardRef } from '@nestjs/common';
+import { BookingModule } from '../booking/booking.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +19,8 @@ import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
     ]),
     PropertyModule,
     ListingModule,
+    forwardRef(() => BookingModule),
+    NotificationsModule,
   ],
   controllers: [ReviewsController],
   providers: [ReviewsService, ReviewsRepo],

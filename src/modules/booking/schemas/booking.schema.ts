@@ -173,6 +173,81 @@ export class Booking extends Document {
   })
   voucher_id?: Types.ObjectId;
 
+  @Prop({
+    type: String,
+    required: false,
+  })
+  voucher_code?: string;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  voucher_discount_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  voucher_discount_percent?: number;
+
+  @Prop({
+    type: [
+      {
+        service_id: { type: MongooseSchema.Types.ObjectId, ref: 'Service' },
+        service_name: String,
+        service_price: Number,
+        quantity: Number,
+        total_price: Number,
+      },
+    ],
+    required: false,
+    default: [],
+  })
+  selected_services?: Array<{
+    service_id: Types.ObjectId;
+    service_name: string;
+    service_price: number;
+    quantity: number;
+    total_price: number;
+  }>;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  services_total_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  subtotal_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  discount_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  amount_after_discount?: number;
+
   @Prop({ default: false })
   isDeleted: boolean;
 

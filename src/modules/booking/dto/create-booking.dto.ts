@@ -6,8 +6,22 @@ import {
   IsOptional,
   IsString,
   Min,
+  IsArray,
+  ValidateNested,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class BookingServiceDto {
+  @IsMongoId()
+  @IsNotEmpty()
+  serviceId: string;
+
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  quantity: number = 1;
+}
 
 export class CreateBookingDto {
   @IsMongoId()
@@ -41,7 +55,13 @@ export class CreateBookingDto {
   @IsOptional()
   specialRequests?: string;
 
-  @IsMongoId()
+  @IsString()
   @IsOptional()
-  voucher_id?: string;
+  voucherCode?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BookingServiceDto)
+  @IsOptional()
+  services?: BookingServiceDto[];
 }
