@@ -277,7 +277,8 @@ export class BookingService {
     // Tính toán phí và thuế
     const serviceFee = amountAfterDiscount * 0.1; // 10% của amount_after_discount
     const taxAmount = amountAfterDiscount * 0.08; // 8% của amount_after_discount
-    const finalAmount = amountAfterDiscount + serviceFee + taxAmount; // amount_after_discount + service_fee + tax_amount
+    let finalAmount = amountAfterDiscount + serviceFee + taxAmount; // amount_after_discount + service_fee + tax_amount
+    finalAmount = Math.round(finalAmount); // Làm tròn số tiền cuối cùng
     const commissionRate = 0.1;
     const finalPayoutAmount = amountAfterDiscount * (1 - commissionRate);
 
