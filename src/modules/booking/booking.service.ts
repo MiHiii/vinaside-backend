@@ -72,6 +72,15 @@ export class BookingService {
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
+    // Không cho phép đặt phòng cho ngày trong quá khứ
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (checkIn < today) {
+      throw new BadRequestException(
+        'Không thể đặt phòng cho ngày trong quá khứ',
+      );
+    }
+
     if (checkIn >= checkOut) {
       throw new BadRequestException('Ngày trả phòng phải sau ngày nhận phòng');
     }
