@@ -436,11 +436,12 @@ export class BookingController {
   @ApiResponse({ status: 200, description: 'Return processed' })
   async handleVNPayReturn(@Query() callbackData: any) {
     const result = await this.vnpayService.handleCallback(callbackData);
-    return {
-      success: result.success,
-      message: result.message,
-      bookingId: result.bookingId,
-      amount: result.amount,
-    };
+    if (!result.success) {
+      throw new BadRequestException({
+        message: result.message,
+        bookingId: result.bookingId,
+      });
+    }
+  
   }
 }
