@@ -16,6 +16,14 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class LocationDto {
+  @ApiPropertyOptional({
+    description: 'Google Places ID for precise location matching',
+    example: 'ChIJL2qFlgcbdTERTVVVVVFVlFV',
+  })
+  @IsOptional()
+  @IsString()
+  place_id?: string;
+
   @ApiProperty({ description: 'Latitude', example: 10.75 })
   @IsNumber()
   @Min(-90)

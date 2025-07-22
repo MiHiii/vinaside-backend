@@ -36,22 +36,30 @@ export class Property {
 
   @Prop({
     type: {
+      place_id: { type: String, index: true }, // Google Places ID for precise search
       lat: { type: Number, required: true },
       lng: { type: Number, required: true },
       address: { type: String, required: true },
       city: String,
       district: String,
       ward: String,
+      // GeoJSON Point for geospatial queries
+      coordinates: {
+        type: [Number], // [lng, lat] - GeoJSON format
+        index: '2dsphere',
+      },
     },
     required: true,
   })
   location: {
+    place_id?: string; // Google Places ID
     lat: number;
     lng: number;
     address: string;
     city?: string;
     district?: string;
     ward?: string;
+    coordinates?: [number, number]; // [lng, lat]
   };
 
   @Prop()
@@ -102,9 +110,25 @@ PropertySchema.index({ staffIds: 1 });
 PropertySchema.index({ isDeleted: 1 });
 PropertySchema.index({ status: 1 });
 PropertySchema.index({ isVerified: 1 });
-PropertySchema.index({ 'location.lat': 1, 'location.lng': 1 }); // Geospatial index
+PropertySchema.index({ 'location.place_id': 1 }); // Google Places ID index (highest priority)
+PropertySchema.index({ 'location.lat': 1, 'location.lng': 1 }); // Basic lat/lng index
+PropertySchema.index({ 'location.coordinates': '2dsphere' }); // 2dsphere index for geospatial queries
 PropertySchema.index({ 'location.address': 'text', name: 'text' }); // Text search
 PropertySchema.index({ createdAt: -1 });
+
+// Middleware để tự động tạo coordinates từ lat/lng
+PropertySchema.pre('save', function () {
+  if (this.location && this.location.lat && this.location.lng) {
+    this.location.coordinates = [this.location.lng, this.location.lat];
+  }
+});
+
+PropertySchema.pre('findOneAndUpdate', function () {
+  const update = this.getUpdate() as any;
+  if (update.location && update.location.lat && update.location.lng) {
+    update.location.coordinates = [update.location.lng, update.location.lat];
+  }
+});
 
 // Hide sensitive fields in JSON response
 PropertySchema.set('toJSON', {

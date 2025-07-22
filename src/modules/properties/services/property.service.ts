@@ -21,6 +21,7 @@ import { CreatePropertyDto } from '../dto/create-property.dto';
 import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+import { GooglePlacesService } from '../../location/google-places.service';
 import {
   PropertyVoucherStatistics,
   PropertyServiceStatistics,
@@ -117,12 +118,32 @@ export class PropertyService {
     private voucherModel: Model<Voucher>,
     @InjectModel(Service.name)
     private serviceModel: Model<Service>,
+    private googlePlacesService: GooglePlacesService,
   ) {}
 
   async create(
     createPropertyDto: CreatePropertyDto,
     user: JwtPayload,
   ): Promise<Property> {
+    // Validate place_id if provided
+    if (createPropertyDto.location.place_id) {
+      const placeDetails = await this.googlePlacesService.getPlaceDetails(
+        createPropertyDto.location.place_id,
+      );
+
+      if (!placeDetails) {
+        throw new Error(
+          `Invalid place_id: ${createPropertyDto.location.place_id}`,
+        );
+      }
+
+      // Optionally update coordinates from place details if they don't match
+      if (placeDetails.geometry) {
+        createPropertyDto.location.lat = placeDetails.geometry.location.lat;
+        createPropertyDto.location.lng = placeDetails.geometry.location.lng;
+      }
+    }
+
     const propertyData = {
       ...createPropertyDto,
       createdBy: new Types.ObjectId(user._id),

@@ -124,4 +124,52 @@ export class QueryListingDto {
   @IsNumber()
   @Min(0)
   maxViewCount?: number;
+
+  // Location filters (Priority: place_id > city/district/ward > address > geospatial)
+  @IsOptional()
+  @IsString()
+  place_id?: string; // Google Places ID - highest priority
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  ward?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  // Geospatial search
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  @Max(100)
+  radius?: number = 10; // Default 10km radius
+
+  // Location keyword search (tìm kiếm gần đúng theo tất cả fields location)
+  @IsOptional()
+  @IsString()
+  locationKeyword?: string;
 }

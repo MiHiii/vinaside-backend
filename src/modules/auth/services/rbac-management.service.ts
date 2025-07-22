@@ -91,8 +91,6 @@ export class RbacManagementService {
   ): Promise<{ success: boolean }> {
     try {
       await this.rbacService.assignRoleToUser(userId, assignRoleDto.roleKey);
-      // Update the user's role field in the user collection
-      await this.usersService.updateUserRoleById(userId, assignRoleDto.roleKey);
       return { success: true };
     } catch (error) {
       const errorMessage =

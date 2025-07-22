@@ -16,6 +16,7 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { QueryListingDto } from './dto/query-listing.dto';
 import { ListingRepo } from './listing.repo';
 import { PropertyService } from '../properties/services/property.service';
+import { Property } from '../properties/schemas/property.schema';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { Booking } from '../booking/schemas/booking.schema';
 import { Review } from '../reviews/schemas/review.schema';
@@ -61,6 +62,7 @@ export class ListingService {
   constructor(
     private readonly listingRepo: ListingRepo,
     private readonly propertyService: PropertyService,
+    @InjectModel(Property.name) private readonly propertyModel: Model<Property>,
     @InjectModel(Booking.name) private readonly bookingModel: Model<Booking>,
     @InjectModel(Review.name) private readonly reviewModel: Model<Review>,
     @InjectModel(Wishlist.name) private readonly wishlistModel: Model<Wishlist>,
@@ -122,15 +124,48 @@ export class ListingService {
     } = queryDto;
     const skip = (page - 1) * limit;
 
+    // First, handle location-based filtering by finding matching properties
+    let propertyIds: Types.ObjectId[] | undefined;
+
+    const hasLocationFilter = !!(
+      filters.city ||
+      filters.district ||
+      filters.ward ||
+      filters.address ||
+      filters.locationKeyword ||
+      (filters.lat && filters.lng)
+    );
+
+    if (hasLocationFilter) {
+      propertyIds = await this.findPropertiesByLocation(filters);
+
+      // If no properties match location criteria, return empty result
+      if (propertyIds && propertyIds.length === 0) {
+        return {
+          listings: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+    }
+
     const query: FilterQuery<Listing> & {
       price_per_night?: { $gte?: number; $lte?: number };
     } = {
       isDeleted: filters.isDeleted ?? false,
     };
 
-    if (filters.propertyId) {
+    // Apply property filter if we have location-based property IDs
+    if (propertyIds) {
+      query.propertyId = { $in: propertyIds };
+    } else if (filters.propertyId) {
       query.propertyId = new Types.ObjectId(filters.propertyId);
     }
+
     if (filters.status) {
       query.status = filters.status;
     }
@@ -192,7 +227,7 @@ export class ListingService {
       sort,
       skip,
       limit,
-      populate: { path: 'propertyId', select: 'name type' },
+      populate: { path: 'propertyId', select: 'name type location' },
     });
 
     return {
@@ -853,5 +888,241 @@ export class ListingService {
     }
 
     return statistics;
+  }
+
+  /**
+   * Helper methods for location-based filtering
+   */
+
+  /**
+   * Check if query has any location filters
+   */
+  private hasLocationFilters(filters: any): boolean {
+    return !!(
+      filters.place_id ||
+      filters.city ||
+      filters.district ||
+      filters.ward ||
+      filters.address ||
+      filters.locationKeyword ||
+      (filters.lat && filters.lng)
+    );
+  }
+
+  /**
+   * Find properties matching location criteria with priority order
+   */
+  private async findPropertiesByLocation(
+    filters: any,
+  ): Promise<Types.ObjectId[]> {
+    // Priority 1: Google Places ID (most precise)
+    if (filters.place_id) {
+      const placeQuery: FilterQuery<Property> = {
+        isDeleted: false,
+        'location.place_id': filters.place_id,
+      };
+
+      try {
+        const properties = await this.propertyModel
+          .find(placeQuery, { _id: 1 })
+          .lean()
+          .exec();
+
+        if (properties.length > 0) {
+          return properties.map((property) => property._id);
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error finding properties by place_id: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Priority 2: City + District + Ward combination
+    if (filters.city || filters.district || filters.ward) {
+      const locationQuery: FilterQuery<Property> = { isDeleted: false };
+
+      if (filters.city) {
+        locationQuery['location.city'] = new RegExp(filters.city, 'i');
+      }
+      if (filters.district) {
+        locationQuery['location.district'] = new RegExp(filters.district, 'i');
+      }
+      if (filters.ward) {
+        locationQuery['location.ward'] = new RegExp(filters.ward, 'i');
+      }
+
+      try {
+        const properties = await this.propertyModel
+          .find(locationQuery, { _id: 1 })
+          .lean()
+          .exec();
+
+        if (properties.length > 0) {
+          return properties.map((property) => property._id);
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error finding properties by city/district/ward: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    // Priority 3: Address + Location keyword + Geospatial search
+    const propertyQuery: FilterQuery<Property> = { isDeleted: false };
+
+    if (filters.address) {
+      propertyQuery['location.address'] = new RegExp(filters.address, 'i');
+    }
+
+    // Location keyword search (across all location fields)
+    if (filters.locationKeyword) {
+      const keyword = filters.locationKeyword;
+      propertyQuery.$or = [
+        { 'location.address': { $regex: keyword, $options: 'i' } },
+        { 'location.city': { $regex: keyword, $options: 'i' } },
+        { 'location.district': { $regex: keyword, $options: 'i' } },
+        { 'location.ward': { $regex: keyword, $options: 'i' } },
+      ];
+    }
+
+    // Geospatial search (nearby)
+    if (filters.lat && filters.lng) {
+      const lat = parseFloat(filters.lat);
+      const lng = parseFloat(filters.lng);
+      const radius = parseFloat(filters.radius) || 10; // Default 10km
+
+      // Convert radius from km to degrees (approximate)
+      const latRange = radius / 111; // 1 degree lat ≈ 111km
+      const lngRange = radius / (111 * Math.cos((lat * Math.PI) / 180));
+
+      propertyQuery['location.lat'] = {
+        $gte: lat - latRange,
+        $lte: lat + latRange,
+      };
+      propertyQuery['location.lng'] = {
+        $gte: lng - lngRange,
+        $lte: lng + lngRange,
+      };
+    }
+
+    try {
+      const properties = await this.propertyModel
+        .find(propertyQuery, { _id: 1 })
+        .lean()
+        .exec();
+
+      return properties.map((property) => property._id);
+    } catch (error) {
+      this.logger.error(
+        `Error finding properties by location: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Advanced location search with distance calculation
+   */
+  async findListingsByLocation(
+    lat: number,
+    lng: number,
+    radius: number = 10,
+    queryDto: QueryListingDto = {},
+  ): Promise<{
+    listings: any[];
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  }> {
+    // Use MongoDB's $geoNear for more precise distance calculation
+    // First, get properties within radius with actual distance
+    const nearbyProperties = await this.propertyModel.aggregate([
+      {
+        $geoNear: {
+          near: {
+            type: 'Point',
+            coordinates: [lng, lat], // GeoJSON uses [lng, lat] order
+          },
+          distanceField: 'distance',
+          maxDistance: radius * 1000, // Convert km to meters
+          spherical: true,
+          query: { isDeleted: false },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          distance: { $divide: ['$distance', 1000] }, // Convert back to km
+        },
+      },
+    ]);
+
+    if (nearbyProperties.length === 0) {
+      return {
+        listings: [],
+        meta: {
+          total: 0,
+          page: queryDto.page || 1,
+          limit: queryDto.limit || 14,
+          totalPages: 0,
+        },
+      };
+    }
+
+    // Create a map of property ID to distance
+    const distanceMap = new Map<string, number>();
+    const propertyIds = nearbyProperties.map((prop: any) => {
+      distanceMap.set(prop._id.toString(), prop.distance);
+      return prop._id;
+    });
+
+    const { page = 1, limit = 14 } = queryDto;
+    const skip = (page - 1) * limit;
+
+    const query: FilterQuery<Listing> = {
+      isDeleted: queryDto.isDeleted ?? false,
+      propertyId: { $in: propertyIds },
+    };
+
+    // Apply other filters
+    if (queryDto.status) query.status = queryDto.status;
+    if (queryDto.cancel_policy) query.cancel_policy = queryDto.cancel_policy;
+    if (queryDto.priceFrom !== undefined || queryDto.priceTo !== undefined) {
+      query.price_per_night = {
+        ...(queryDto.priceFrom !== undefined && { $gte: queryDto.priceFrom }),
+        ...(queryDto.priceTo !== undefined && { $lte: queryDto.priceTo }),
+      };
+    }
+
+    const sort: Record<string, SortOrder> = {
+      [queryDto.sortBy || 'created_at']: queryDto.sortOrder === 'asc' ? 1 : -1,
+    };
+
+    const result = await this.listingRepo.findAll(query, {
+      sort,
+      skip,
+      limit,
+      populate: { path: 'propertyId', select: 'name type location' },
+    });
+
+    // Add distance to each listing
+    const listingsWithDistance = result.data.map((listing) => ({
+      ...listing.toObject(),
+      distance: distanceMap.get(listing.propertyId._id.toString()),
+    }));
+
+    return {
+      listings: listingsWithDistance,
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / (limit || 1)),
+      },
+    };
   }
 }
