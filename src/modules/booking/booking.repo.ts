@@ -21,7 +21,7 @@ export class BookingRepo extends BaseRepo<Booking> {
     const conflictQuery: FilterQuery<Booking> = {
       listingId: new Types.ObjectId(listingId),
       isDeleted: false,
-      status: { $in: ['confirmed', 'pending'] },
+      status: { $in: ['confirmed'] },
       $or: [
         {
           checkInDate: { $lt: checkOutDate },

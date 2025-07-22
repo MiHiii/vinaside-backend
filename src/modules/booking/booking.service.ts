@@ -166,6 +166,15 @@ export class BookingService {
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkOutDate);
 
+    // Không cho phép đặt phòng cho ngày trong quá khứ
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (checkIn < today) {
+      throw new BadRequestException(
+        'Không thể đặt phòng cho ngày trong quá khứ',
+      );
+    }
+
     if (checkIn >= checkOut) {
       throw new BadRequestException('Ngày trả phòng phải sau ngày nhận phòng');
     }
@@ -287,7 +296,8 @@ export class BookingService {
     // Tính toán phí và thuế
     const serviceFee = amountAfterDiscount * 0.1; // 10% của amount_after_discount
     const taxAmount = amountAfterDiscount * 0.08; // 8% của amount_after_discount
-    const finalAmount = amountAfterDiscount + serviceFee + taxAmount; // amount_after_discount + service_fee + tax_amount
+    let finalAmount = amountAfterDiscount + serviceFee + taxAmount; // amount_after_discount + service_fee + tax_amount
+    finalAmount = Math.round(finalAmount); // Làm tròn số tiền cuối cùng
     const commissionRate = 0.1;
     const finalPayoutAmount = amountAfterDiscount * (1 - commissionRate);
 
