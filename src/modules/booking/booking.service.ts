@@ -81,11 +81,29 @@ export class BookingService {
    * Transform booking data thành response format
    */
   private transformBookingToResponse(booking: any): BookingResponseDto {
+    // Handle guestId: can be ObjectId or populated object
+    let guestId: string = '';
+    let guest_name: string | undefined = undefined;
+    let guest_email: string | undefined = undefined;
+    let guest_phone: string | undefined = undefined;
+    if (booking.guestId) {
+      if (typeof booking.guestId === 'object' && booking.guestId._id) {
+        guestId = booking.guestId._id.toString();
+        guest_name = booking.guestId.name;
+        guest_email = booking.guestId.email;
+        guest_phone = booking.guestId.phone;
+      } else {
+        guestId = booking.guestId.toString();
+        guest_name = booking.guest_name;
+        guest_email = booking.guest_email;
+        guest_phone = booking.guest_phone;
+      }
+    }
     return {
-      _id: (booking._id as Types.ObjectId).toString(),
-      propertyId: (booking.propertyId as Types.ObjectId).toString(),
-      listingId: (booking.listingId as Types.ObjectId).toString(),
-      guestId: (booking.guestId as Types.ObjectId).toString(),
+      _id: booking._id ? booking._id.toString() : null,
+      propertyId: booking.propertyId ? booking.propertyId.toString() : null,
+      listingId: booking.listingId ? booking.listingId.toString() : null,
+      guestId,
       checkInDate: booking.checkInDate,
       check_out_date: booking.check_out_date,
       guests: booking.guests,
@@ -94,7 +112,7 @@ export class BookingService {
       price_per_night: booking.price_per_night,
       total_price: booking.total_price,
       selected_services: booking.selected_services?.map((service: any) => ({
-        service_id: (service.service_id as Types.ObjectId).toString(),
+        service_id: service.service_id ? service.service_id.toString() : null,
         service_name: service.service_name,
         service_price: service.service_price,
         quantity: service.quantity,
@@ -103,7 +121,7 @@ export class BookingService {
       services_total_amount: booking.services_total_amount,
       subtotal_amount: booking.subtotal_amount,
       voucher_id: booking.voucher_id
-        ? (booking.voucher_id as Types.ObjectId).toString()
+        ? booking.voucher_id.toString()
         : undefined,
       voucher_code: booking.voucher_code,
       voucher_discount_amount: booking.voucher_discount_amount,
@@ -120,9 +138,9 @@ export class BookingService {
       payment_method: booking.payment_method,
       vnpay_order_id: booking.vnpay_order_id,
       momo_order_id: booking.momo_order_id,
-      guest_name: booking.guest_name,
-      guest_email: booking.guest_email,
-      guest_phone: booking.guest_phone,
+      guest_name,
+      guest_email,
+      guest_phone,
       special_requests: booking.special_requests,
       created_at: booking.created_at,
       updated_at: booking.updated_at,
@@ -181,6 +199,7 @@ export class BookingService {
       };
       price_per_night: number;
       title?: string;
+      images: string[]; // Thêm dòng này để fix lỗi
     }
     const populatedListing = listing as unknown as PopulatedListingForBooking;
     const propertyId = populatedListing.propertyId._id;
@@ -351,6 +370,12 @@ export class BookingService {
 
     // Tạo thông báo cho khách hàng
     try {
+      // Lấy avatar_url của phòng (listing)
+      const avatar_url =
+        Array.isArray(populatedListing.images) &&
+        populatedListing.images.length > 0
+          ? populatedListing.images[0]
+          : '';
       await this.notificationsService.create({
         user_id: user._id,
         recipient_type: RecipientType.GUEST,
@@ -359,6 +384,7 @@ export class BookingService {
         type: NotificationType.BOOKING,
         status: NotificationStatus.SENT,
         sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
+        avatar_url, // truyền avatar_url
       });
       this.logger.log(`Created booking notification for guest ${user._id}`);
     } catch (error) {
