@@ -22,7 +22,6 @@ import {
   PaymentResponseDto,
   PaymentStatusDto,
 } from './dto/payment.dto';
-import { VNPayCallbackDto } from './dto/vnpay-payment.dto';
 import { CreatePaymentRequest } from './interfaces/payment-service.interface';
 
 import { PaymentMethod } from '../transactions/schemas/transaction.schema';
@@ -423,7 +422,7 @@ export class BookingController {
   @Public()
   @ApiOperation({ summary: 'VNPay IPN callback' })
   @ApiResponse({ status: 200, description: 'IPN processed' })
-  async handleVNPayIPN(@Body() callbackData: VNPayCallbackDto) {
+  async handleVNPayIPN(@Body() callbackData: any) {
     const result = await this.vnpayService.handleIPN(callbackData);
     return {
       RspCode: result.success ? '00' : '99',
@@ -435,14 +434,8 @@ export class BookingController {
   @Public()
   @ApiOperation({ summary: 'VNPay return callback' })
   @ApiResponse({ status: 200, description: 'Return processed' })
-  async handleVNPayReturn(@Query() callbackData: VNPayCallbackDto) {
+  async handleVNPayReturn(@Query() callbackData: any) {
     const result = await this.vnpayService.handleCallback(callbackData);
-    if (!result.success) {
-      throw new BadRequestException({
-        message: result.message,
-        bookingId: result.bookingId,
-      });
-    }
     return {
       success: result.success,
       message: result.message,
