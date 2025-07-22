@@ -191,4 +191,31 @@ export class ListingController {
     const endDate = query.endDate ? new Date(query.endDate) : undefined;
     return this.listingService.getListingStatistics(id, startDate, endDate);
   }
+
+  // =================== LOCATION-BASED ENDPOINTS ===================
+
+  @Get('location/nearby')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Tìm listings gần vị trí cụ thể với tính toán khoảng cách chính xác',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách listings gần vị trí được trả về thành công.',
+  })
+  @ResponseMessage('Lấy danh sách listings gần vị trí thành công')
+  async findListingsByLocation(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius: number = 10,
+    @Query() queryDto: QueryListingDto,
+  ) {
+    return this.listingService.findListingsByLocation(
+      lat,
+      lng,
+      radius,
+      queryDto,
+    );
+  }
 }
