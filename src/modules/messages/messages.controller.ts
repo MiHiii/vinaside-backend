@@ -37,6 +37,7 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
+import { GuestOrPermissionGuard } from '../../common/guards/guest-or-permission.guard';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -50,7 +51,8 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  @RequirePermission('message.create')
+  // @RequirePermission('message.create')
+  @UseGuards(GuestOrPermissionGuard)
   @ApiOperation({
     summary: 'Gửi tin nhắn mới hoặc reply tin nhắn',
     description:

@@ -216,4 +216,13 @@ export class PropertyController {
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.propertyService.restore(id, req.user);
   }
+
+  @Get(':propertyId/room-status')
+  @RequirePermission('property.view')
+  @ApiOperation({
+    summary: 'Lấy trạng thái phòng của property (đang đặt/còn trống)',
+  })
+  async findRoomStatus(@Param('propertyId') propertyId: string) {
+    return this.propertyService.getRoomStatus(propertyId);
+  }
 }

@@ -31,6 +31,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { NotificationResponse } from './interfaces/notification.interface';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -50,11 +51,27 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Lấy danh sách thông báo của tôi' })
   @ApiResponse({ status: 200, description: 'Danh sách thông báo' })
   @ResponseMessage('Lấy danh sách thông báo thành công')
-  findAll(
+  async findAll(
     @Query() query: QueryNotificationDto,
     @Request() req: RequestWithUser,
-  ) {
-    return this.notificationsService.findAll(query, req.user);
+  ): Promise<NotificationResponse> {
+    const result = (await this.notificationsService.findAll(
+      query,
+      req.user,
+    )) as NotificationResponse;
+    // Format notifications: bổ sung avatar_url và sender_user_id nếu cần
+    // const notifications = Array.isArray(result.notifications)
+    //   ? await this.notificationsService.enrichNotificationDetails(
+    //       result.notifications,
+    //     )
+    //   : [];
+    return {
+      ...result,
+      // notifications,
+      notifications: Array.isArray(result.notifications)
+        ? result.notifications
+        : [],
+    };
   }
 
   @Get('unread-count')
@@ -95,16 +112,7 @@ export class NotificationsController {
     );
   }
 
-  @Patch(':id/read')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Đánh dấu thông báo đã đọc' })
-  @ApiResponse({ status: 200, description: 'Thông báo được đánh dấu đã đọc' })
-  @ResponseMessage('Đánh dấu thông báo đã đọc thành công')
-  markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.notificationsService.markAsRead(id, req.user);
-  }
-
-  @Patch('read-all')
+  @Post('all-read')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Đánh dấu tất cả thông báo đã đọc' })
   @ApiResponse({
@@ -113,7 +121,18 @@ export class NotificationsController {
   })
   @ResponseMessage('Đánh dấu tất cả thông báo đã đọc thành công')
   markAllAsRead(@Request() req: RequestWithUser) {
+    console.log('CALLED: all-read');
     return this.notificationsService.markAllAsRead(req.user);
+  }
+
+  @Patch(':id/read')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Đánh dấu thông báo đã đọc' })
+  @ApiResponse({ status: 200, description: 'Thông báo được đánh dấu đã đọc' })
+  @ResponseMessage('Đánh dấu thông báo đã đọc thành công')
+  markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
+    console.log('CALLED: id/read', id);
+    return this.notificationsService.markAsRead(id, req.user);
   }
 
   @Delete(':id')

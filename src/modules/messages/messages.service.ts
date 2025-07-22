@@ -156,17 +156,29 @@ export class MessagesService {
         // Tự động gửi thông báo cho người nhận
         try {
           const sender = populatedMessage.sender_id as {
+            _id?: Types.ObjectId | string;
             name?: string;
             username?: string;
+            avatar_url?: string;
           };
-          const senderName = sender?.name || sender?.username || 'Someone';
+          const senderName =
+            typeof sender?.name === 'string'
+              ? sender.name
+              : typeof sender?.username === 'string'
+                ? sender.username
+                : 'Someone';
+          const senderUserId = sender?._id ? sender._id.toString() : user._id;
+          const avatar_url =
+            typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
           await this.notificationsService.createAndSend({
             user_id: createMessageDto.receiver_id,
             recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
-            title: 'New Message',
-            message: `You have received a new message from ${senderName}`,
+            title: 'Bạn có tin nhắn mới',
+            message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
             type: NotificationType.MESSAGE,
             sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
+            sender_user_id: senderUserId,
+            avatar_url,
           });
         } catch (notificationError) {
           console.error(

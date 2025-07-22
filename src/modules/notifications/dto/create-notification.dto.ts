@@ -49,4 +49,12 @@ export class CreateNotificationDto {
   @IsOptional()
   @IsBoolean()
   is_read?: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatar_url?: string;
+
+  @IsOptional()
+  @IsString()
+  sender_user_id?: string;
 }

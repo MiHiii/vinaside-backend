@@ -49,6 +49,8 @@ export interface FormattedNotification {
   is_read: boolean;
   sent_at: string | null;
   created_at: string;
+  avatar_url?: string; // Thêm trường này
+  user_id?: string; // Thêm trường này cho type=message
 }
 
 /**
