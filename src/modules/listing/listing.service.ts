@@ -34,6 +34,7 @@ import {
   getGroupFormat,
   generateLabels,
 } from '../../utils/date.util';
+import { GooglePlacesService } from '../location/google-places.service';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -69,6 +70,7 @@ export class ListingService {
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<Transaction>,
     @InjectModel(Service.name) private readonly serviceModel: Model<Service>,
+    private readonly googlePlacesService: GooglePlacesService,
   ) {}
 
   async create(
@@ -917,24 +919,23 @@ export class ListingService {
   ): Promise<Types.ObjectId[]> {
     // Priority 1: Google Places ID (most precise)
     if (filters.place_id) {
-      const placeQuery: FilterQuery<Property> = {
-        isDeleted: false,
-        'location.place_id': filters.place_id,
-      };
+      // First try exact match
+      const exactMatch = await this.findPropertiesByExactPlaceId(
+        filters.place_id,
+      );
+      if (exactMatch.length > 0) {
+        return exactMatch;
+      }
 
-      try {
-        const properties = await this.propertyModel
-          .find(placeQuery, { _id: 1 })
-          .lean()
-          .exec();
-
-        if (properties.length > 0) {
-          return properties.map((property) => property._id);
-        }
-      } catch (error) {
-        this.logger.error(
-          `Error finding properties by place_id: ${(error as Error).message}`,
+      // If no exact match and fuzzy search is enabled (default: true), try fuzzy search
+      const enableFuzzy = filters.fuzzy_place_search !== false; // Default to true
+      if (enableFuzzy) {
+        const fuzzyMatch = await this.findPropertiesByFuzzyPlaceId(
+          filters.place_id,
         );
+        if (fuzzyMatch.length > 0) {
+          return fuzzyMatch;
+        }
       }
     }
 
@@ -1022,6 +1023,86 @@ export class ListingService {
   }
 
   /**
+   * Find properties by exact place_id match
+   */
+  private async findPropertiesByExactPlaceId(
+    placeId: string,
+  ): Promise<Types.ObjectId[]> {
+    try {
+      const properties = await this.propertyModel
+        .find(
+          {
+            isDeleted: false,
+            'location.place_id': placeId,
+          },
+          { _id: 1 },
+        )
+        .lean()
+        .exec();
+
+      return properties.map((property) => property._id);
+    } catch (error) {
+      this.logger.error(
+        `Error finding properties by exact place_id: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Find properties by fuzzy place_id search using Google Places API
+   */
+  private async findPropertiesByFuzzyPlaceId(
+    placeId: string,
+  ): Promise<Types.ObjectId[]> {
+    try {
+      // Get place details from Google Places
+      const placeDetails =
+        await this.googlePlacesService.getPlaceDetails(placeId);
+      if (!placeDetails || !placeDetails.geometry) {
+        this.logger.warn(`No place details found for place_id: ${placeId}`);
+        return [];
+      }
+
+      const { lat, lng } = placeDetails.geometry.location;
+      const searchRadius = 2; // 2km radius for fuzzy search
+
+      // Convert radius from km to degrees (approximate)
+      const latRange = searchRadius / 111;
+      const lngRange = searchRadius / (111 * Math.cos((lat * Math.PI) / 180));
+
+      const properties = await this.propertyModel
+        .find(
+          {
+            isDeleted: false,
+            'location.lat': {
+              $gte: lat - latRange,
+              $lte: lat + latRange,
+            },
+            'location.lng': {
+              $gte: lng - lngRange,
+              $lte: lng + lngRange,
+            },
+          },
+          { _id: 1 },
+        )
+        .lean()
+        .exec();
+
+      this.logger.log(
+        `Fuzzy place_id search found ${properties.length} properties within ${searchRadius}km of ${placeId}`,
+      );
+
+      return properties.map((property) => property._id);
+    } catch (error) {
+      this.logger.error(
+        `Error in fuzzy place_id search: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
    * Advanced location search with distance calculation
    */
   async findListingsByLocation(
@@ -1075,10 +1156,12 @@ export class ListingService {
 
     // Create a map of property ID to distance
     const distanceMap = new Map<string, number>();
-    const propertyIds = nearbyProperties.map((prop: any) => {
-      distanceMap.set(prop._id.toString(), prop.distance);
-      return prop._id;
-    });
+    const propertyIds = nearbyProperties.map(
+      (prop: { _id: any; distance: number }) => {
+        distanceMap.set(String(prop._id), prop.distance);
+        return prop._id;
+      },
+    );
 
     const { page = 1, limit = 14 } = queryDto;
     const skip = (page - 1) * limit;

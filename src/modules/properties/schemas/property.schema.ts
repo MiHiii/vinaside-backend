@@ -124,8 +124,10 @@ PropertySchema.pre('save', function () {
 });
 
 PropertySchema.pre('findOneAndUpdate', function () {
-  const update = this.getUpdate() as any;
-  if (update.location && update.location.lat && update.location.lng) {
+  const update = this.getUpdate() as {
+    location?: { lat?: number; lng?: number; coordinates?: [number, number] };
+  };
+  if (update?.location?.lat && update?.location?.lng) {
     update.location.coordinates = [update.location.lng, update.location.lat];
   }
 });

@@ -131,6 +131,11 @@ export class QueryListingDto {
   place_id?: string; // Google Places ID - highest priority
 
   @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  fuzzy_place_search?: boolean; // Enable fuzzy search for place_id (default: true)
+
+  @IsOptional()
   @IsString()
   city?: string;
 
