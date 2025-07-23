@@ -53,7 +53,10 @@ import {
   getGroupFormat,
   generateLabels,
 } from '../../utils/date.util';
-
+import { CancelPolicy } from '../listing/schemas/listing.schema';
+import { PaymentFactory } from './services/payment.factory';
+import { PaymentResponseDto } from './dto/payment.dto';
+import { TransactionsService } from '../transactions/services/transactions.service';
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -77,6 +80,8 @@ export class BookingService {
     private readonly notificationsService: NotificationsService,
     @Inject(forwardRef(() => ReviewsService))
     private readonly reviewsService: ReviewsService,
+    private readonly paymentFactory: PaymentFactory,
+    private readonly transactionsService: TransactionsService,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -322,6 +327,12 @@ export class BookingService {
     const commissionRate = 0.1;
     const finalPayoutAmount = amountAfterDiscount * (1 - commissionRate);
 
+    // Gán deposit_percent mặc định theo cancel_policy
+    let depositPercent = 0.5;
+    if (listing.cancel_policy === CancelPolicy.STRICT) {
+      depositPercent = 1;
+    }
+
     const bookingData = {
       propertyId,
       listingId: new Types.ObjectId(listingId),
@@ -351,6 +362,8 @@ export class BookingService {
       guest_name: user.name,
       guest_email: user.email,
       guest_phone: '',
+      deposit_percent: depositPercent,
+      deposit_paid: false,
     };
 
     // BaseRepo.create expects a generic object, not a DTO with methods
@@ -821,20 +834,58 @@ export class BookingService {
     });
   }
 
-  async cancelBookingPublic(id: string) {
+  async cancelBookingPublic(id: string, guestId: string) {
+    // 1. Xác thực quyền
     const booking = await this.bookingRepo.findById(id);
     if (!booking) {
       throw new NotFoundException('Không tìm thấy booking');
     }
-    if (booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestException('Booking đã bị hủy trước đó');
+    if (booking.guestId.toString() !== guestId) {
+      throw new ForbiddenException('Bạn không có quyền huỷ booking này');
     }
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Booking đã bị huỷ trước đó');
+    }
+
+    // 2. Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    booking.payment_status = PaymentStatus.REFUNDED;
+    booking.payment_status = PaymentStatus.REFUNDED; // tạm gán, xử lý thực tế qua Transaction
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Public user cancelled';
+
+    // 3. Tính toán hoàn tiền theo chính sách
+    // Lấy thông tin listing để lấy cancel_policy
+    const listing = await this.listingService.findOne(
+      booking.listingId.toString(),
+    );
+    const cancel_policy = listing?.cancel_policy || CancelPolicy.FLEXIBLE;
+    const now = new Date();
+    const checkInDate = new Date(booking.checkInDate);
+    const daysBeforeCheckIn =
+      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    let refundPercent = 0;
+    switch (cancel_policy) {
+      case CancelPolicy.FLEXIBLE:
+        if (now < checkInDate) refundPercent = 100;
+        break;
+      case CancelPolicy.MODERATE:
+        if (daysBeforeCheckIn > 7) refundPercent = 100;
+        else if (daysBeforeCheckIn >= 0) refundPercent = 50;
+        break;
+      case CancelPolicy.STRICT:
+        refundPercent = 0;
+        break;
+    }
+    const deposit_paid_amount = booking.deposit_paid_amount || 0;
+    const refund_amount = Math.round(
+      (deposit_paid_amount * refundPercent) / 100,
+    );
+    (booking as any).refund_amount = refund_amount;
     await booking.save();
-    return { success: true, message: 'Hủy booking thành công' };
+    return {
+      success: true,
+      message: `Hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
+    };
   }
 
   // ====================== INTERNAL METHODS ======================
@@ -2173,5 +2224,67 @@ export class BookingService {
     }
 
     return result;
+  }
+
+  async createRemainingPayment(
+    bookingId: string,
+    createPaymentDto: any,
+    user: JwtPayload,
+  ): Promise<PaymentResponseDto> {
+    const booking = await this.bookingRepo.findById(bookingId);
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    // ✅ Kiểm tra người gọi có phải là người đặt không (chỉ khi là guest)
+    if (
+      user.role === 'guest' &&
+      booking.guestId.toString() !== user._id.toString()
+    ) {
+      throw new ForbiddenException('Bạn không có quyền thanh toán booking này');
+    }
+
+    // ✅ Kiểm tra trạng thái thanh toán hiện tại
+    if (
+      !booking.deposit_paid ||
+      booking.payment_status !== PaymentStatus.PARTIALLY_PAID
+    ) {
+      throw new BadRequestException(
+        'Chỉ cho phép thanh toán phần còn lại khi đã đặt cọc và chưa thanh toán đủ',
+      );
+    }
+
+    const depositPaidAmount =
+      booking.deposit_paid_amount || booking.deposit_amount || 0;
+    const remainingAmount = booking.final_amount - depositPaidAmount;
+
+    if (remainingAmount <= 0) {
+      throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+    }
+
+    const paymentService = this.paymentFactory.getPaymentService(
+      createPaymentDto.paymentMethod,
+    );
+
+    const paymentRequest = {
+      ...createPaymentDto,
+      bookingId,
+      amount: remainingAmount,
+      paymentType: 'remaining',
+      description: `Thanh toán phần còn lại cho booking ${bookingId}`,
+    };
+
+    const result = await paymentService.createPaymentUrl(paymentRequest);
+
+    return {
+      success: result.success,
+      paymentMethod: result.paymentMethod,
+      paymentUrl: result.paymentUrl,
+      orderId: result.orderId,
+      amount: result.amount,
+      message: result.message,
+      expiresAt: result.expiresAt,
+      createdAt: result.createdAt,
+    };
   }
 }
