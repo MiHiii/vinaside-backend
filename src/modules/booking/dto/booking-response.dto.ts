@@ -43,4 +43,5 @@ export class BookingResponseDto {
   special_requests?: string;
   created_at?: Date;
   updated_at?: Date;
+  cancel_policy?: string;
 }
