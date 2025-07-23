@@ -240,6 +240,11 @@ export class BookingController {
     );
   }
 
+  @Patch('my-bookings/:id/cancel')
+  async cancelBookingPublic(@Param('id') id: string) {
+    return this.bookingService.cancelBookingPublic(id);
+  }
+
   // =================== GENERIC PAYMENT ENDPOINTS ===================
 
   @Post(':id/payment')

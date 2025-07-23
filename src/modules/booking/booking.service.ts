@@ -11,7 +11,11 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { FilterQuery, Types, SortOrder } from 'mongoose';
-import { Booking, BookingStatus } from './schemas/booking.schema';
+import {
+  Booking,
+  BookingStatus,
+  PaymentStatus,
+} from './schemas/booking.schema';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
@@ -102,7 +106,24 @@ export class BookingService {
     return {
       _id: booking._id ? booking._id.toString() : null,
       propertyId: booking.propertyId ? booking.propertyId.toString() : null,
-      listingId: booking.listingId ? booking.listingId.toString() : null,
+      listingId: booking.listingId
+        ? typeof booking.listingId === 'object' && booking.listingId._id
+          ? {
+              _id: booking.listingId._id.toString(),
+              title: booking.listingId.title,
+              images: booking.listingId.images,
+              address: booking.listingId.address,
+              price_per_night: booking.listingId.price_per_night,
+              // Không cần cancel_policy ở đây
+            }
+          : booking.listingId.toString()
+        : null,
+      cancel_policy:
+        booking.listingId &&
+        typeof booking.listingId === 'object' &&
+        'cancel_policy' in booking.listingId
+          ? booking.listingId.cancel_policy
+          : undefined,
       guestId,
       checkInDate: booking.checkInDate,
       check_out_date: booking.check_out_date,
@@ -558,7 +579,10 @@ export class BookingService {
       limit,
       populate: [
         { path: 'propertyId', select: 'name' },
-        { path: 'listingId', select: 'title address images price_per_night' },
+        {
+          path: 'listingId',
+          select: 'title address images price_per_night cancel_policy',
+        },
         { path: 'guestId', select: 'name avatar email phone' },
         { path: 'voucher_id', select: 'code discount_percent' },
       ],
@@ -664,7 +688,7 @@ export class BookingService {
   async getBookedDates(listingId: string) {
     const { data } = await this.bookingRepo.findAll({
       listingId: new Types.ObjectId(listingId),
-      status: { $in: [BookingStatus.CONFIRMED, BookingStatus.PENDING] },
+      status: BookingStatus.CONFIRMED,
       isDeleted: false,
     });
 
@@ -743,7 +767,10 @@ export class BookingService {
         skip,
         limit,
         populate: [
-          { path: 'listingId', select: 'title address images price_per_night' },
+          {
+            path: 'listingId',
+            select: 'title address images price_per_night cancel_policy',
+          },
           { path: 'guestId', select: 'name avatar email phone' },
           { path: 'propertyId', select: 'name address' },
         ],
@@ -794,6 +821,22 @@ export class BookingService {
     });
   }
 
+  async cancelBookingPublic(id: string) {
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Booking đã bị hủy trước đó');
+    }
+    booking.status = BookingStatus.CANCELLED;
+    booking.payment_status = PaymentStatus.REFUNDED;
+    booking.cancelled_at = new Date();
+    booking.cancellation_reason = 'Public user cancelled';
+    await booking.save();
+    return { success: true, message: 'Hủy booking thành công' };
+  }
+
   // ====================== INTERNAL METHODS ======================
 
   /**
@@ -838,7 +881,7 @@ export class BookingService {
         populate: [
           {
             path: 'listingId',
-            select: 'title address images price_per_night',
+            select: 'title address images price_per_night cancel_policy',
           },
           { path: 'voucher_id', select: 'code discount_percent' },
         ],
@@ -890,7 +933,7 @@ export class BookingService {
         populate: [
           {
             path: 'listingId',
-            select: 'title address images price_per_night',
+            select: 'title address images price_per_night cancel_policy',
           },
           { path: 'guestId', select: 'name avatar email phone' },
           { path: 'voucher_id', select: 'code discount_percent' },
