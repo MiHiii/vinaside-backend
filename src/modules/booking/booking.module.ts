@@ -32,6 +32,6 @@ import { TransactionsModule } from '../transactions/transactions.module';
   ],
   controllers: [BookingController],
   providers: [BookingService, BookingRepo, VNPayService, PaymentFactory],
-  exports: [BookingService, BookingRepo, VNPayService, PaymentFactory],
+  exports: [BookingService],
 })
 export class BookingModule {}

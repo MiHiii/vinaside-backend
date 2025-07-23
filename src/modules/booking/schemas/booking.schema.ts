@@ -11,6 +11,7 @@ export enum BookingStatus {
 
 export enum PaymentStatus {
   PENDING = 'pending',
+  PARTIALLY_PAID = 'partially_paid',
   PAID = 'paid',
   REFUNDED = 'refunded',
   FAILED = 'failed',
@@ -268,9 +269,39 @@ export class Booking extends Document {
 
   @Prop({ type: Date })
   deletedAt?: Date;
+
+  @Prop({ type: Number, default: 0.5, min: 0, max: 1 })
+  deposit_percent?: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  deposit_amount?: number;
+
+  @Prop({ type: Boolean, default: false })
+  deposit_paid?: boolean;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  deposit_paid_amount?: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  refund_amount?: number;
 }
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
+
+// Thêm middleware tự động tính deposit_amount
+BookingSchema.pre('validate', function (next) {
+  if (typeof this.deposit_percent !== 'number') {
+    this.deposit_percent = 0.5; // fallback nếu không có
+  }
+  if (
+    !this.deposit_amount ||
+    this.isModified('final_amount') ||
+    this.isModified('deposit_percent')
+  ) {
+    this.deposit_amount = Math.round(this.final_amount * this.deposit_percent);
+  }
+  next();
+});
 
 // Thêm index cho các trường tìm kiếm phổ biến
 BookingSchema.index({ listingId: 1 });
@@ -280,3 +311,4 @@ BookingSchema.index({ payment_status: 1 });
 BookingSchema.index({ check_out_date: 1 });
 BookingSchema.index({ isDeleted: 1 });
 BookingSchema.index({ created_at: -1 });
+BookingSchema.index({ deposit_paid: 1 });

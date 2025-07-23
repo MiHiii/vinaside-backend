@@ -28,6 +28,8 @@ import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+import { BookingService } from '../../booking/booking.service';
+import { ResponseMessage } from '../../../decorators/response-message.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -38,7 +40,10 @@ interface RequestWithUser extends Request {
 @UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly bookingService: BookingService,
+  ) {}
 
   @Post()
   @RequirePermission('transaction.create')
@@ -65,6 +70,22 @@ export class TransactionsController {
     }
 
     return this.transactionsService.createTransaction(createTransactionDto);
+  }
+
+  @Post(':bookingId/refund')
+  @RequirePermission('transaction.refund')
+  @ApiOperation({
+    summary: 'Hoàn tiền cho booking đã huỷ',
+    description:
+      'Tạo transaction refund và thực hiện hoàn tiền cho booking đã huỷ',
+  })
+  @ApiResponse({ status: 200, description: 'Hoàn tiền thành công' })
+  @ApiResponse({ status: 400, description: 'Không thể hoàn tiền' })
+  @ResponseMessage('Hoàn tiền booking thành công')
+  async refundBookingTransaction(
+    @Param('bookingId') bookingId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.transactionsService.refundBookingTransaction(bookingId);
   }
 
   @Get()

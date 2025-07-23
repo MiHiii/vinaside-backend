@@ -47,6 +47,10 @@ interface BookingDocument extends Document {
   vnpay_pay_date?: Date;
   vnpay_response_code?: string;
   payment_id?: string;
+  deposit_amount?: number; // Added for new logic
+  deposit_paid?: boolean;
+  deposit_paid_amount?: number;
+  deposit_percent?: number;
 }
 
 @Injectable()
@@ -119,7 +123,12 @@ export class VNPayService extends PaymentServiceInterface {
     // Tạo order ID unique
     const orderId = VNPayUtil.generateOrderId(bookingId);
     const createDate = VNPayUtil.formatDate(new Date());
-    const amount = VNPayUtil.formatAmount(booking.final_amount);
+    // Sử dụng deposit_amount nếu có, fallback về final_amount nếu chưa có
+    const amountToPay =
+      typeof booking.deposit_amount === 'number' && booking.deposit_amount > 0
+        ? booking.deposit_amount
+        : booking.final_amount;
+    const amount = VNPayUtil.formatAmount(amountToPay);
 
     // Tạo parameters cho VNPay (chỉ những parameters cần thiết như official code)
     const vnpParams: VNPayParams = {
@@ -184,7 +193,7 @@ export class VNPayService extends PaymentServiceInterface {
       reference_type: ReferenceType.BOOKING,
       user_id: booking.guestId.toString(),
       direction: TransactionDirection.IN,
-      amount: booking.final_amount,
+      amount: amountToPay, // Use amountToPay for transaction amount
       currency: 'VND',
       method: PaymentMethod.VNPAY,
       provider: PaymentProvider.VNPAY,
@@ -202,7 +211,7 @@ export class VNPayService extends PaymentServiceInterface {
       paymentMethod: PaymentMethod.VNPAY,
       paymentUrl,
       orderId,
-      amount: booking.final_amount,
+      amount: amountToPay,
       message: 'Tạo URL thanh toán VNPay thành công',
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
@@ -300,7 +309,13 @@ export class VNPayService extends PaymentServiceInterface {
         callbackData.vnp_ResponseCode,
       );
       if (isSuccess) {
-        updateData.payment_status = PaymentStatus.PAID;
+        updateData.deposit_paid = true;
+        updateData.deposit_paid_amount = booking.deposit_amount;
+        if (booking.deposit_percent === 1) {
+          updateData.payment_status = PaymentStatus.PAID;
+        } else {
+          updateData.payment_status = PaymentStatus.PARTIALLY_PAID;
+        }
         updateData.status = BookingStatus.CONFIRMED; // Update status thành confirmed
         this.logger.log(
           `Payment successful for booking ${bookingId}, transaction: ${callbackData.vnp_TransactionNo}`,

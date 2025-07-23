@@ -241,8 +241,15 @@ export class BookingController {
   }
 
   @Patch('my-bookings/:id/cancel')
-  async cancelBookingPublic(@Param('id') id: string) {
-    return this.bookingService.cancelBookingPublic(id);
+  @Roles('guest')
+  @ApiOperation({ summary: 'Hủy booking của tôi (Guest)' })
+  @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
+  @ResponseMessage('Hủy booking thành công')
+  async cancelBookingPublic(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.cancelBookingPublic(id, req.user._id);
   }
 
   // =================== GENERIC PAYMENT ENDPOINTS ===================
@@ -286,6 +293,31 @@ export class BookingController {
       expiresAt: result.expiresAt,
       createdAt: result.createdAt,
     };
+  }
+
+  @Post(':id/payment/remaining')
+  @Roles('guest')
+  @ApiOperation({
+    summary: 'Tạo payment URL cho phần còn lại (remaining payment)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment URL cho phần còn lại được tạo thành công',
+    type: PaymentResponseDto,
+  })
+  @ResponseMessage('Tạo payment URL phần còn lại thành công')
+  async createRemainingPayment(
+    @Param('id') bookingId: string,
+    @Body() createPaymentDto: CreatePaymentDto,
+    @Request() req: RequestWithUser,
+  ): Promise<PaymentResponseDto> {
+    createPaymentDto.bookingId = bookingId;
+    const result = await this.bookingService.createRemainingPayment(
+      bookingId,
+      createPaymentDto,
+      req.user as any as JwtPayload,
+    );
+    return result;
   }
 
   @Get('payment/supported-methods')

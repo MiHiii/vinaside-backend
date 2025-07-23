@@ -16,11 +16,6 @@ export enum ListingStatus {
   DELETED = 'deleted', // Đã xóa (soft delete)
 }
 
-export type Point = {
-  type: string;
-  coordinates: [number, number]; // [longitude, latitude]
-};
-
 @Schema({ timestamps: true })
 export class Listing extends Document {
   @Prop({
