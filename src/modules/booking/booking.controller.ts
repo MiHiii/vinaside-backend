@@ -46,7 +46,6 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { VNPayCallbackDto } from './dto/vnpay-callback.dto';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -217,7 +216,7 @@ export class BookingController {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
-    return this.bookingService.remove(id, req.user as any as JwtPayload);
+    return this.bookingService.remove(id);
   }
 
   @Patch('property/:propertyId/:id/confirm')
@@ -461,7 +460,7 @@ export class BookingController {
   @Public()
   @ApiOperation({ summary: 'VNPay IPN callback' })
   @ApiResponse({ status: 200, description: 'IPN processed' })
-  async handleVNPayIPN(@Body() callbackData: VNPayCallbackDto) {
+  async handleVNPayIPN(@Body() callbackData: any) {
     const result = await this.vnpayService.handleIPN(callbackData);
     return {
       RspCode: result.success ? '00' : '99',
@@ -473,7 +472,7 @@ export class BookingController {
   @Public()
   @ApiOperation({ summary: 'VNPay return callback' })
   @ApiResponse({ status: 200, description: 'Return processed' })
-  async handleVNPayReturn(@Query() callbackData: VNPayCallbackDto) {
+  async handleVNPayReturn(@Query() callbackData: any) {
     const result = await this.vnpayService.handleCallback(callbackData);
     return {
       success: result.success,
