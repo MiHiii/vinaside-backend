@@ -116,7 +116,13 @@ export class ListingService {
     return listing;
   }
 
-  async findAll(queryDto: QueryListingDto): Promise<PaginatedListings> {
+  async findAll(
+    queryDto: QueryListingDto,
+    user?: any,
+  ): Promise<{
+    listings: any[];
+    meta: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     const {
       page = 1,
       limit = 14,
@@ -232,8 +238,32 @@ export class ListingService {
       populate: { path: 'propertyId', select: 'name type location' },
     });
 
+    // Nếu có user, lấy danh sách room_id đã wishlist
+    let wishlistRoomIds: string[] = [];
+    if (user && user._id) {
+      // Lấy model Wishlist động để tránh circular
+      const mongoose = await import('mongoose');
+      const WishlistModel = mongoose.model('Wishlist');
+      wishlistRoomIds = await WishlistModel.find({
+        user_id: user._id,
+        isDelete: false,
+      }).distinct('room_id');
+      wishlistRoomIds = wishlistRoomIds.map((id) => id.toString());
+    }
+
+    // Thêm trường is_wishlisted cho từng listing
+    const listingsWithWishlist = result.data.map((listing) => {
+      const obj = listing.toObject ? listing.toObject() : listing;
+      return {
+        ...obj,
+        is_wishlisted: wishlistRoomIds.includes(
+          String((obj as { _id: string | Types.ObjectId })._id),
+        ),
+      };
+    });
+
     return {
-      listings: result.data,
+      listings: listingsWithWishlist,
       meta: {
         total: result.total,
         page,

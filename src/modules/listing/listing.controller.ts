@@ -135,8 +135,16 @@ export class ListingController {
   @Get()
   @ApiOperation({ summary: 'Tìm tất cả listing với bộ lọc' })
   @ResponseMessage('Listings fetched successfully')
-  findAll(@Query() queryListingDto: QueryListingDto) {
-    return this.listingService.findAll(queryListingDto);
+  findAll(@Query() queryListingDto: QueryListingDto, @Request() req: any) {
+    let user: JwtPayload | undefined = undefined;
+    if (
+      req &&
+      typeof req === 'object' &&
+      Object.prototype.hasOwnProperty.call(req, 'user')
+    ) {
+      user = (req as { user: JwtPayload }).user;
+    }
+    return this.listingService.findAll(queryListingDto, user);
   }
 
   @Public()
