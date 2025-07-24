@@ -11,6 +11,14 @@ import {
   NotificationType,
 } from '../schemas/notification.schema';
 
+function toVNTimeString(date: Date | string | undefined | null): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  // Chuyển sang UTC+7
+  const vnDate = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return vnDate.toISOString().replace('T', ' ').substring(0, 19);
+}
+
 /**
  * Format notification để gửi qua socket
  */
@@ -24,8 +32,8 @@ export function formatNotificationForSocket(
     type: notification.type,
     status: notification.status,
     is_read: notification.is_read,
-    sent_at: notification.sent_at ? notification.sent_at.toISOString() : null,
-    created_at: notification.created_at.toISOString(),
+    sent_at: toVNTimeString(notification.sent_at),
+    created_at: toVNTimeString(notification.created_at),
   };
 }
 
@@ -87,6 +95,8 @@ export function createRealtimeNotification(params: {
   is_read?: boolean;
   sent_at?: Date;
   created_at?: Date;
+  avatar_url?: string;
+  sender_user_id?: string;
 }): FormattedNotification {
   const {
     notificationId,
@@ -97,6 +107,8 @@ export function createRealtimeNotification(params: {
     is_read = false,
     sent_at,
     created_at,
+    avatar_url,
+    sender_user_id,
   } = params;
 
   return {
@@ -106,10 +118,10 @@ export function createRealtimeNotification(params: {
     type,
     status,
     is_read,
-    sent_at: sent_at ? sent_at.toISOString() : new Date().toISOString(),
-    created_at: created_at
-      ? created_at.toISOString()
-      : new Date().toISOString(),
+    sent_at: toVNTimeString(sent_at || new Date()),
+    created_at: toVNTimeString(created_at || new Date()),
+    avatar_url,
+    user_id: type === NotificationType.MESSAGE ? sender_user_id : undefined,
   };
 }
 

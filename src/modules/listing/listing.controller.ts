@@ -135,8 +135,16 @@ export class ListingController {
   @Get()
   @ApiOperation({ summary: 'Tìm tất cả listing với bộ lọc' })
   @ResponseMessage('Listings fetched successfully')
-  findAll(@Query() queryListingDto: QueryListingDto) {
-    return this.listingService.findAll(queryListingDto);
+  findAll(@Query() queryListingDto: QueryListingDto, @Request() req: any) {
+    let user: JwtPayload | undefined = undefined;
+    if (
+      req &&
+      typeof req === 'object' &&
+      Object.prototype.hasOwnProperty.call(req, 'user')
+    ) {
+      user = (req as { user: JwtPayload }).user;
+    }
+    return this.listingService.findAll(queryListingDto, user);
   }
 
   @Public()
@@ -190,5 +198,32 @@ export class ListingController {
     const startDate = query.startDate ? new Date(query.startDate) : undefined;
     const endDate = query.endDate ? new Date(query.endDate) : undefined;
     return this.listingService.getListingStatistics(id, startDate, endDate);
+  }
+
+  // =================== LOCATION-BASED ENDPOINTS ===================
+
+  @Get('location/nearby')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Tìm listings gần vị trí cụ thể với tính toán khoảng cách chính xác',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách listings gần vị trí được trả về thành công.',
+  })
+  @ResponseMessage('Lấy danh sách listings gần vị trí thành công')
+  async findListingsByLocation(
+    @Query('lat') lat: number,
+    @Query('lng') lng: number,
+    @Query('radius') radius: number = 10,
+    @Query() queryDto: QueryListingDto,
+  ) {
+    return this.listingService.findListingsByLocation(
+      lat,
+      lng,
+      radius,
+      queryDto,
+    );
   }
 }

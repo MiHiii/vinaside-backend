@@ -3,6 +3,6 @@ export interface JwtPayload {
   email: string;
   name?: string;
   role: 'guest' | 'staff' | 'admin';
-  permissions: string[];
-  customRoles: string[];
+  customRoles: string[]; // Custom roles for display purposes
+  // Note: Permissions are checked real-time via PermissionGuard, not stored in JWT
 }

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersModule } from '../users/users.module';
 import { PassportModule } from '@nestjs/passport';
@@ -30,6 +30,7 @@ import {
 } from './schemas/user-custom-role.schema';
 import { RbacController } from './controllers/rbac.controller';
 
+@Global()
 @Module({
   imports: [
     UsersModule,

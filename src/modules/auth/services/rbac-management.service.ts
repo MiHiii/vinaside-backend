@@ -11,6 +11,7 @@ import {
   BulkAssignRolesDto,
   AssignPermissionToRoleDto,
 } from '../dto/assign-role.dto';
+import { UsersService } from '../../users/users.service';
 
 export interface RoleAssignmentResult {
   roleKey: string;
@@ -19,7 +20,10 @@ export interface RoleAssignmentResult {
 
 @Injectable()
 export class RbacManagementService {
-  constructor(private rbacService: RbacService) {}
+  constructor(
+    private rbacService: RbacService,
+    private usersService: UsersService,
+  ) {}
 
   async getAllCustomRoles(): Promise<CustomRole[]> {
     try {

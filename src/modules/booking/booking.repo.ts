@@ -21,14 +21,15 @@ export class BookingRepo extends BaseRepo<Booking> {
     const conflictQuery: FilterQuery<Booking> = {
       listingId: new Types.ObjectId(listingId),
       isDeleted: false,
-      status: { $in: ['confirmed', 'pending'] },
+      status: { $in: ['confirmed'] },
       $or: [
         {
           checkInDate: { $lt: checkOutDate },
-          checkOutDate: { $gt: checkInDate },
+          check_out_date: { $gt: checkInDate },
         },
       ],
     };
+
     const count = await this.bookingModel.countDocuments(conflictQuery);
     return count > 0;
   }

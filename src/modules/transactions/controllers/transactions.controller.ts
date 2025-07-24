@@ -28,6 +28,8 @@ import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+import { BookingService } from '../../booking/booking.service';
+import { ResponseMessage } from '../../../decorators/response-message.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -38,10 +40,13 @@ interface RequestWithUser extends Request {
 @UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard)
 @ApiBearerAuth()
 export class TransactionsController {
-  constructor(private readonly transactionsService: TransactionsService) {}
+  constructor(
+    private readonly transactionsService: TransactionsService,
+    private readonly bookingService: BookingService,
+  ) {}
 
   @Post()
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.create')
   @RequirePropertyStaff({ propertyIdSource: 'body' })
   @ApiOperation({
     summary: 'Tạo giao dịch mới',
@@ -67,8 +72,24 @@ export class TransactionsController {
     return this.transactionsService.createTransaction(createTransactionDto);
   }
 
+  @Post(':bookingId/refund')
+  @RequirePermission('transaction.refund')
+  @ApiOperation({
+    summary: 'Hoàn tiền cho booking đã huỷ',
+    description:
+      'Tạo transaction refund và thực hiện hoàn tiền cho booking đã huỷ',
+  })
+  @ApiResponse({ status: 200, description: 'Hoàn tiền thành công' })
+  @ApiResponse({ status: 400, description: 'Không thể hoàn tiền' })
+  @ResponseMessage('Hoàn tiền booking thành công')
+  async refundBookingTransaction(
+    @Param('bookingId') bookingId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.transactionsService.refundBookingTransaction(bookingId);
+  }
+
   @Get()
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy danh sách giao dịch',
     description: 'Lấy danh sách giao dịch với lọc và phân trang',
@@ -113,7 +134,7 @@ export class TransactionsController {
   }
 
   @Get(':id')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy giao dịch theo ID',
     description: 'Lấy thông tin chi tiết giao dịch theo ID',
@@ -136,7 +157,7 @@ export class TransactionsController {
   }
 
   @Patch(':id/status')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.edit')
   @ApiOperation({
     summary: 'Cập nhật trạng thái giao dịch',
     description: 'Cập nhật trạng thái giao dịch và ghi log thay đổi',
@@ -171,7 +192,7 @@ export class TransactionsController {
   }
 
   @Get(':id/logs')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy lịch sử giao dịch',
     description: 'Lấy lịch sử thay đổi trạng thái của giao dịch',
@@ -194,7 +215,7 @@ export class TransactionsController {
   }
 
   @Get('reference/:type/:id')
-  @RequirePermission('booking.view')
+  @RequirePermission('transaction.view')
   @ApiOperation({
     summary: 'Lấy giao dịch theo tham chiếu',
     description:
@@ -222,7 +243,7 @@ export class TransactionsController {
   }
 
   @Delete(':id')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('transaction.delete')
   @ApiOperation({
     summary: 'Xóa giao dịch',
     description: 'Xóa mềm giao dịch (chỉ admin)',

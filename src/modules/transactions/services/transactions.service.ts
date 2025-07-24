@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
@@ -9,6 +11,11 @@ import {
   Transaction,
   TransactionDocument,
   TransactionStatus,
+  TransactionType,
+  TransactionDirection,
+  ReferenceType,
+  PaymentProvider,
+  PaymentMethod,
 } from '../schemas/transaction.schema';
 import {
   TransactionLog,
@@ -18,6 +25,9 @@ import {
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
 import { UpdateTransactionStatusDto } from '../dto/update-transaction-status.dto';
 import { QueryTransactionDto } from '../dto/query-transaction.dto';
+import { BookingService } from '../../booking/booking.service';
+import { BookingStatus } from '../../booking/schemas/booking.schema';
+import { toSafeString } from 'src/utils';
 
 interface AmountRangeFilter {
   $gte?: number;
@@ -36,6 +46,8 @@ export class TransactionsService {
     private readonly transactionModel: Model<TransactionDocument>,
     @InjectModel(TransactionLog.name)
     private readonly transactionLogModel: Model<TransactionLogDocument>,
+    @Inject(forwardRef(() => BookingService))
+    private readonly bookingService: BookingService,
   ) {}
 
   async createTransaction(
@@ -388,5 +400,111 @@ export class TransactionsService {
       },
       statusBreakdown: statusResult,
     };
+  }
+
+  async refundBookingTransaction(
+    bookingId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const booking =
+        await this.bookingService['bookingRepo'].findById(bookingId);
+      if (!booking)
+        return { success: false, message: 'Không tìm thấy booking' };
+      if (booking.status !== BookingStatus.CANCELLED)
+        return { success: false, message: 'Booking chưa bị huỷ' };
+      if (!booking.deposit_paid_amount || booking.deposit_paid_amount <= 0)
+        return { success: false, message: 'Booking chưa thanh toán cọc' };
+      if (!booking.refund_amount || booking.refund_amount <= 0)
+        return { success: false, message: 'Không có số tiền hoàn lại' };
+
+      // Tạo transaction refund
+      // Lấy id booking và guestId an toàn
+      const bookingIdStr = toSafeString(booking._id);
+      if (!bookingIdStr)
+        return { success: false, message: 'ID booking không hợp lệ' };
+      const guestIdStr = toSafeString(booking.guestId);
+      if (!guestIdStr)
+        return { success: false, message: 'ID guest không hợp lệ' };
+      const refundTransaction = await this.createTransaction({
+        type: TransactionType.REFUND,
+        direction: TransactionDirection.REFUND,
+        reference_type: ReferenceType.BOOKING,
+        reference_id: bookingIdStr,
+        amount: booking.refund_amount,
+        user_id: guestIdStr,
+        method: booking.payment_method as PaymentMethod,
+        provider: booking.vnpay_card_type
+          ? PaymentProvider.VNPAY
+          : PaymentProvider.MOMO,
+        note: 'Refund for cancelled booking',
+      });
+
+      // Mock gọi provider
+      let refundResult: {
+        success: boolean;
+        refundId?: string;
+        message?: string;
+      } = { success: false };
+      if (booking.payment_method === 'vnpay') {
+        refundResult = {
+          success: true,
+          refundId: 'MOCK_VNPAY_REFUND_ID',
+          message: 'Mock VNPay refund success',
+        };
+      } else if (booking.payment_method === 'momo') {
+        refundResult = {
+          success: true,
+          refundId: 'MOCK_MOMO_REFUND_ID',
+          message: 'Mock MoMo refund success',
+        };
+      } else {
+        refundResult = {
+          success: false,
+          message: 'Không hỗ trợ refund cho phương thức này',
+        };
+      }
+
+      // Cập nhật transaction status
+      let newStatus = TransactionStatus.FAILED;
+      if (refundResult.success) {
+        newStatus = TransactionStatus.SUCCESS;
+        refundTransaction.provider_transaction_id = refundResult.refundId;
+        refundTransaction.raw_response = refundResult;
+      } else {
+        refundTransaction.raw_response = refundResult;
+      }
+      refundTransaction.status = newStatus;
+      await refundTransaction.save();
+
+      // Ghi log
+      await this['createTransactionLog'](
+        refundTransaction._id as Types.ObjectId,
+        TransactionStatus.PENDING,
+        newStatus,
+        ChangedBy.SYSTEM,
+        new Types.ObjectId(guestIdStr),
+        refundResult.message || '',
+      );
+
+      if (newStatus === TransactionStatus.SUCCESS) {
+        return { success: true, message: 'Hoàn tiền thành công!' };
+      } else {
+        return {
+          success: false,
+          message: 'Hoàn tiền thất bại: ' + (refundResult.message || ''),
+        };
+      }
+    } catch (err: unknown) {
+      let msg = 'Lỗi không xác định';
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        'message' in err &&
+        typeof (err as { message?: unknown }).message === 'string'
+      ) {
+        msg = (err as { message: string }).message;
+      }
+      return { success: false, message: msg };
+    }
   }
 }

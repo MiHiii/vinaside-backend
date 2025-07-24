@@ -37,6 +37,10 @@ interface RequestWithOptionalUser extends Request {
   user?: JwtPayload;
 }
 
+interface IVoucherService {
+  getValidVouchersForUser(userId?: string, amount?: number): Promise<any[]>;
+}
+
 @ApiTags('Vouchers')
 @Controller('vouchers')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -45,7 +49,7 @@ export class VoucherController {
   constructor(private readonly voucherService: VoucherService) {}
 
   @Post()
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.create')
   @ApiOperation({ summary: 'Tạo voucher mới' })
   @ApiResponse({ status: 201, description: 'Voucher được tạo thành công' })
   @ResponseMessage('Tạo voucher thành công')
@@ -60,7 +64,7 @@ export class VoucherController {
   }
 
   @Get()
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy danh sách tất cả vouchers (Admin/Staff)' })
   @ApiResponse({ status: 200, description: 'Danh sách vouchers' })
   @ResponseMessage('Lấy danh sách vouchers thành công')
@@ -69,12 +73,19 @@ export class VoucherController {
   }
 
   @Get('valid')
-  @Public()
   @ApiOperation({ summary: 'Lấy danh sách vouchers hợp lệ cho khách hàng' })
   @ApiResponse({ status: 200, description: 'Danh sách vouchers hợp lệ' })
   @ResponseMessage('Lấy danh sách vouchers hợp lệ thành công')
-  getValidVouchers() {
-    return this.voucherService.getValidVouchers();
+  getValidVouchers(
+    @Request() req: RequestWithUser,
+    @Query('total_amount') totalAmount?: string,
+  ) {
+    const userId = req.user._id;
+    const amount = totalAmount ? parseFloat(totalAmount) : undefined;
+    return (this.voucherService as IVoucherService).getValidVouchersForUser(
+      userId,
+      amount,
+    );
   }
 
   @Get('validate/:code')
@@ -111,7 +122,7 @@ export class VoucherController {
   }
 
   @Get('statistics')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy thống kê voucher' })
   @ApiResponse({ status: 200, description: 'Thống kê voucher' })
   @ResponseMessage('Lấy thống kê voucher thành công')
@@ -120,7 +131,7 @@ export class VoucherController {
   }
 
   @Get('code/:code')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy voucher theo mã' })
   @ApiResponse({ status: 200, description: 'Thông tin voucher' })
   @ResponseMessage('Lấy voucher theo mã thành công')
@@ -129,7 +140,7 @@ export class VoucherController {
   }
 
   @Get('by-min-order-range')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({
     summary: 'Lấy danh sách voucher theo khoảng giá trị đơn hàng tối thiểu',
     description: 'Tìm voucher có min_order_value trong khoảng chỉ định',
@@ -178,7 +189,7 @@ export class VoucherController {
   }
 
   @Get(':id')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết voucher' })
   @ApiResponse({ status: 200, description: 'Thông tin voucher' })
   @ResponseMessage('Lấy thông tin voucher thành công')
@@ -187,7 +198,7 @@ export class VoucherController {
   }
 
   @Put(':id')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.edit')
   @ApiOperation({ summary: 'Cập nhật thông tin voucher' })
   @ApiResponse({ status: 200, description: 'Voucher được cập nhật thành công' })
   @ResponseMessage('Cập nhật voucher thành công')
@@ -203,7 +214,7 @@ export class VoucherController {
   }
 
   @Delete(':id')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.delete')
   @ApiOperation({ summary: 'Xóa voucher' })
   @ApiResponse({ status: 200, description: 'Voucher được xóa thành công' })
   @ResponseMessage('Xóa voucher thành công')
@@ -215,7 +226,7 @@ export class VoucherController {
   }
 
   @Put(':id/restore')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.edit')
   @ApiOperation({ summary: 'Khôi phục voucher đã xóa' })
   @ApiResponse({
     status: 200,
@@ -227,7 +238,7 @@ export class VoucherController {
   }
 
   @Put(':id/toggle-status')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.edit')
   @ApiOperation({ summary: 'Thay đổi trạng thái voucher (active/inactive)' })
   @ApiResponse({ status: 200, description: 'Trạng thái voucher được thay đổi' })
   @ResponseMessage('Thay đổi trạng thái voucher thành công')
@@ -247,7 +258,7 @@ export class VoucherController {
   }
 
   @Post(':id/use')
-  @RequirePermission('booking.manage_payment')
+  @RequirePermission('voucher.edit')
   @ApiOperation({ summary: 'Sử dụng voucher (đánh dấu đã dùng)' })
   @ApiResponse({ status: 201, description: 'Voucher được sử dụng thành công' })
   @ResponseMessage('Sử dụng voucher thành công')
@@ -256,7 +267,7 @@ export class VoucherController {
   }
 
   @Get(':id/rooms')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy danh sách phòng áp dụng voucher' })
   @ApiResponse({ status: 200, description: 'Danh sách phòng áp dụng voucher' })
   @ResponseMessage('Lấy danh sách phòng áp dụng voucher thành công')
@@ -265,7 +276,7 @@ export class VoucherController {
   }
 
   @Get(':id/min-order-info')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({
     summary: 'Lấy thông tin giá trị đơn hàng tối thiểu của voucher',
     description:
@@ -281,7 +292,7 @@ export class VoucherController {
   }
 
   @Get(':id/usage-history/:userId')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({
     summary: 'Lấy lịch sử sử dụng voucher của user',
     description: 'Trả về lịch sử sử dụng voucher của một user cụ thể',
@@ -299,7 +310,7 @@ export class VoucherController {
   }
 
   @Get(':id/usage-stats')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({
     summary: 'Lấy thống kê sử dụng voucher',
     description: 'Trả về thống kê tổng quan về việc sử dụng voucher',
@@ -314,7 +325,7 @@ export class VoucherController {
   }
 
   @Get(':id/check-booking/:bookingId')
-  @RequirePermission('booking.view')
+  @RequirePermission('voucher.view')
   @ApiOperation({
     summary: 'Kiểm tra voucher có được sử dụng cho booking cụ thể không',
     description: 'Kiểm tra xem voucher đã được sử dụng cho booking này chưa',

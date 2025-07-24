@@ -16,11 +16,6 @@ export enum ListingStatus {
   DELETED = 'deleted', // Đã xóa (soft delete)
 }
 
-export type Point = {
-  type: string;
-  coordinates: [number, number]; // [longitude, latitude]
-};
-
 @Schema({ timestamps: true })
 export class Listing extends Document {
   @Prop({
@@ -74,6 +69,12 @@ export class Listing extends Document {
 
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Service' }] })
   service_ids: Types.ObjectId[];
+
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Voucher' }],
+    default: [],
+  })
+  voucher_ids: Types.ObjectId[];
 
   @Prop({ type: [String], default: [] })
   other_rules: string[];

@@ -18,7 +18,6 @@ import { RequirePermission } from '../../decorators/require-permission.decorator
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Roles } from 'src/decorators/roles.decorator';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -28,6 +27,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { Roles } from 'src/decorators/roles.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -43,6 +43,7 @@ export class ReviewsController {
   // =========================== MAIN ROUTES ===========================
 
   @Post()
+  @Roles('guest')
   @ApiResponse({ status: 201, description: 'Đánh giá được tạo thành công' })
   @ResponseMessage('Tạo đánh giá thành công')
   create(
@@ -53,7 +54,7 @@ export class ReviewsController {
   }
 
   @Get()
-  @Roles('guest', 'staff', 'admin')
+  @RequirePermission('review.view')
   @ApiOperation({ summary: 'Lấy danh sách đánh giá của tôi' })
   @ApiResponse({ status: 200, description: 'Danh sách đánh giá của user' })
   @ResponseMessage('Lấy danh sách đánh giá của tôi thành công')

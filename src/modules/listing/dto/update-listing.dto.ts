@@ -92,4 +92,14 @@ export class UpdateListingDto {
   @IsMongoId()
   @IsOptional()
   propertyId?: string;
+
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  house_rules_selected?: string[];
+
+  @IsArray()
+  @IsMongoId({ each: true })
+  @IsOptional()
+  voucher_ids?: string[];
 }

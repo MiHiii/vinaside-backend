@@ -61,18 +61,15 @@ export class SafetyFeaturesController {
   // =================== PROTECTED ENDPOINTS ===================
 
   @Get()
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.view')
   @ApiOperation({ summary: 'Lấy danh sách tính năng an toàn' })
   @ResponseMessage('Lấy danh sách tính năng an toàn thành công')
-  findAll(
-    @Query() queryDto: QuerySafetyFeatureDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.safetyFeaturesService.findAllAdmin(queryDto, req.user);
+  findAll(@Query() queryDto: QuerySafetyFeatureDto) {
+    return this.safetyFeaturesService.findAll(queryDto);
   }
 
   @Get('search')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.view')
   @ApiOperation({ summary: 'Tìm kiếm tính năng an toàn' })
   @ResponseMessage('Tìm kiếm tính năng an toàn thành công')
   search(
@@ -84,23 +81,15 @@ export class SafetyFeaturesController {
   }
 
   @Get(':id')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.view')
   @ApiOperation({ summary: 'Lấy chi tiết tính năng an toàn' })
   @ResponseMessage('Lấy tính năng an toàn thành công')
-  findOne(
-    @Param('id') id: string,
-    @Query('includeDeleted') includeDeleted: boolean = true,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.safetyFeaturesService.findOneAdmin(
-      id,
-      req.user,
-      includeDeleted,
-    );
+  findOne(@Param('id') id: string) {
+    return this.safetyFeaturesService.findOnePublic(id);
   }
 
   @Post()
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.create')
   @ApiOperation({ summary: 'Tạo tính năng an toàn mới' })
   @ResponseMessage('Tạo tính năng an toàn thành công')
   create(
@@ -111,7 +100,7 @@ export class SafetyFeaturesController {
   }
 
   @Put(':id')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.edit')
   @ApiOperation({ summary: 'Cập nhật tính năng an toàn' })
   @ResponseMessage('Cập nhật tính năng an toàn thành công')
   update(
@@ -123,7 +112,7 @@ export class SafetyFeaturesController {
   }
 
   @Delete(':id')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.delete')
   @ApiOperation({ summary: 'Xóa tính năng an toàn' })
   @ResponseMessage('Xóa tính năng an toàn thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -131,7 +120,7 @@ export class SafetyFeaturesController {
   }
 
   @Put(':id/restore')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.edit')
   @ApiOperation({ summary: 'Khôi phục tính năng an toàn' })
   @ResponseMessage('Khôi phục tính năng an toàn thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -139,7 +128,7 @@ export class SafetyFeaturesController {
   }
 
   @Put(':id/toggle-status')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.edit')
   @ApiOperation({ summary: 'Toggle trạng thái active/inactive' })
   @ResponseMessage('Toggle trạng thái thành công')
   toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -147,7 +136,7 @@ export class SafetyFeaturesController {
   }
 
   @Put(':id/toggle-default')
-  @RequirePermission('safety_feature.manage')
+  @RequirePermission('safety_feature.edit')
   @ApiOperation({ summary: 'Toggle trạng thái default_checked' })
   @ResponseMessage('Toggle default_checked thành công')
   toggleDefaultChecked(

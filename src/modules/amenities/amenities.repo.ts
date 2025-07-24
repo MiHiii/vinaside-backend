@@ -291,7 +291,7 @@ export class AmenitiesRepo {
     const query: FilterQuery<Amenity> = {
       isDeleted: { $ne: true },
       is_active: true,
-      default_checked: true,
+      // default_checked: true,
     };
 
     // Text search
@@ -421,9 +421,9 @@ export class AmenitiesRepo {
   // ==================== ADMIN METHODS ====================
 
   /**
-   * Lấy tất cả amenities cho admin với filter nâng cao
+   * Lấy tất cả amenities với filter nâng cao
    */
-  async findAllForAdmin(
+  async findAllManagement(
     options: {
       page?: number;
       limit?: number;
@@ -515,9 +515,9 @@ export class AmenitiesRepo {
   }
 
   /**
-   * Tìm amenity theo ID cho admin
+   * Tìm amenity theo ID với options
    */
-  async findByIdForAdmin(
+  async findByIdManagement(
     id: string,
     includeDeleted = true,
   ): Promise<AmenityDocument | null> {
@@ -531,9 +531,9 @@ export class AmenitiesRepo {
   }
 
   /**
-   * Tìm kiếm amenities cho admin (mặc định search tất cả trạng thái)
+   * Tìm kiếm amenities (mặc định search tất cả trạng thái)
    */
-  async searchAdmin(
+  async searchManagement(
     searchTerm: string,
     options: {
       is_active?: boolean;

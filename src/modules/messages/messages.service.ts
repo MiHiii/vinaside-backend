@@ -20,6 +20,12 @@ import {
   ReplyToMessage,
   UserProfileResponse,
 } from './interfaces/message.interface';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationType,
+  RecipientType,
+  SentMethod,
+} from '../notifications/schemas/notification.schema';
 
 // ============= TYPE DEFINITIONS =============
 
@@ -48,6 +54,7 @@ export class MessagesService {
     @InjectModel(Message.name) private messageModel: Model<Message>,
     @Inject(forwardRef(() => MessagesGateway))
     private readonly messagesGateway: MessagesGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -143,6 +150,40 @@ export class MessagesService {
             messageId,
             { is_read: MessageStatus.DELIVERED },
             user,
+          );
+        }
+
+        // Tự động gửi thông báo cho người nhận
+        try {
+          const sender = populatedMessage.sender_id as {
+            _id?: Types.ObjectId | string;
+            name?: string;
+            username?: string;
+            avatar_url?: string;
+          };
+          const senderName =
+            typeof sender?.name === 'string'
+              ? sender.name
+              : typeof sender?.username === 'string'
+                ? sender.username
+                : 'Someone';
+          const senderUserId = sender?._id ? sender._id.toString() : user._id;
+          const avatar_url =
+            typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
+          await this.notificationsService.createAndSend({
+            user_id: createMessageDto.receiver_id,
+            recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
+            title: 'Bạn có tin nhắn mới',
+            message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
+            type: NotificationType.MESSAGE,
+            sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
+            sender_user_id: senderUserId,
+            avatar_url,
+          });
+        } catch (notificationError) {
+          console.error(
+            'Failed to send message notification:',
+            notificationError,
           );
         }
       }

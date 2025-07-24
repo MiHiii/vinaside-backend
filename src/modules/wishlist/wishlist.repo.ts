@@ -102,7 +102,11 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
-      .populate({ path: 'room_id', select: 'title images price location' });
+      .populate({
+        path: 'room_id',
+        select:
+          'title images price_per_night guests max_guests average_rating reviews_count location',
+      });
 
     const [data, total] = await Promise.all([
       query.exec(),
@@ -166,7 +170,11 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
-      .populate({ path: 'room_id', select: 'title images price location' });
+      .populate({
+        path: 'room_id',
+        select:
+          'title images price_per_night guests max_guests average_rating reviews_count location',
+      });
 
     const [data, total] = await Promise.all([
       query.exec(),
@@ -210,8 +218,11 @@ export class WishlistRepo {
     return await this.wishlistModel
       .findByIdAndUpdate(id, { isDelete: false }, { new: true })
       .populate({ path: 'user_id', select: 'name email avatar' })
-      .populate({ path: 'room_id', select: 'title images price location' })
-      .exec();
+      .populate({
+        path: 'room_id',
+        select:
+          'title images price_per_night guests max_guests average_rating reviews_count location',
+      });
   }
 
   /**
@@ -279,7 +290,11 @@ export class WishlistRepo {
           { isDelete: newIsDelete },
           { new: true },
         )
-        .populate({ path: 'room_id', select: 'title images price location' });
+        .populate({
+          path: 'room_id',
+          select:
+            'title images price_per_night guests max_guests average_rating reviews_count location',
+        });
 
       return {
         action: newIsDelete ? 'removed' : 'added',
@@ -296,7 +311,11 @@ export class WishlistRepo {
       const savedWishlist = await newWishlist.save();
       const populatedWishlist = await this.wishlistModel
         .findById(savedWishlist._id)
-        .populate({ path: 'room_id', select: 'title images price location' });
+        .populate({
+          path: 'room_id',
+          select:
+            'title images price_per_night guests max_guests average_rating reviews_count location',
+        });
 
       return {
         action: 'added',

@@ -12,14 +12,22 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
+import { VNPayService } from './services/vnpay.service';
+import { PaymentFactory } from './services/payment.factory';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import {
+  CreatePaymentDto,
+  PaymentResponseDto,
+  PaymentStatusDto,
+} from './dto/payment.dto';
+import { CreatePaymentRequest } from './interfaces/payment-service.interface';
+
+import { PaymentMethod } from '../transactions/schemas/transaction.schema';
+import {
   BookingStatisticsQueryDto,
   BookingOverviewResponseDto,
-  BookingFinancialResponseDto,
-  BookingCustomerResponseDto,
 } from './dto/booking-statistics.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
@@ -48,7 +56,11 @@ interface RequestWithUser extends Request {
 @UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard, RolesGuard)
 @ApiBearerAuth()
 export class BookingController {
-  constructor(private readonly bookingService: BookingService) {}
+  constructor(
+    private readonly bookingService: BookingService,
+    private readonly vnpayService: VNPayService,
+    private readonly paymentFactory: PaymentFactory,
+  ) {}
 
   @Post()
   @Roles('guest')
@@ -59,9 +71,6 @@ export class BookingController {
     @Body() createBookingDto: CreateBookingDto,
     @Request() req: RequestWithUser,
   ) {
-    if (!req.user.role) {
-      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
-    }
     return this.bookingService.create(
       createBookingDto,
       req.user as any as JwtPayload,
@@ -231,6 +240,154 @@ export class BookingController {
     );
   }
 
+  @Patch('my-bookings/:id/cancel')
+  @Roles('guest')
+  @ApiOperation({ summary: 'Hủy booking của tôi (Guest)' })
+  @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
+  @ResponseMessage('Hủy booking thành công')
+  async cancelBookingPublic(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.cancelBookingPublic(id, req.user._id);
+  }
+
+  // =================== GENERIC PAYMENT ENDPOINTS ===================
+
+  @Post(':id/payment')
+  @Roles('guest')
+  @ApiOperation({ summary: 'Tạo payment URL (hỗ trợ VNPay & MoMo)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment URL được tạo thành công',
+    type: PaymentResponseDto,
+  })
+  @ResponseMessage('Tạo payment URL thành công')
+  async createPayment(
+    @Param('id') bookingId: string,
+    @Body() createPaymentDto: CreatePaymentDto,
+  ): Promise<PaymentResponseDto> {
+    createPaymentDto.bookingId = bookingId;
+    const paymentService = this.paymentFactory.getPaymentService(
+      createPaymentDto.paymentMethod,
+    );
+
+    // Convert to CreatePaymentRequest
+    const request: CreatePaymentRequest = {
+      ...createPaymentDto,
+      bookingId, // Use bookingId from URL params
+      amount: 0, // Will be fetched from booking
+    };
+
+    const result = await paymentService.createPaymentUrl(request);
+
+    return {
+      success: result.success,
+      paymentMethod: result.paymentMethod,
+      paymentUrl: result.paymentUrl,
+      deeplink: undefined, // Will be set by specific gateways
+      qrCodeUrl: undefined, // Will be set by specific gateways
+      orderId: result.orderId,
+      amount: result.amount,
+      message: result.message,
+      expiresAt: result.expiresAt,
+      createdAt: result.createdAt,
+    };
+  }
+
+  @Post(':id/payment/remaining')
+  @Roles('guest')
+  @ApiOperation({
+    summary: 'Tạo payment URL cho phần còn lại (remaining payment)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment URL cho phần còn lại được tạo thành công',
+    type: PaymentResponseDto,
+  })
+  @ResponseMessage('Tạo payment URL phần còn lại thành công')
+  async createRemainingPayment(
+    @Param('id') bookingId: string,
+    @Body() createPaymentDto: CreatePaymentDto,
+    @Request() req: RequestWithUser,
+  ): Promise<PaymentResponseDto> {
+    createPaymentDto.bookingId = bookingId;
+    const result = await this.bookingService.createRemainingPayment(
+      bookingId,
+      createPaymentDto,
+      req.user as any as JwtPayload,
+    );
+    return result;
+  }
+
+  @Get('payment/supported-methods')
+  @Public()
+  @ApiOperation({ summary: 'Lấy danh sách phương thức thanh toán được hỗ trợ' })
+  @ApiResponse({ status: 200, description: 'Danh sách phương thức thanh toán' })
+  @ResponseMessage('Lấy danh sách phương thức thanh toán thành công')
+  getSupportedPaymentMethods() {
+    return {
+      supportedMethods: this.paymentFactory.getSupportedPaymentMethods(),
+      default: PaymentMethod.VNPAY,
+    };
+  }
+
+  @Get(':id/payment/status')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái thanh toán của booking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái thanh toán',
+    type: PaymentStatusDto,
+  })
+  @ResponseMessage('Lấy trạng thái thanh toán thành công')
+  async getPaymentStatus(
+    @Param('id') bookingId: string,
+  ): Promise<PaymentStatusDto> {
+    // Get booking info first to determine payment method
+    const booking = await this.bookingService.findOne(bookingId);
+    const paymentMethod = booking.payment_method as PaymentMethod;
+
+    if (
+      !paymentMethod ||
+      !this.paymentFactory.isPaymentMethodSupported(paymentMethod)
+    ) {
+      return {
+        bookingId,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
+      };
+    }
+
+    // Get detailed status from payment gateway
+    const paymentService = this.paymentFactory.getPaymentService(paymentMethod);
+    const orderId =
+      paymentMethod === PaymentMethod.VNPAY
+        ? booking.vnpay_order_id || `${bookingId}_unknown`
+        : booking.momo_order_id || `${bookingId}_unknown`;
+
+    try {
+      const result = await paymentService.getPaymentStatus(orderId);
+      return {
+        bookingId: result.bookingId,
+        paymentMethod: result.paymentMethod,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: result.amount,
+        gatewayTransactionId: result.gatewayTransactionId,
+        paidAt: result.paidAt,
+        gatewayDetails: result.metadata,
+      };
+    } catch {
+      // Fallback to booking info if gateway fails
+      return {
+        bookingId,
+        paymentMethod,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
+      };
+    }
+  }
+
   // =================== STATISTICS ENDPOINTS ===================
 
   @Get('statistics/overview')
@@ -251,39 +408,76 @@ export class BookingController {
     );
   }
 
-  @Get('statistics/financial')
+  @Get('statistics/detailed')
   @RequirePermission('booking.view_statistics')
-  @ApiOperation({ summary: 'Lấy thống kê tài chính booking' })
+  @ApiOperation({
+    summary:
+      'Lấy thống kê chi tiết booking (financial, customers, vouchers, services)',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê tài chính booking được trả về thành công.',
-    type: BookingFinancialResponseDto,
+    description: 'Thống kê chi tiết được trả về thành công.',
   })
-  @ResponseMessage('Lấy thống kê tài chính booking thành công')
-  getFinancialStatistics(@Query() query: BookingStatisticsQueryDto) {
-    return this.bookingService.getFinancialStatistics(
+  @ResponseMessage('Lấy thống kê chi tiết thành công')
+  getDetailedStatistics(
+    @Query() query: BookingStatisticsQueryDto,
+    @Query('type') type: 'financial' | 'customers' | 'all' = 'all',
+  ): Promise<any> {
+    return this.bookingService.getDetailedStatistics(
       query.startDate,
       query.endDate,
       query.propertyId,
       query.listingId,
+      type,
     );
   }
 
-  @Get('statistics/customers')
+  @Get('statistics/user-analytics')
   @RequirePermission('booking.view_statistics')
-  @ApiOperation({ summary: 'Lấy thống kê khách hàng booking' })
+  @ApiOperation({ summary: 'Lấy phân tích hành vi user (services, vouchers)' })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê khách hàng booking được trả về thành công.',
-    type: BookingCustomerResponseDto,
+    description: 'Phân tích hành vi user được trả về thành công.',
   })
-  @ResponseMessage('Lấy thống kê khách hàng booking thành công')
-  getCustomerStatistics(@Query() query: BookingStatisticsQueryDto) {
-    return this.bookingService.getCustomerStatistics(
+  @ResponseMessage('Lấy phân tích hành vi user thành công')
+  getUserAnalytics(
+    @Query() query: BookingStatisticsQueryDto,
+    @Query('type') type: 'services' | 'vouchers' | 'all' = 'all',
+  ): Promise<any> {
+    return this.bookingService.getUserAnalytics(
       query.startDate,
       query.endDate,
       query.propertyId,
       query.listingId,
+      type,
     );
+  }
+
+  // =================== VNPAY CALLBACK ENDPOINTS ===================
+
+  @Post('vnpay/ipn')
+  @Public()
+  @ApiOperation({ summary: 'VNPay IPN callback' })
+  @ApiResponse({ status: 200, description: 'IPN processed' })
+  async handleVNPayIPN(@Body() callbackData: any) {
+    const result = await this.vnpayService.handleIPN(callbackData);
+    return {
+      RspCode: result.success ? '00' : '99',
+      Message: result.message,
+    };
+  }
+
+  @Get('vnpay/return')
+  @Public()
+  @ApiOperation({ summary: 'VNPay return callback' })
+  @ApiResponse({ status: 200, description: 'Return processed' })
+  async handleVNPayReturn(@Query() callbackData: any) {
+    const result = await this.vnpayService.handleCallback(callbackData);
+    return {
+      success: result.success,
+      message: result.message,
+      bookingId: result.bookingId,
+      amount: result.amount,
+    };
   }
 }

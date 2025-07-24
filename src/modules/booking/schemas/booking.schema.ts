@@ -11,6 +11,7 @@ export enum BookingStatus {
 
 export enum PaymentStatus {
   PENDING = 'pending',
+  PARTIALLY_PAID = 'partially_paid',
   PAID = 'paid',
   REFUNDED = 'refunded',
   FAILED = 'failed',
@@ -99,6 +100,51 @@ export class Booking extends Document {
   @Prop()
   payment_id?: string;
 
+  // VNPay specific fields
+  @Prop()
+  vnpay_transaction_no?: string;
+
+  @Prop()
+  vnpay_bank_tran_no?: string;
+
+  @Prop()
+  vnpay_card_type?: string;
+
+  @Prop()
+  vnpay_order_id?: string;
+
+  @Prop()
+  vnpay_pay_date?: Date;
+
+  @Prop()
+  vnpay_response_code?: string;
+
+  // MoMo specific fields
+  @Prop()
+  momo_trans_id?: string;
+
+  @Prop()
+  momo_request_id?: string;
+
+  @Prop()
+  momo_order_id?: string;
+
+  @Prop()
+  momo_pay_type?: string;
+
+  @Prop()
+  momo_response_time?: Date;
+
+  @Prop()
+  momo_result_code?: number;
+
+  @Prop()
+  momo_extra_data?: string;
+
+  // Generic payment gateway fields
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  gateway_raw_response?: Record<string, any>;
+
   @Prop({ required: true })
   guest_name: string;
 
@@ -120,6 +166,89 @@ export class Booking extends Document {
   @Prop({ type: MongooseSchema.Types.ObjectId })
   cancelled_by?: Types.ObjectId;
 
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Voucher',
+    required: false,
+    index: true,
+  })
+  voucher_id?: Types.ObjectId;
+
+  @Prop({
+    type: String,
+    required: false,
+  })
+  voucher_code?: string;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  voucher_discount_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  voucher_discount_percent?: number;
+
+  @Prop({
+    type: [
+      {
+        service_id: { type: MongooseSchema.Types.ObjectId, ref: 'Service' },
+        service_name: String,
+        service_price: Number,
+        quantity: Number,
+        total_price: Number,
+      },
+    ],
+    required: false,
+    default: [],
+  })
+  selected_services?: Array<{
+    service_id: Types.ObjectId;
+    service_name: string;
+    service_price: number;
+    quantity: number;
+    total_price: number;
+  }>;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  services_total_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  subtotal_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  discount_amount?: number;
+
+  @Prop({
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  })
+  amount_after_discount?: number;
+
   @Prop({ default: false })
   isDeleted: boolean;
 
@@ -140,9 +269,39 @@ export class Booking extends Document {
 
   @Prop({ type: Date })
   deletedAt?: Date;
+
+  @Prop({ type: Number, default: 0.5, min: 0, max: 1 })
+  deposit_percent?: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  deposit_amount?: number;
+
+  @Prop({ type: Boolean, default: false })
+  deposit_paid?: boolean;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  deposit_paid_amount?: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  refund_amount?: number;
 }
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);
+
+// Thêm middleware tự động tính deposit_amount
+BookingSchema.pre('validate', function (next) {
+  if (typeof this.deposit_percent !== 'number') {
+    this.deposit_percent = 0.5; // fallback nếu không có
+  }
+  if (
+    !this.deposit_amount ||
+    this.isModified('final_amount') ||
+    this.isModified('deposit_percent')
+  ) {
+    this.deposit_amount = Math.round(this.final_amount * this.deposit_percent);
+  }
+  next();
+});
 
 // Thêm index cho các trường tìm kiếm phổ biến
 BookingSchema.index({ listingId: 1 });
@@ -152,3 +311,4 @@ BookingSchema.index({ payment_status: 1 });
 BookingSchema.index({ check_out_date: 1 });
 BookingSchema.index({ isDeleted: 1 });
 BookingSchema.index({ created_at: -1 });
+BookingSchema.index({ deposit_paid: 1 });

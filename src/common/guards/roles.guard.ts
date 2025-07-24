@@ -39,6 +39,8 @@ export class RolesGuard implements CanActivate {
     // Kiểm tra vai trò của người dùng
     const hasRole = requiredRoles.some((role) => request.user.role === role);
 
+    console.log(request.user.role);
+
     if (!hasRole) {
       throw new ForbiddenException(
         `Bạn không có quyền thực hiện thao tác này. Cần có vai trò: ${requiredRoles.join(', ')}`,

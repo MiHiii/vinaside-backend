@@ -67,30 +67,23 @@ export class HouseRulesController {
   // =================== PROTECTED ENDPOINTS ===================
 
   @Get()
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.view')
   @ApiOperation({ summary: 'Lấy danh sách quy tắc nhà' })
   @ResponseMessage('Lấy danh sách quy tắc nhà thành công')
-  findAll(
-    @Query() queryDto: QueryHouseRuleDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.houseRulesService.findAllAdmin(queryDto, req.user);
+  findAll(@Query() queryDto: QueryHouseRuleDto) {
+    return this.houseRulesService.findAll(queryDto);
   }
 
   @Get('search')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.view')
   @ApiOperation({ summary: 'Tìm kiếm quy tắc nhà' })
   @ResponseMessage('Tìm kiếm quy tắc nhà thành công')
-  search(
-    @Query('query') query: string,
-    @Query() filters: SearchFilters,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.houseRulesService.searchAdmin(query, req.user, filters);
+  search(@Query('query') query: string, @Query() filters: SearchFilters) {
+    return this.houseRulesService.search(query, filters);
   }
 
   @Get('statistics')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.view')
   @ApiOperation({ summary: 'Lấy thống kê quy tắc nhà' })
   @ApiResponse({
     status: 200,
@@ -98,24 +91,23 @@ export class HouseRulesController {
     type: HouseRuleStatisticsResponseDto,
   })
   @ResponseMessage('Lấy thống kê quy tắc nhà thành công')
-  getStatistics(@Request() req: RequestWithUser) {
-    return this.houseRulesService.getStatistics(req.user);
+  getStatistics() {
+    return this.houseRulesService.getStatistics();
   }
 
   @Get(':id')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.view')
   @ApiOperation({ summary: 'Lấy chi tiết quy tắc nhà' })
   @ResponseMessage('Lấy quy tắc nhà thành công')
   findOne(
     @Param('id') id: string,
     @Query('includeDeleted') includeDeleted: boolean = true,
-    @Request() req: RequestWithUser,
   ) {
-    return this.houseRulesService.findOneAdmin(id, req.user, includeDeleted);
+    return this.houseRulesService.findOne(id, includeDeleted);
   }
 
   @Post()
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.create')
   @ApiOperation({ summary: 'Tạo quy tắc nhà mới' })
   @ResponseMessage('Tạo quy tắc nhà thành công')
   create(
@@ -126,7 +118,7 @@ export class HouseRulesController {
   }
 
   @Put(':id')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.edit')
   @ApiOperation({ summary: 'Cập nhật quy tắc nhà' })
   @ResponseMessage('Cập nhật quy tắc nhà thành công')
   update(
@@ -138,7 +130,7 @@ export class HouseRulesController {
   }
 
   @Delete(':id')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.delete')
   @ApiOperation({ summary: 'Xóa quy tắc nhà' })
   @ResponseMessage('Xóa quy tắc nhà thành công')
   remove(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -146,7 +138,7 @@ export class HouseRulesController {
   }
 
   @Put(':id/restore')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.edit')
   @ApiOperation({ summary: 'Khôi phục quy tắc nhà' })
   @ResponseMessage('Khôi phục quy tắc nhà thành công')
   restore(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -154,7 +146,7 @@ export class HouseRulesController {
   }
 
   @Put(':id/toggle-status')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.edit')
   @ApiOperation({ summary: 'Toggle trạng thái active/inactive' })
   @ResponseMessage('Toggle trạng thái thành công')
   toggleStatus(@Param('id') id: string, @Request() req: RequestWithUser) {
@@ -162,7 +154,7 @@ export class HouseRulesController {
   }
 
   @Put(':id/toggle-default')
-  @RequirePermission('house_rule.manage')
+  @RequirePermission('house_rule.edit')
   @ApiOperation({ summary: 'Toggle trạng thái default_checked' })
   @ResponseMessage('Toggle default_checked thành công')
   toggleDefaultChecked(

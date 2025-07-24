@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { CreateSafetyFeatureDto } from './dto/create-safety_feature.dto';
@@ -23,20 +22,6 @@ export class SafetyFeaturesService {
   constructor(private readonly safetyFeaturesRepo: SafetyFeaturesRepo) {}
 
   /**
-   * Kiểm tra quyền manage safety_feature
-   */
-  private validateManagePermission(user: JwtPayload): void {
-    if (
-      user.role !== 'admin' &&
-      !user.permissions?.includes('safety_feature.manage')
-    ) {
-      throw new ForbiddenException(
-        'Bạn không có quyền quản lý tính năng an toàn',
-      );
-    }
-  }
-
-  /**
    * Validate MongoDB ObjectId
    */
   private validateObjectId(id: string): void {
@@ -52,8 +37,6 @@ export class SafetyFeaturesService {
     createDto: CreateSafetyFeatureDto,
     user: JwtPayload,
   ): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
-
     try {
       const data = {
         ...createDto,
@@ -109,12 +92,7 @@ export class SafetyFeaturesService {
    */
   async findAllAdmin(
     queryDto?: QuerySafetyFeatureDto,
-    user?: JwtPayload,
   ): Promise<ISafetyFeatureResponse> {
-    if (user) {
-      this.validateManagePermission(user);
-    }
-
     try {
       const {
         page = 1,
@@ -203,7 +181,6 @@ export class SafetyFeaturesService {
     user: JwtPayload,
     includeDeleted = true,
   ): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     const safetyFeature = await this.safetyFeaturesRepo.findByIdForAdmin(
@@ -225,7 +202,6 @@ export class SafetyFeaturesService {
     updateDto: UpdateSafetyFeatureDto,
     user: JwtPayload,
   ): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     try {
@@ -261,7 +237,6 @@ export class SafetyFeaturesService {
    * Xóa mềm tính năng an toàn
    */
   async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     try {
@@ -291,7 +266,6 @@ export class SafetyFeaturesService {
    * Khôi phục tính năng an toàn đã xóa
    */
   async restore(id: string, user: JwtPayload): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     try {
@@ -319,7 +293,6 @@ export class SafetyFeaturesService {
    * Toggle trạng thái active/inactive
    */
   async toggleStatus(id: string, user: JwtPayload): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     try {
@@ -355,7 +328,6 @@ export class SafetyFeaturesService {
     id: string,
     user: JwtPayload,
   ): Promise<ISafetyFeature> {
-    this.validateManagePermission(user);
     this.validateObjectId(id);
 
     try {
@@ -395,8 +367,6 @@ export class SafetyFeaturesService {
       isDeleted?: boolean;
     },
   ): Promise<{ data: ISafetyFeature[]; total: number }> {
-    this.validateManagePermission(user);
-
     try {
       // Mặc định admin search tất cả trạng thái nếu không specify includeDeleted
       const defaultFilters = {

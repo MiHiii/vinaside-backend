@@ -195,9 +195,12 @@ export class NotificationsService {
       throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
+    const objectId = new Types.ObjectId(id);
+    const objectUserId = new Types.ObjectId(user._id);
+
     const notification = await this.notificationModel.findOne({
-      _id: id,
-      user_id: user._id,
+      _id: objectId,
+      user_id: objectUserId,
       isDeleted: false,
     });
 
@@ -229,9 +232,10 @@ export class NotificationsService {
   }
 
   async markAllAsRead(user: JwtPayload): Promise<{ modifiedCount: number }> {
+    const objectUserId = new Types.ObjectId(user._id);
     const result = await this.notificationModel.updateMany(
       {
-        user_id: user._id,
+        user_id: objectUserId,
         is_read: false,
         isDeleted: false,
       },
@@ -256,9 +260,12 @@ export class NotificationsService {
       throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
+    const objectId = new Types.ObjectId(id);
+    const objectUserId = new Types.ObjectId(user._id);
+
     const notification = await this.notificationModel.findOne({
-      _id: id,
-      user_id: user._id,
+      _id: objectId,
+      user_id: objectUserId,
       isDeleted: false,
     });
 
@@ -283,9 +290,10 @@ export class NotificationsService {
   }
 
   async clearAll(user: JwtPayload): Promise<{ modifiedCount: number }> {
+    const objectUserId = new Types.ObjectId(user._id);
     const result = await this.notificationModel.updateMany(
       {
-        user_id: user._id,
+        user_id: objectUserId,
         isDeleted: false,
       },
       {
@@ -309,16 +317,18 @@ export class NotificationsService {
       throw new BadRequestException('ID người dùng không hợp lệ');
     }
 
+    const objectUserId = new Types.ObjectId(userId);
+
     const [totalUnread, byTypeData] = await Promise.all([
       this.notificationModel.countDocuments({
-        user_id: userId,
+        user_id: objectUserId,
         is_read: false,
         isDeleted: false,
       }),
       this.notificationModel.aggregate([
         {
           $match: {
-            user_id: new Types.ObjectId(userId),
+            user_id: objectUserId,
             is_read: false,
             isDeleted: false,
           },

@@ -27,6 +27,7 @@ import { Public } from '../../decorators/public.decorator';
 import { Roles } from '../../decorators/roles.decorator';
 import { RegisterDto } from './dto/register.dto';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
+
 import {
   Request as ExpressRequest,
   Response as ExpressResponse,
@@ -273,6 +274,38 @@ export class AuthController {
   @ResponseMessage('Lấy thông tin người dùng thành công.')
   getMe(@Request() req: AuthenticatedRequest) {
     return this.authService.getMe(req.user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
+  @Get('me/permissions')
+  @ApiOperation({
+    summary: 'Get current user permissions',
+    description: 'Get all permissions for the authenticated user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User permissions retrieved successfully',
+  })
+  @ResponseMessage('Lấy quyền của người dùng thành công.')
+  async getMyPermissions(@Request() req: AuthenticatedRequest) {
+    return this.authService.getMyPermissions(req.user);
+  }
+
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @ApiBearerAuth()
+  @Get('me/roles')
+  @ApiOperation({
+    summary: 'Get current user roles',
+    description: 'Get all roles for the authenticated user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User roles retrieved successfully',
+  })
+  @ResponseMessage('Lấy vai trò của người dùng thành công.')
+  async getMyRoles(@Request() req: AuthenticatedRequest) {
+    return this.authService.getMyRoles(req.user);
   }
 
   @UseGuards(JwtAuthGuard, PermissionGuard)
