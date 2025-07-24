@@ -216,7 +216,7 @@ export class BookingController {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
-    return this.bookingService.remove(id, req.user as any as JwtPayload);
+    return this.bookingService.remove(id);
   }
 
   @Patch('property/:propertyId/:id/confirm')
