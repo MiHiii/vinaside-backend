@@ -110,7 +110,17 @@ export class BookingService {
     }
     return {
       _id: booking._id ? booking._id.toString() : null,
-      propertyId: booking.propertyId ? booking.propertyId.toString() : null,
+      propertyId:
+        booking.propertyId && typeof booking.propertyId === 'object'
+          ? {
+              _id: booking.propertyId._id?.toString?.() || '',
+              name: booking.propertyId.name,
+              address: booking.propertyId.address,
+              location: booking.propertyId.location,
+            }
+          : booking.propertyId
+            ? booking.propertyId.toString()
+            : null,
       listingId: booking.listingId
         ? typeof booking.listingId === 'object' && booking.listingId._id
           ? {
@@ -170,6 +180,8 @@ export class BookingService {
       special_requests: booking.special_requests,
       created_at: booking.created_at,
       updated_at: booking.updated_at,
+      payment_id: booking.payment_id,
+      vnpay_pay_date: booking.vnpay_pay_date,
     };
   }
 
@@ -501,7 +513,15 @@ export class BookingService {
    */
   async findOne(id: string): Promise<BookingResponseDto> {
     const booking = await this.bookingRepo.findById(id, {
-      populate: ['listingId', 'propertyId', 'guestId', 'voucher_id'],
+      populate: [
+        { path: 'propertyId', select: 'name address location' },
+        {
+          path: 'listingId',
+          select: 'title address images price_per_night cancel_policy',
+        },
+        { path: 'guestId', select: 'name avatar email phone' },
+        { path: 'voucher_id', select: 'code discount_percent' },
+      ],
     });
 
     if (!booking) {
