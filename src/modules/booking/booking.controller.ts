@@ -277,6 +277,7 @@ export class BookingController {
       ...createPaymentDto,
       bookingId, // Use bookingId from URL params
       amount: 0, // Will be fetched from booking
+      paymentType: createPaymentDto.paymentType, // truyền paymentType xuống service
     };
 
     const result = await paymentService.createPaymentUrl(request);
