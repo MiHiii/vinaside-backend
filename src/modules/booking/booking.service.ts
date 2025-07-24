@@ -180,6 +180,11 @@ export class BookingService {
     createBookingDto: CreateBookingDto,
     user: JwtPayload,
   ): Promise<BookingResponseDto> {
+    // Thêm log để kiểm tra body nhận được
+    console.log(
+      '[BE] Body nhận được khi tạo booking:',
+      JSON.stringify(createBookingDto),
+    );
     const {
       listingId,
       checkInDate,
