@@ -554,10 +554,19 @@ export class BookingService {
   /**
    * Xóa mềm booking và trả về dữ liệu định dạng
    */
-  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
-    const deleted = await this.bookingRepo.softDelete(id, user._id);
-    if (!deleted)
+  async remove(id: string): Promise<{ success: boolean }> {
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking)
       throw new NotFoundException('Không tìm thấy booking hoặc không thể xóa.');
+
+    // Cập nhật trạng thái
+    booking.status = BookingStatus.CANCELLED;
+    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
+    booking.cancelled_at = new Date();
+    booking.cancellation_reason = 'Admin/staff cancelled';
+
+    await booking.save();
+
     return { success: true };
   }
 
@@ -578,6 +587,12 @@ export class BookingService {
    */
   async updateStatus(id: string, status: BookingStatus, user: JwtPayload) {
     const booking = await this.changeStatus(id, status, user);
+
+    // Nếu xác nhận hoàn thành thì chuyển sang completed
+    if (status === BookingStatus.COMPLETED) {
+      booking.status = BookingStatus.COMPLETED;
+      await booking.save();
+    }
 
     // Tạo thông báo khi trạng thái booking thay đổi
     await this.createStatusChangeNotification(booking, status);
@@ -602,7 +617,7 @@ export class BookingService {
       query.listingId = new Types.ObjectId(filters.listingId);
     if (filters.guestId) query.guestId = new Types.ObjectId(filters.guestId);
     if (filters.status) query.status = filters.status;
-    if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+    if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
     if (filters.checkInFrom || filters.checkInTo) {
       query.checkInDate = {};
       if (filters.checkInFrom)
@@ -882,7 +897,7 @@ export class BookingService {
 
     // 2. Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    booking.payment_status = PaymentStatus.REFUNDED; // tạm gán, xử lý thực tế qua Transaction
+    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Public user cancelled';
 
