@@ -318,16 +318,24 @@ export class BookingService {
           user._id,
         );
 
-        if (voucherValidation.valid && voucherValidation.voucher) {
-          voucherId = voucherValidation.voucher._id as Types.ObjectId;
-          voucherCodeValue = voucherValidation.voucher.code;
-          voucherDiscountAmount = voucherValidation.discount_amount || 0;
-          voucherDiscountPercent = voucherValidation.voucher.discount_percent;
-          discountAmount = voucherDiscountAmount;
-          amountAfterDiscount = subtotalAmount - discountAmount;
-        } else {
-          throw new BadRequestException(voucherValidation.message);
+        // Sửa lỗi: Luôn kiểm tra lại trạng thái hoạt động và các điều kiện của voucher tại thời điểm tạo booking
+        if (
+          !voucherValidation.valid ||
+          !voucherValidation.voucher ||
+          !voucherValidation.voucher.is_active
+        ) {
+          throw new BadRequestException(
+            voucherValidation.message ||
+              'Voucher không hợp lệ hoặc đã bị vô hiệu hóa',
+          );
         }
+
+        voucherId = voucherValidation.voucher._id as Types.ObjectId;
+        voucherCodeValue = voucherValidation.voucher.code;
+        voucherDiscountAmount = voucherValidation.discount_amount || 0;
+        voucherDiscountPercent = voucherValidation.voucher.discount_percent;
+        discountAmount = voucherDiscountAmount;
+        amountAfterDiscount = subtotalAmount - discountAmount;
       } catch (error) {
         if (error instanceof BadRequestException) {
           throw error;
