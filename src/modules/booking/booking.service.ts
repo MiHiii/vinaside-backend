@@ -546,7 +546,7 @@ export class BookingService {
   /**
    * Xóa mềm booking và trả về dữ liệu định dạng
    */
-  async remove(id: string, user: JwtPayload): Promise<{ success: boolean }> {
+  async remove(id: string): Promise<{ success: boolean }> {
     const booking = await this.bookingRepo.findById(id);
     if (!booking)
       throw new NotFoundException('Không tìm thấy booking hoặc không thể xóa.');
