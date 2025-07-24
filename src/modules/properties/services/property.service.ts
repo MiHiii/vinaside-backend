@@ -761,7 +761,7 @@ export class PropertyService {
         {
           $match: {
             room_id: { $in: listingIds },
-            isDeleted: false,
+            // isDeleted: false,
           },
         },
         {
@@ -1059,22 +1059,94 @@ export class PropertyService {
       propertyId,
       isDeleted: false,
     });
-    const today = new Date();
+    // Lấy ngày hiện tại theo giờ Việt Nam (UTC+7) và chuyển thành yyyy-mm-dd
+    function toVNDateString(date: Date) {
+      const vn = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+      return vn.toISOString().slice(0, 10); // yyyy-mm-dd
+    }
+    const vnTodayStr = toVNDateString(new Date());
     const result = await Promise.all(
       listings.map(async (listing) => {
-        const booking = await this.bookingModel.findOne({
+        // Tìm booking confirmed trong khoảng ngày hiện tại (so sánh yyyy-mm-dd, giờ VN)
+        const confirmed = await this.bookingModel.findOne({
           listingId: listing._id,
           isDeleted: false,
-          status: { $in: ['confirmed', 'pending'] },
-          checkInDate: { $lte: today },
-          check_out_date: { $gt: today },
+          status: 'confirmed',
+          $expr: {
+            $and: [
+              {
+                $lte: [
+                  {
+                    $dateToString: {
+                      format: '%Y-%m-%d',
+                      date: '$checkInDate',
+                      timezone: '+07:00',
+                    },
+                  },
+                  vnTodayStr,
+                ],
+              },
+              {
+                $gt: [
+                  {
+                    $dateToString: {
+                      format: '%Y-%m-%d',
+                      date: '$check_out_date',
+                      timezone: '+07:00',
+                    },
+                  },
+                  vnTodayStr,
+                ],
+              },
+            ],
+          },
         });
+        let status = 'available';
+        if (confirmed) {
+          status = 'reserved';
+        } else {
+          // Tìm booking pending trong khoảng ngày hiện tại (so sánh yyyy-mm-dd, giờ VN)
+          const pending = await this.bookingModel.findOne({
+            listingId: listing._id,
+            isDeleted: false,
+            status: 'pending',
+            $expr: {
+              $and: [
+                {
+                  $lte: [
+                    {
+                      $dateToString: {
+                        format: '%Y-%m-%d',
+                        date: '$checkInDate',
+                        timezone: '+07:00',
+                      },
+                    },
+                    vnTodayStr,
+                  ],
+                },
+                {
+                  $gt: [
+                    {
+                      $dateToString: {
+                        format: '%Y-%m-%d',
+                        date: '$check_out_date',
+                        timezone: '+07:00',
+                      },
+                    },
+                    vnTodayStr,
+                  ],
+                },
+              ],
+            },
+          });
+          if (pending) status = 'booked';
+        }
         return {
           listingId: listing._id,
           title: listing.title,
           images: listing.images,
           price_per_night: listing.price_per_night,
-          status: booking ? 'booked' : 'available',
+          status,
         };
       }),
     );
