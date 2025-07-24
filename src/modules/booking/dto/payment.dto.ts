@@ -28,6 +28,17 @@ export class CreatePaymentDto {
   paymentMethod: PaymentMethod;
 
   @ApiProperty({
+    description:
+      'Loại thanh toán: full (toàn bộ), deposit (đặt cọc), hoặc remaining (phần còn lại)',
+    enum: ['full', 'deposit', 'remaining'],
+    example: 'full',
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(['full', 'deposit', 'remaining'])
+  paymentType?: 'full' | 'deposit' | 'remaining';
+
+  @ApiProperty({
     description: 'Mô tả giao dịch',
     example: 'Thanh toan dat phong khach san',
     required: false,

@@ -36,6 +36,7 @@ export interface CreatePaymentRequest {
   returnUrl?: string; // Optional - will use default if not provided
   notifyUrl?: string; // Optional - will use default if not provided
   metadata?: Record<string, any>;
+  paymentType?: 'full' | 'deposit' | 'remaining';
 }
 
 export abstract class PaymentServiceInterface {
