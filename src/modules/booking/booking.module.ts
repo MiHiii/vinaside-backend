@@ -13,6 +13,7 @@ import { MailModule } from '../mail/mail.module';
 import { VoucherModule } from '../vouchers/voucher.module';
 import { ServicesModule } from '../services/services.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
 import { forwardRef } from '@nestjs/common';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { TransactionsModule } from '../transactions/transactions.module';
@@ -27,6 +28,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
     VoucherModule,
     ServicesModule,
     NotificationsModule,
+    PropertyStaffAssignmentModule,
     forwardRef(() => ReviewsModule),
     TransactionsModule,
   ],

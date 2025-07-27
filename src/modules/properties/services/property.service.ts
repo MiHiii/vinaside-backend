@@ -22,6 +22,7 @@ import { UpdatePropertyDto } from '../dto/update-property.dto';
 import { QueryPropertyDto } from '../dto/query-property.dto';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import { GooglePlacesService } from '../../location/google-places.service';
+import { PropertyStaffAssignmentService } from '../../property-staff-assignment/property-staff-assignment.service';
 import {
   PropertyVoucherStatistics,
   PropertyServiceStatistics,
@@ -119,6 +120,7 @@ export class PropertyService {
     @InjectModel(Service.name)
     private serviceModel: Model<Service>,
     private googlePlacesService: GooglePlacesService,
+    private propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   async create(
@@ -147,8 +149,6 @@ export class PropertyService {
     const propertyData = {
       ...createPropertyDto,
       createdBy: new Types.ObjectId(user._id),
-      staffIds:
-        createPropertyDto.staffIds?.map((id) => new Types.ObjectId(id)) || [],
     };
 
     const property = new this.propertyModel(propertyData);
@@ -222,7 +222,6 @@ export class PropertyService {
     const [data, total] = await Promise.all([
       this.propertyModel
         .find(filterQuery)
-        .populate('staffIds', 'name email')
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
@@ -246,7 +245,6 @@ export class PropertyService {
 
     const property = await this.propertyModel
       .findOne({ _id: id, isDeleted: false })
-      .populate('staffIds', 'name email phone')
       .exec();
 
     if (!property) {
@@ -256,46 +254,6 @@ export class PropertyService {
     return property;
   }
 
-  async findByStaff(
-    staffId: string,
-    queryDto: QueryPropertyDto,
-  ): Promise<PaginatedProperties> {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = queryDto;
-    const skip = (page - 1) * limit;
-
-    const filterQuery: FilterQuery<PropertyDocument> = {
-      isDeleted: false,
-      staffIds: new Types.ObjectId(staffId),
-    };
-
-    const sortObj: Record<string, 1 | -1> = {};
-    sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    const [data, total] = await Promise.all([
-      this.propertyModel
-        .find(filterQuery)
-        .populate('staffIds', 'name email')
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.propertyModel.countDocuments(filterQuery),
-    ]);
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / (limit || 1)),
-    };
-  }
-
   async update(
     id: string,
     updatePropertyDto: UpdatePropertyDto,
@@ -303,16 +261,8 @@ export class PropertyService {
     // Create a mutable update object
     const updateData: { [key: string]: any } = { ...updatePropertyDto };
 
-    // Convert staffIds to ObjectIds if provided
-    if (updateData.staffIds && Array.isArray(updateData.staffIds)) {
-      updateData.staffIds = (updateData.staffIds as string[]).map(
-        (staffId) => new Types.ObjectId(staffId),
-      );
-    }
-
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, updateData, { new: true })
-      .populate('staffIds', 'name email')
       .exec();
 
     if (!updatedProperty) {
@@ -344,7 +294,6 @@ export class PropertyService {
         },
         { new: true },
       )
-      .populate('staffIds', 'name email')
       .exec();
 
     if (!property) {
@@ -357,7 +306,6 @@ export class PropertyService {
   async verify(id: string, isVerified: boolean): Promise<Property> {
     const property = await this.propertyModel
       .findByIdAndUpdate(id, { isVerified }, { new: true })
-      .populate('staffIds', 'name email')
       .exec();
 
     if (!property) {
@@ -370,22 +318,6 @@ export class PropertyService {
   async updateStatus(id: string, status: string): Promise<Property> {
     const updatedProperty = await this.propertyModel
       .findByIdAndUpdate(id, { status }, { new: true })
-      .populate('staffIds', 'name email')
-      .exec();
-
-    if (!updatedProperty) {
-      throw new NotFoundException('Không tìm thấy tài sản');
-    }
-
-    return updatedProperty;
-  }
-
-  async assignStaff(id: string, staffIds: string[]): Promise<Property> {
-    const objectIdStaffIds = staffIds.map((id) => new Types.ObjectId(id));
-
-    const updatedProperty = await this.propertyModel
-      .findByIdAndUpdate(id, { staffIds: objectIdStaffIds }, { new: true })
-      .populate('staffIds', 'name email')
       .exec();
 
     if (!updatedProperty) {
@@ -1163,30 +1095,10 @@ export class PropertyService {
     userId: string,
   ): Promise<boolean> {
     try {
-      const property = await this.findOne(propertyId);
-
-      interface PopulatedStaff {
-        _id?: Types.ObjectId;
-        toString?: () => string;
-      }
-
-      interface PopulatedProperty {
-        staffIds: PopulatedStaff[];
-      }
-      const p = property as unknown as PopulatedProperty;
-
-      const isStaff =
-        p.staffIds?.some((staff) => {
-          // Handle both populated objects and ObjectIds
-          const staffIdStr = staff?._id
-            ? staff._id.toString()
-            : staff && typeof staff.toString === 'function'
-              ? staff.toString()
-              : '';
-          return staffIdStr === userId;
-        }) || false;
-
-      return isStaff;
+      return await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+        new Types.ObjectId(userId),
+        new Types.ObjectId(propertyId),
+      );
     } catch {
       return false;
     }
@@ -1196,14 +1108,11 @@ export class PropertyService {
    * Lấy danh sách property IDs mà user được gán làm staff
    */
   async getStaffPropertyIds(staffId: string): Promise<string[]> {
-    const properties = await this.propertyModel
-      .find({
-        staffIds: staffId,
-        isDeleted: false,
-      })
-      .select('_id')
-      .lean<{ _id: Types.ObjectId }[]>();
+    const assignments =
+      await this.propertyStaffAssignmentService.getPropertiesByStaff(
+        new Types.ObjectId(staffId),
+      );
 
-    return properties.map((property) => property._id.toString());
+    return assignments.map((assignment) => assignment.propertyId.toString());
   }
 }

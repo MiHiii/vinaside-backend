@@ -91,16 +91,6 @@ export class ListingService {
         'Property does not exist or does not have an owner.',
       );
     }
-    // const isOwner = property.createdBy.toString() === user._id;
-
-    // Kiểm tra quyền tạo listing:
-    // - Nếu là admin: luôn được phép tạo listing cho bất kỳ property nào
-    // - Nếu không phải admin: chỉ được phép tạo listing cho property mình sở hữu (createdBy === user._id)
-    // if (user.role !== 'admin' && !isOwner) {
-    //   throw new ForbiddenException(
-    //     `You do not have permission to add listings to property ID ${propertyId}.`,
-    //   );
-    // }
 
     return this.listingRepo.create(createListingDto, user._id);
   }
@@ -108,7 +98,7 @@ export class ListingService {
   async findOne(id: string): Promise<Listing> {
     const listing = await this.listingRepo.findById(id, {
       path: 'propertyId',
-      select: 'name type location ownerId staffIds',
+      select: 'name type location',
     });
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${id} not found.`);

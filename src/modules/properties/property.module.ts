@@ -9,6 +9,7 @@ import { Review, ReviewSchema } from '../reviews/schemas/review.schema';
 import { Voucher, VoucherSchema } from '../vouchers/schemas/voucher.schema';
 import { Service, ServiceSchema } from '../services/schemas/service.schema';
 import { LocationModule } from '../location/location.module';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { LocationModule } from '../location/location.module';
       { name: Service.name, schema: ServiceSchema },
     ]),
     LocationModule,
+    PropertyStaffAssignmentModule,
   ],
   controllers: [PropertyController],
   providers: [PropertyService],

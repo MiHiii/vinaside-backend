@@ -122,18 +122,6 @@ export class BookingController {
     return this.bookingService.findByGuest(guestId, queryDto);
   }
 
-  @Get('staff/:staffId')
-  @RequirePermission('booking.view')
-  @ApiOperation({ summary: 'Lấy bookings của staff cụ thể' })
-  @ApiResponse({ status: 200, description: 'Danh sách bookings của staff' })
-  @ResponseMessage('Lấy danh sách bookings của staff thành công')
-  findByStaff(
-    @Param('staffId') staffId: string,
-    @Query() queryDto: QueryBookingDto,
-  ) {
-    return this.bookingService.findByHost(staffId, queryDto);
-  }
-
   @Get('property/:propertyId/listing/:listingId')
   @RequirePermission('booking.view')
   @RequirePropertyStaff('propertyId')
