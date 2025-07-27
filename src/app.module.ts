@@ -37,6 +37,7 @@ import { VoucherModule } from './modules/vouchers/voucher.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 import { ServicesModule } from './modules/services/services.module';
+import { PropertyStaffAssignmentModule } from './modules/property-staff-assignment/property-staff-assignment.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { ServicesModule } from './modules/services/services.module';
     VoucherModule,
     ServicesModule,
     TransactionsModule,
+    PropertyStaffAssignmentModule,
   ],
   controllers: [AppController],
   providers: [

@@ -5,10 +5,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ReservationData } from './interfaces/reservation-data.interface';
 import { User, UserDocument } from '../users/schemas/user.schema';
-import {
-  Property,
-  PropertyDocument,
-} from '../properties/schemas/property.schema';
+import { Property } from '../properties/schemas/property.schema';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class MailService {
@@ -17,7 +16,7 @@ export class MailService {
     private readonly configService: ConfigService,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Property.name)
-    private readonly propertyModel: Model<PropertyDocument>,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   /**
@@ -25,29 +24,40 @@ export class MailService {
    * @param propertyId ID của property
    * @returns Array of staff emails
    */
-  async getStaffEmailsFromProperty(propertyId: string): Promise<string[]> {
-    // Lấy property với staffIds
-    const property = await this.propertyModel
-      .findById(propertyId)
-      .select('staffIds')
-      .exec();
+  async getStaffEmails(propertyId: string): Promise<string[]> {
+    try {
+      // Lấy danh sách staff assignments từ PropertyStaffAssignmentService
+      const assignments =
+        await this.propertyStaffAssignmentService.getStaffByProperty(
+          new Types.ObjectId(propertyId),
+        );
 
-    if (!property || !property.staffIds || property.staffIds.length === 0) {
+      if (assignments.length === 0) {
+        return [];
+      }
+
+      // Lấy staffIds từ assignments
+      const staffIds = assignments.map((assignment) => assignment.staffId);
+
+      // Lấy email của tất cả staff
+      const staffUsers = await this.userModel
+        .find({
+          _id: { $in: staffIds },
+          role: 'staff',
+          isDeleted: false,
+          is_verified: true,
+        })
+        .select('email')
+        .exec();
+
+      return staffUsers.map((user) => user.email);
+    } catch (error) {
+      console.error(
+        `Error getting staff emails for property ${propertyId}:`,
+        error,
+      );
       return [];
     }
-
-    // Lấy email của tất cả staff
-    const staffUsers = await this.userModel
-      .find({
-        _id: { $in: property.staffIds },
-        role: 'staff',
-        isDeleted: false,
-        is_verified: true,
-      })
-      .select('email')
-      .exec();
-
-    return staffUsers.map((user) => user.email);
   }
 
   /**
@@ -178,7 +188,7 @@ export class MailService {
     propertyId: string,
     reservationData: ReservationData,
   ): Promise<void> {
-    const staffEmails = await this.getStaffEmailsFromProperty(propertyId);
+    const staffEmails = await this.getStaffEmails(propertyId);
 
     if (staffEmails.length > 0) {
       await this.sendStaffReservationNotification(staffEmails, reservationData);

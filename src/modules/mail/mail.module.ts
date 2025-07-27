@@ -17,6 +17,7 @@ import {
   Property,
   PropertySchema,
 } from '../properties/schemas/property.schema';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import {
         },
       }),
     }),
+    PropertyStaffAssignmentModule,
   ],
   controllers: [MailController],
   providers: [MailService, EmailQueueService, EmailQueueProcessor],
