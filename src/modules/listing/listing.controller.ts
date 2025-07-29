@@ -35,6 +35,7 @@ import { RequirePermission } from 'src/decorators/require-permission.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
+import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -129,11 +130,29 @@ export class ListingController {
     return this.listingService.updateStatus(id, status, req.user);
   }
 
+  // =================== ADMIN/STAFF ENDPOINTS ===================
+
+  @Get('admin')
+  @RequirePermission('listing.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary:
+      'Lấy tất cả listing (Admin: tất cả, Staff: chỉ assigned properties)',
+  })
+  @ApiResponse({ status: 200, description: 'Danh sách listing' })
+  @ResponseMessage('Lấy danh sách listing thành công')
+  findAllAdmin(
+    @Query() queryListingDto: QueryListingDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.listingService.findAll(queryListingDto, req.user, req);
+  }
+
   // =================== PUBLIC ENDPOINTS ===================
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Tìm tất cả listing với bộ lọc' })
+  @ApiOperation({ summary: 'Tìm tất cả listing với bộ lọc (Public)' })
   @ResponseMessage('Listings fetched successfully')
   findAll(@Query() queryListingDto: QueryListingDto, @Request() req: any) {
     let user: JwtPayload | undefined = undefined;
@@ -144,7 +163,8 @@ export class ListingController {
     ) {
       user = (req as { user: JwtPayload }).user;
     }
-    return this.listingService.findAll(queryListingDto, user);
+    // Public endpoint - không cần staff filtering
+    return this.listingService.findAll(queryListingDto, user, null);
   }
 
   @Public()

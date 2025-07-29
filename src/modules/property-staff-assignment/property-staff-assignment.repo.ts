@@ -27,7 +27,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     // Kiểm tra xem staff đã được assign cho property này chưa (với status active)
     const existingAssignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId,
+      staffId: payload.staffId.toString(), // Convert to string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -37,7 +37,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
 
     const assignment = new this.propertyStaffAssignmentModel({
       propertyId: payload.propertyId,
-      staffId: payload.staffId,
+      staffId: payload.staffId.toString(), // Convert to string
       assignedBy: payload.assignedBy,
       status: AssignmentStatus.ACTIVE,
       assignedAt: new Date(),
@@ -52,7 +52,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
   ): Promise<PropertyStaffAssignmentDocument | null> {
     const assignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId,
+      staffId: payload.staffId.toString(), // Convert to string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -84,14 +84,18 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
   async getPropertiesByStaff(
     staffId: Types.ObjectId,
   ): Promise<PropertyStaffAssignmentDocument[]> {
-    return this.propertyStaffAssignmentModel
-      .find({
-        staffId,
-        status: AssignmentStatus.ACTIVE,
-      })
+    const query = {
+      staffId: staffId.toString(), // Convert ObjectId to string to match database
+      status: AssignmentStatus.ACTIVE,
+    };
+
+    const result = await this.propertyStaffAssignmentModel
+      .find(query)
       .populate('propertyId', 'name type')
       .populate('assignedBy', 'name email')
       .exec();
+
+    return result;
   }
 
   async getAssignmentHistory(
@@ -117,7 +121,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     propertyId: Types.ObjectId,
   ): Promise<boolean> {
     const assignment = await this.propertyStaffAssignmentModel.findOne({
-      staffId,
+      staffId: staffId.toString(), // Convert to string
       propertyId,
       status: AssignmentStatus.ACTIVE,
     });

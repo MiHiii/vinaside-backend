@@ -35,6 +35,7 @@ import {
   generateLabels,
 } from '../../utils/date.util';
 import { GooglePlacesService } from '../location/google-places.service';
+import { applyStaffFilter } from '../../utils/staff-filter.util';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -108,7 +109,8 @@ export class ListingService {
 
   async findAll(
     queryDto: QueryListingDto,
-    user?: any,
+    user?: JwtPayload,
+    request?: any,
   ): Promise<{
     listings: any[];
     meta: { total: number; page: number; limit: number; totalPages: number };
@@ -157,41 +159,44 @@ export class ListingService {
       isDeleted: filters.isDeleted ?? false,
     };
 
+    // Apply staff filtering using utility function
+    const filteredQuery = applyStaffFilter(query, request, 'propertyId');
+
     // Apply property filter if we have location-based property IDs
     if (propertyIds) {
-      query.propertyId = { $in: propertyIds };
+      filteredQuery.propertyId = { $in: propertyIds };
     } else if (filters.propertyId) {
-      query.propertyId = new Types.ObjectId(filters.propertyId);
+      filteredQuery.propertyId = new Types.ObjectId(filters.propertyId);
     }
 
     if (filters.status) {
-      query.status = filters.status;
+      filteredQuery.status = filters.status;
     }
     if (filters.cancel_policy) {
-      query.cancel_policy = filters.cancel_policy;
+      filteredQuery.cancel_policy = filters.cancel_policy;
     }
     if (filters.priceFrom !== undefined || filters.priceTo !== undefined) {
-      query.price_per_night = {
+      filteredQuery.price_per_night = {
         ...(filters.priceFrom !== undefined && { $gte: filters.priceFrom }),
         ...(filters.priceTo !== undefined && { $lte: filters.priceTo }),
       };
     }
     if (filters.is_verified !== undefined) {
-      query.is_verified = filters.is_verified;
+      filteredQuery.is_verified = filters.is_verified;
     }
 
     // Filter theo title (nếu có trường này)
     if (filters.title && typeof filters.title === 'string') {
       const titleStr = String(filters.title);
       if (titleStr.trim()) {
-        query.title = { $regex: titleStr, $options: 'i' };
+        filteredQuery.title = { $regex: titleStr, $options: 'i' };
       }
     }
 
     // Tìm kiếm gần đúng theo keyword cho cả title và description
     if (filters.keyword && typeof filters.keyword === 'string') {
       const keywordStr = String(filters.keyword);
-      query.$or = [
+      filteredQuery.$or = [
         { title: { $regex: keywordStr, $options: 'i' } },
         { description: { $regex: keywordStr, $options: 'i' } },
       ];
@@ -199,7 +204,7 @@ export class ListingService {
 
     if (filters.search && typeof filters.search === 'string') {
       const searchStr = String(filters.search);
-      query.title = { $regex: searchStr, $options: 'i' };
+      filteredQuery.title = { $regex: searchStr, $options: 'i' };
     }
 
     // Filter theo view count
@@ -207,7 +212,7 @@ export class ListingService {
       filters.minViewCount !== undefined ||
       filters.maxViewCount !== undefined
     ) {
-      query.viewCount = {
+      filteredQuery.viewCount = {
         ...(filters.minViewCount !== undefined && {
           $gte: filters.minViewCount,
         }),
@@ -221,7 +226,7 @@ export class ListingService {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
 
-    const result = await this.listingRepo.findAll(query, {
+    const result = await this.listingRepo.findAll(filteredQuery, {
       sort,
       skip,
       limit,
@@ -230,15 +235,22 @@ export class ListingService {
 
     // Nếu có user, lấy danh sách room_id đã wishlist
     let wishlistRoomIds: string[] = [];
-    if (user && user._id) {
-      // Lấy model Wishlist động để tránh circular
-      const mongoose = await import('mongoose');
-      const WishlistModel = mongoose.model('Wishlist');
-      wishlistRoomIds = await WishlistModel.find({
-        user_id: user._id,
-        isDelete: false,
-      }).distinct('room_id');
-      wishlistRoomIds = wishlistRoomIds.map((id) => id.toString());
+    if (user?._id) {
+      try {
+        // Sử dụng model đã được inject
+        const wishlistIds = await this.wishlistModel
+          .find({
+            user_id: user._id,
+            isDelete: false,
+          })
+          .distinct('room_id');
+        wishlistRoomIds = (wishlistIds as unknown as any[]).map((id) =>
+          String(id),
+        );
+      } catch (error) {
+        this.logger.warn('Error fetching wishlist data:', error);
+        wishlistRoomIds = [];
+      }
     }
 
     // Thêm trường is_wishlisted cho từng listing

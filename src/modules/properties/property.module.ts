@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PropertyService } from './services/property.service';
 import { PropertyController } from './controllers/property.controller';
 import { Property, PropertySchema } from './schemas/property.schema';
@@ -10,6 +11,7 @@ import { Voucher, VoucherSchema } from '../vouchers/schemas/voucher.schema';
 import { Service, ServiceSchema } from '../services/schemas/service.schema';
 import { LocationModule } from '../location/location.module';
 import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
+import { StaffFilterInterceptor } from '../../common/interceptors/staff-filter.interceptor';
 
 @Module({
   imports: [
@@ -25,7 +27,13 @@ import { PropertyStaffAssignmentModule } from '../property-staff-assignment/prop
     PropertyStaffAssignmentModule,
   ],
   controllers: [PropertyController],
-  providers: [PropertyService],
+  providers: [
+    PropertyService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: StaffFilterInterceptor,
+    },
+  ],
   exports: [PropertyService],
 })
 export class PropertyModule {}
