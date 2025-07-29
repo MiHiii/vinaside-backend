@@ -96,7 +96,6 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
       .exec();
 
     return result;
-
   }
 
   async getAssignmentHistory(
