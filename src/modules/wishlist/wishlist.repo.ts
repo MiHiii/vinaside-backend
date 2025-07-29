@@ -9,6 +9,7 @@ import {
   PipelineStage,
 } from 'mongoose';
 import { Wishlist } from './schemas/wishlist.schema';
+import { Listing } from '../listing/schemas/listing.schema';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
 
@@ -17,6 +18,8 @@ export class WishlistRepo {
   constructor(
     @InjectModel(Wishlist.name)
     private readonly wishlistModel: Model<Wishlist>,
+    @InjectModel(Listing.name)
+    private readonly listingModel: Model<Listing>,
   ) {}
 
   /**
@@ -54,6 +57,7 @@ export class WishlistRepo {
       sortBy = 'created_at',
       sortOrder = 'desc',
       user_id,
+      property_id,
       room_id,
       from_date,
       to_date,
@@ -69,6 +73,10 @@ export class WishlistRepo {
       filter.user_id = new Types.ObjectId(userId);
     } else if (user_id) {
       filter.user_id = new Types.ObjectId(user_id);
+    }
+
+    if (property_id) {
+      filter.property_id = new Types.ObjectId(property_id);
     }
 
     if (room_id) {
@@ -102,6 +110,7 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'property_id', select: 'name address' })
       .populate({
         path: 'room_id',
         select:
@@ -128,6 +137,7 @@ export class WishlistRepo {
       sortBy = 'created_at',
       sortOrder = 'desc',
       user_id,
+      property_id,
       room_id,
       from_date,
       to_date,
@@ -139,6 +149,10 @@ export class WishlistRepo {
 
     if (user_id) {
       filter.user_id = new Types.ObjectId(user_id);
+    }
+
+    if (property_id) {
+      filter.property_id = new Types.ObjectId(property_id);
     }
 
     if (room_id) {
@@ -170,6 +184,7 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'property_id', select: 'name address' })
       .populate({
         path: 'room_id',
         select:
@@ -290,6 +305,7 @@ export class WishlistRepo {
           { isDelete: newIsDelete },
           { new: true },
         )
+        .populate({ path: 'property_id', select: 'name address' })
         .populate({
           path: 'room_id',
           select:
@@ -301,9 +317,19 @@ export class WishlistRepo {
         data: updatedRecord as Wishlist,
       };
     } else {
+      // Lấy property_id từ listing trước khi tạo wishlist
+      const listing = await this.listingModel
+        .findById(roomId)
+        .select('propertyId');
+
+      if (!listing) {
+        throw new Error('Listing not found');
+      }
+
       // Nếu chưa có record, tạo mới
       const newWishlist = new this.wishlistModel({
         user_id: new Types.ObjectId(userId),
+        property_id: listing.propertyId,
         room_id: new Types.ObjectId(roomId),
         isDelete: false,
       });
@@ -311,6 +337,7 @@ export class WishlistRepo {
       const savedWishlist = await newWishlist.save();
       const populatedWishlist = await this.wishlistModel
         .findById(savedWishlist._id)
+        .populate({ path: 'property_id', select: 'name address' })
         .populate({
           path: 'room_id',
           select:

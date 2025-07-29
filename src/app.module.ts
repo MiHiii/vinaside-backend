@@ -37,6 +37,8 @@ import { VoucherModule } from './modules/vouchers/voucher.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { RbacSeedService } from './database/seeds/rbac.seed';
 import { ServicesModule } from './modules/services/services.module';
+import { ChatbotModule } from './modules/chatbot/chatbot.module';
+import { InternalDataModule } from './modules/internal-data/internal-data.module';
 
 @Module({
   imports: [
@@ -78,6 +80,8 @@ import { ServicesModule } from './modules/services/services.module';
     VoucherModule,
     ServicesModule,
     TransactionsModule,
+    ChatbotModule,
+    InternalDataModule,
   ],
   controllers: [AppController],
   providers: [

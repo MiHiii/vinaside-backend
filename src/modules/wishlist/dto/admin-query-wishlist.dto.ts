@@ -37,6 +37,10 @@ export class AdminQueryWishlistDto {
 
   @IsOptional()
   @IsMongoId()
+  property_id?: string;
+
+  @IsOptional()
+  @IsMongoId()
   room_id?: string;
 
   @IsOptional()

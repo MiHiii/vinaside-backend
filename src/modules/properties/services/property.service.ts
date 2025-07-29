@@ -105,6 +105,68 @@ export interface PaginatedProperties {
 
 @Injectable()
 export class PropertyService {
+  /**
+   * Lấy danh sách tất cả phòng trong property (public)
+   */
+  async getPropertyRooms(propertyId: string, queryDto: any = {}) {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+    } = queryDto;
+    const skip = (page - 1) * limit;
+
+    // Kiểm tra property có tồn tại không
+    const property = await this.propertyModel.findById(propertyId);
+    if (!property) {
+      throw new NotFoundException(
+        `Property với ID ${propertyId} không tồn tại`,
+      );
+    }
+
+    // Lấy danh sách phòng - chỉ filter isDeleted: false như getRoomStatus
+    const [listings, total] = await Promise.all([
+      this.listingModel
+        .find({
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false, // Chỉ filter này, không filter status
+        })
+        .populate([
+          { path: 'amenities', select: 'name icon' },
+          { path: 'house_rules_selected', select: 'name description' },
+          { path: 'safety_features', select: 'name icon' },
+          { path: 'service_ids', select: 'name price' },
+        ])
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.listingModel.countDocuments({
+        propertyId: new Types.ObjectId(propertyId),
+        isDeleted: false, // Chỉ filter này, không filter status
+      }),
+    ]);
+
+    return {
+      property: {
+        id: property._id,
+        name: property.name,
+        type: property.type,
+        description: property.description,
+        thumbnail: property.thumbnail,
+        images: property.images,
+        location: property.location,
+      },
+      rooms: listings,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
   constructor(
     @InjectModel(Property.name)
     private propertyModel: Model<PropertyDocument>,
