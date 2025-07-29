@@ -104,6 +104,26 @@ export class RbacSeedService {
           action: 'manage_payment',
           description: 'Quản lý thanh toán booking',
         },
+        {
+          key: 'booking.view_statistics',
+          module: 'booking',
+          action: 'view_statistics',
+          description: 'Xem thống kê booking',
+        },
+
+        // ===PROPERTY STAFF ASSIGNMENT MANAGEMENT ===
+        {
+          key: 'property_staff.edit',
+          module: 'property_staff_assignment',
+          action: 'view',
+          description: 'Xem thông tin phân công nhân viên cho tài sản',
+        },
+        {
+          key: 'property_staff.view',
+          module: 'property_staff_assignment',
+          action: 'view',
+          description: 'Xem danh sách nhân viên được phân công cho tài sản',
+        },
 
         // === USER MANAGEMENT ===
         {

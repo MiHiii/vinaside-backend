@@ -219,6 +219,14 @@ export class GooglePlacesService {
    */
   async getPlaceDetails(placeId: string): Promise<Location | null> {
     try {
+      this.logger.log(`Getting place details for place_id: ${placeId}`);
+
+      // Validate API key
+      if (!this.apiKey) {
+        this.logger.error('GOOGLE_PLACES_API_KEY is not configured');
+        return null;
+      }
+
       // Kiểm tra cache trước
       const cached = await this.locationModel.findOne({
         place_id: placeId,
@@ -226,10 +234,12 @@ export class GooglePlacesService {
       });
 
       if (cached && cached.geometry) {
+        this.logger.log(`Found cached location for place_id: ${placeId}`);
         return cached;
       }
 
       // Gọi Google Places Details API
+      this.logger.log(`Calling Google Places Details API for: ${placeId}`);
       const response = await axios.get<GooglePlaceDetailsResponse>(
         this.detailsUrl,
         {
@@ -241,10 +251,28 @@ export class GooglePlacesService {
         },
       );
 
-      const result = response.data.result;
-      if (!result) {
+      this.logger.log(
+        `Google Places Details API response status: ${response.data.status}`,
+      );
+
+      if (response.data.status !== 'OK') {
+        this.logger.error(
+          `Google Places Details API Error: ${response.data.status}`,
+        );
+        this.logger.error(`Full response: ${JSON.stringify(response.data)}`);
         return null;
       }
+
+      const result = response.data.result;
+      if (!result) {
+        this.logger.error('No result in Google Places Details API response');
+        return null;
+      }
+
+      this.logger.log(
+        `Place details found: ${result.name || result.formatted_address}`,
+      );
+      this.logger.log(`Geometry: ${JSON.stringify(result.geometry)}`);
 
       // Cập nhật hoặc tạo mới location với geometry
       const location = await this.locationModel.findOneAndUpdate(
@@ -259,6 +287,7 @@ export class GooglePlacesService {
         { upsert: true, new: true },
       );
 
+      this.logger.log(`Location saved/updated: ${location.id}`);
       return location;
     } catch (error) {
       this.logger.error(`Error getting place details for ${placeId}:`, error);

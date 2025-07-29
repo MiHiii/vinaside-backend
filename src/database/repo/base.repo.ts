@@ -16,7 +16,7 @@ import {
 export abstract class BaseRepo<T extends Document> {
   protected readonly logger: Logger;
 
-  constructor(private readonly model: Model<T>) {
+  constructor(protected readonly model: Model<T>) {
     this.logger = new Logger(this.constructor.name);
   }
 

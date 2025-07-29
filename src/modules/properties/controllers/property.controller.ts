@@ -21,6 +21,7 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
+import { StaffFiltered } from '../../../decorators/staff-filtered.decorator';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import {
   ApiTags,
@@ -54,11 +55,17 @@ export class PropertyController {
 
   @Get()
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tất cả tài sản (Chỉ Admin)' })
+  @StaffFiltered({ propertyField: '_id' })
+  @ApiOperation({
+    summary: 'Lấy tất cả tài sản (Admin: tất cả, Staff: chỉ assigned)',
+  })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
   @ResponseMessage('Lấy danh sách tài sản thành công')
-  findAll(@Query() queryDto: QueryPropertyDto) {
-    return this.propertyService.findAll(queryDto);
+  findAll(
+    @Query() queryDto: QueryPropertyDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.propertyService.findAll(queryDto, req.user, req);
   }
 
   @Public()
@@ -90,7 +97,10 @@ export class PropertyController {
 
   @Get('stats')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy thống kê tài sản (Chỉ Admin)' })
+  @StaffFiltered({ propertyField: '_id' })
+  @ApiOperation({
+    summary: 'Lấy thống kê tài sản (Admin: tất cả, Staff: chỉ assigned)',
+  })
   @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
   @ResponseMessage('Lấy thống kê tài sản thành công')
   getStats() {

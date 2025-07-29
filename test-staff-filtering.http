@@ -1,0 +1,83 @@
+# Test Staff Property Filtering System
+# Tạo file test để verify hệ thống filtering mới
+
+# ===========================================
+# BOOKING ENDPOINTS (Staff Property Filtering)
+# ===========================================
+
+### Test 1: Admin có thể xem tất cả bookings
+GET http://localhost:8080/api/bookings/my-bookings-as-staff
+Authorization: Bearer <admin-jwt-token>
+
+### Test 2: Staff chỉ có thể xem bookings của properties được assign
+GET http://localhost:8080/api/bookings/my-bookings-as-staff
+Authorization: Bearer <staff-jwt-token>
+
+### Test 3: Staff chỉ có thể xem bookings với query filter
+GET http://localhost:8080/api/bookings/my-bookings-as-staff?status=CONFIRMED&page=1&limit=10
+Authorization: Bearer <staff-jwt-token>
+
+# ===========================================
+# PROPERTY ENDPOINTS (Staff Property Filtering)
+# ===========================================
+
+### Test 4: Admin có thể xem tất cả properties
+GET http://localhost:8080/api/properties
+Authorization: Bearer <admin-jwt-token>
+
+### Test 5: Staff chỉ có thể xem properties được assign
+GET http://localhost:8080/api/properties
+Authorization: Bearer <staff-jwt-token>
+
+### Test 6: Admin có thể xem stats tất cả properties
+GET http://localhost:8080/api/properties/stats
+Authorization: Bearer <admin-jwt-token>
+
+### Test 7: Staff chỉ có thể xem stats của properties được assign
+GET http://localhost:8080/api/properties/stats
+Authorization: Bearer <staff-jwt-token>
+
+# ===========================================
+# LISTING ENDPOINTS (Staff Property Filtering)
+# ===========================================
+
+### Test 8: Admin có thể xem tất cả listings
+GET http://localhost:8080/api/listings/admin
+Authorization: Bearer <admin-jwt-token>
+
+### Test 9: Staff chỉ có thể xem listings của properties được assign
+GET http://localhost:8080/api/listings/admin
+Authorization: Bearer <staff-jwt-token>
+
+### Test 10: Public endpoint vẫn hoạt động bình thường (không filtering)
+GET http://localhost:8080/api/listings
+
+# ===========================================
+# REVIEWS ENDPOINTS (Staff Property Filtering)
+# ===========================================
+
+### Test 11: Admin có thể xem tất cả reviews
+GET http://localhost:8080/api/reviews
+Authorization: Bearer <admin-jwt-token>
+
+### Test 12: Staff chỉ có thể xem reviews của properties được assign
+GET http://localhost:8080/api/reviews
+Authorization: Bearer <staff-jwt-token>
+
+# ===========================================
+# NOTES & EXPECTED BEHAVIOR
+# ===========================================
+
+# Ghi chú:
+# - Admin sẽ thấy tất cả data trong hệ thống
+# - Staff chỉ thấy data của properties mà họ được assign với status ACTIVE
+# - Filtering được áp dụng tự động thông qua @StaffFiltered decorator
+# - StaffFilterInterceptor sẽ pre-calculate property IDs cho performance tốt hơn
+# - Public endpoints không bị ảnh hưởng bởi staff filtering
+# - Nếu staff không được assign property nào, sẽ return empty result
+# - Error handling: Nếu có lỗi trong quá trình filtering, system sẽ default về empty result để bảo mật
+
+# Expected Response Structure:
+# - Admin: Thấy tất cả records
+# - Staff: Chỉ thấy records thuộc assigned properties
+# - Guest: Chỉ thấy public data hoặc own data (không liên quan đến staff filtering)
