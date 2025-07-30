@@ -32,6 +32,7 @@ import { ServicesService } from '../services/services.service';
 import { ReservationData } from '../mail/interfaces/reservation-data.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
+
 import { AssignmentStatus } from '../property-staff-assignment/schemas/property-staff-assignment.schema';
 import {
   NotificationType,
@@ -739,7 +740,7 @@ export class BookingService {
   async getBookedDates(listingId: string) {
     const { data } = await this.bookingRepo.findAll({
       listingId: new Types.ObjectId(listingId),
-      status: BookingStatus.CONFIRMED,
+      payment_status: { $in: ['paid', 'partially_paid'] },
       isDeleted: false,
     });
 
