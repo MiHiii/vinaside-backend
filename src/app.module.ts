@@ -40,6 +40,7 @@ import { ServicesModule } from './modules/services/services.module';
 import { ChatbotModule } from './modules/chatbot/chatbot.module';
 import { InternalDataModule } from './modules/internal-data/internal-data.module';
 import { PropertyStaffAssignmentModule } from './modules/property-staff-assignment/property-staff-assignment.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { PropertyStaffAssignmentModule } from './modules/property-staff-assignme
     ChatbotModule,
     InternalDataModule,
     PropertyStaffAssignmentModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [

@@ -209,6 +209,14 @@ export class RbacSeedService {
           description: 'Xóa tin nhắn',
         },
 
+        // === DASHBOARD MANAGEMENT ===
+        {
+          key: 'dashboard.view',
+          module: 'dashboard',
+          action: 'view',
+          description: 'Xem thống kê dashboard',
+        },
+
         // === NOTIFICATION MANAGEMENT ===
         {
           key: 'notification.view',
@@ -477,6 +485,7 @@ export class RbacSeedService {
             'user.view',
             'analytics.manage',
             'upload.manage',
+            'dashboard.view',
           ],
         },
         {
@@ -493,6 +502,7 @@ export class RbacSeedService {
             'user.view',
             'analytics.manage',
             'notification.create',
+            'dashboard.view',
           ],
         },
         {
@@ -541,6 +551,7 @@ export class RbacSeedService {
             'analytics.manage',
             'notification.create',
             'upload.manage',
+            'dashboard.view',
           ],
         },
         {

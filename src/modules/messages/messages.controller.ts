@@ -27,7 +27,6 @@ import {
 import { ReactionType } from './schemas/message.schema';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { Roles } from '../../decorators/roles.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
@@ -46,13 +45,13 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Messages')
 @Controller('messages')
-@UseGuards(JwtAuthGuard, PermissionGuard)
+// @UseGuards(JwtAuthGuard, PermissionGuard)
 @ApiBearerAuth()
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  // @RequirePermission('message.create')
+  @Roles('guest', 'staff', 'admin')
   @UseGuards(GuestOrPermissionGuard)
   @ApiOperation({
     summary: 'Gửi tin nhắn mới hoặc reply tin nhắn',
@@ -73,7 +72,7 @@ export class MessagesController {
   }
 
   @Get()
-  @RequirePermission('message.view')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy danh sách tin nhắn' })
   @ApiResponse({ status: 200, description: 'Danh sách tin nhắn' })
   @ResponseMessage('Lấy danh sách tin nhắn thành công')
@@ -288,11 +287,7 @@ export class MessagesController {
       );
     }
 
-    return this.messagesService.removeReaction(
-      id,
-      type as ReactionType,
-      req.user,
-    );
+    return this.messagesService.removeReaction(id, req.user);
   }
 
   @Post(':id/reactions/toggle/:type')
@@ -383,55 +378,10 @@ export class MessagesController {
     );
   }
 
-  // =========================== PROPERTY MESSAGES ENDPOINTS ===========================
-
-  @Get('property/:propertyId/staff')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({
-    summary: 'Lấy danh sách staff quản lý property',
-    description: 'Lấy danh sách staff được assign quản lý property cụ thể',
-  })
-  @ApiResponse({ status: 200, description: 'Danh sách staff quản lý property' })
-  @ResponseMessage('Lấy danh sách staff quản lý property thành công')
-  getPropertyStaff(@Param('propertyId') propertyId: string) {
-    return this.messagesService.getPropertyStaff(propertyId);
-  }
-
-  @Get('staff/:staffId/properties')
-  @Roles('staff', 'admin')
-  @ApiOperation({
-    summary: 'Lấy danh sách properties mà staff được assign',
-    description: 'Chỉ staff và admin mới có thể xem',
-  })
-  @ApiResponse({ status: 200, description: 'Danh sách properties của staff' })
-  @ResponseMessage('Lấy danh sách properties của staff thành công')
-  getStaffProperties(@Param('staffId') staffId: string) {
-    return this.messagesService.getStaffProperties(staffId);
-  }
-
-  @Get('property/:propertyId/staff/:staffId/check')
-  @Roles('guest', 'staff', 'admin')
-  @ApiOperation({
-    summary: 'Kiểm tra staff có được assign cho property không',
-    description: 'Kiểm tra quyền truy cập của staff với property',
-  })
-  @ApiResponse({ status: 200, description: 'Kết quả kiểm tra assignment' })
-  @ResponseMessage('Kiểm tra assignment thành công')
-  async checkStaffAssignment(
-    @Param('propertyId') propertyId: string,
-    @Param('staffId') staffId: string,
-  ) {
-    const isAssigned = await this.messagesService.isStaffAssignedToProperty(
-      staffId,
-      propertyId,
-    );
-    return { isAssigned };
-  }
-
   // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================
 
   @Get(':id')
-  @RequirePermission('message.view')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết tin nhắn' })
   @ApiResponse({ status: 200, description: 'Thông tin tin nhắn' })
   @ResponseMessage('Lấy thông tin tin nhắn thành công')
@@ -440,7 +390,7 @@ export class MessagesController {
   }
 
   @Patch(':id')
-  @RequirePermission('message.edit')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Cập nhật nội dung tin nhắn' })
   @ApiResponse({
     status: 200,
@@ -465,7 +415,7 @@ export class MessagesController {
   }
 
   @Delete(':id')
-  @RequirePermission('message.delete')
+  @Roles('guest', 'staff', 'admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Xóa tin nhắn của mình' })
   @ApiResponse({ status: 204, description: 'Tin nhắn được xóa thành công' })

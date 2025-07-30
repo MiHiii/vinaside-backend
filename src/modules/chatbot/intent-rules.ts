@@ -6,6 +6,8 @@ export const STATIC_RESPONSES = {
   goodbye: 'Cảm ơn bạn đã sử dụng dịch vụ. Chúc bạn một ngày tốt lành!',
   unknown: 'Tôi chưa rõ câu hỏi của bạn, bạn có thể nói cụ thể hơn không?',
   ask_cheapest_room: '', // sẽ xử lý động
+  'message.send':
+    'Nhân viên được gán vào property sẽ có toàn quyền trả lời tin nhắn của khách hàng liên quan đến property đó.',
 };
 
 export function detectIntent(
@@ -21,6 +23,8 @@ export function detectIntent(
     return 'greeting';
   if (['cảm ơn', 'bye', 'tạm biệt'].some((kw) => msg.includes(kw)))
     return 'goodbye';
+  if (msg.includes('gán nhân viên') && msg.includes('property'))
+    return 'message.send';
   if (
     msg.includes('giá rẻ nhất') ||
     msg.includes('phòng rẻ nhất') ||
