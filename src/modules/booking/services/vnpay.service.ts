@@ -349,7 +349,7 @@ export class VNPayService extends PaymentServiceInterface {
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.CONFIRMED,
+          status: BookingStatus.PENDING,
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
@@ -385,7 +385,7 @@ export class VNPayService extends PaymentServiceInterface {
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.CONFIRMED,
+          status: BookingStatus.PENDING,
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
