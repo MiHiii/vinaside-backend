@@ -146,9 +146,10 @@ GET /listings?city=Hà Nội&priceFrom=500000&priceTo=2000000&guests=2&status=ac
 
 Hệ thống sẽ tìm kiếm theo thứ tự ưu tiên như sau:
 
-1. **place_id** (Google Places ID) - Smart search với 2 mức độ:
+1. **place_id** (Google Places ID) - Smart search với 3 mức độ:
    - **Exact match**: Tìm property có place_id chính xác
    - **Fuzzy match**: Nếu không tìm thấy exact, sẽ tìm properties trong bán kính 2km của place_id đó
+   - **Province search**: Nếu không có kết quả trong 2km, tìm tất cả properties trong cùng tỉnh/thành phố với place_id
 2. **city + district + ward** - Kết hợp các trường địa chính
 3. **address + locationKeyword** - Tìm kiếm theo địa chỉ và từ khóa
 4. **lat/lng + radius** - Tìm kiếm theo tọa độ địa lý
@@ -183,21 +184,38 @@ POST /properties
    - Gọi Google Places API để lấy tọa độ của place_id input
    - Tìm tất cả properties trong bán kính 2km từ tọa độ đó
    - Return kết quả gần nhất
+3. **Province search**: Nếu không có kết quả trong 2km:
+   - Trích xuất tên tỉnh/thành phố từ địa chỉ của place_id
+   - Tìm tất cả properties trong cùng tỉnh/thành phố
+   - Return kết quả theo tỉnh/thành phố
 
 ### Use cases:
 
 - User search "ChIJXXX" (place_id của đường), system tìm properties gần đường đó
 - User search place_id của tòa nhà, system tìm properties trong khu vực đó
+- Nếu không có properties gần đó, system sẽ tìm trong toàn tỉnh/thành phố
 - Flexible search cho user experience tốt hơn
 
 ### Cấu hình:
 
 ```bash
-# Default: fuzzy search enabled
+# Default: fuzzy search enabled với 3 bước tìm kiếm
 GET /listings?place_id=XXX
 
 # Disable fuzzy search (chỉ exact match)
 GET /listings?place_id=XXX&fuzzy_place_search=false
+```
+
+### Ví dụ thực tế:
+
+```bash
+# Search place_id của Cầu Giấy, Hà Nội
+GET /listings?place_id=ChIJL2qFlgcbdTERTVVVVVFVlFV
+
+# Logic sẽ chạy:
+# 1. Tìm properties có place_id chính xác "ChIJL2qFlgcbdTERTVVVVVFVlFV"
+# 2. Nếu không có, tìm properties trong bán kính 2km của Cầu Giấy
+# 3. Nếu không có, tìm tất cả properties ở Hà Nội
 ```
 
 ## Notes

@@ -122,12 +122,14 @@ export class ListingService {
       sortOrder = 'desc',
       ...filters
     } = queryDto;
+
     const skip = (page - 1) * limit;
 
     // First, handle location-based filtering by finding matching properties
     let propertyIds: Types.ObjectId[] | undefined;
 
     const hasLocationFilter = !!(
+      filters.place_id ||
       filters.city ||
       filters.district ||
       filters.ward ||
@@ -961,12 +963,21 @@ export class ListingService {
 
       // If no exact match and fuzzy search is enabled (default: true), try fuzzy search
       const enableFuzzy = filters.fuzzy_place_search !== false; // Default to true
+
       if (enableFuzzy) {
         const fuzzyMatch = await this.findPropertiesByFuzzyPlaceId(
           filters.place_id,
         );
         if (fuzzyMatch.length > 0) {
           return fuzzyMatch;
+        }
+
+        // If no fuzzy match found, try searching by province/city from place_id
+        const provinceMatch = await this.findPropertiesByPlaceIdProvince(
+          filters.place_id,
+        );
+        if (provinceMatch.length > 0) {
+          return provinceMatch;
         }
       }
     }
@@ -1092,7 +1103,7 @@ export class ListingService {
       const placeDetails =
         await this.googlePlacesService.getPlaceDetails(placeId);
       if (!placeDetails || !placeDetails.geometry) {
-        this.logger.warn(`No place details found for place_id: ${placeId}`);
+        this.logger.warn(`❌ No place details found for place_id: ${placeId}`);
         return [];
       }
 
@@ -1116,22 +1127,145 @@ export class ListingService {
               $lte: lng + lngRange,
             },
           },
-          { _id: 1 },
+          { _id: 1, 'location.city': 1, 'location.district': 1 },
         )
         .lean()
         .exec();
 
-      this.logger.log(
-        `Fuzzy place_id search found ${properties.length} properties within ${searchRadius}km of ${placeId}`,
+      return properties.map((property) => property._id);
+    } catch (error) {
+      this.logger.error(
+        `❌ Error in fuzzy place_id search: ${(error as Error).message}`,
       );
+      return [];
+    }
+  }
+
+  /**
+   * Find properties by province/city from place_id
+   */
+  private async findPropertiesByPlaceIdProvince(
+    placeId: string,
+  ): Promise<Types.ObjectId[]> {
+    try {
+      // Get place details from Google Places
+      const placeDetails =
+        await this.googlePlacesService.getPlaceDetails(placeId);
+      if (!placeDetails || !placeDetails.description) {
+        this.logger.warn(`❌ No place details found for place_id: ${placeId}`);
+        return [];
+      }
+
+      const placeAddress = placeDetails.description;
+      const province = this.extractProvinceFromAddress(placeAddress);
+
+      if (!province) {
+        return [];
+      }
+
+      // Search by province/city
+      const properties = await this.propertyModel
+        .find(
+          {
+            isDeleted: false,
+            $or: [
+              { 'location.city': { $regex: province, $options: 'i' } },
+              { 'location.district': { $regex: province, $options: 'i' } },
+              { 'location.ward': { $regex: province, $options: 'i' } },
+            ],
+          },
+          { _id: 1, 'location.city': 1, 'location.district': 1 },
+        )
+        .lean()
+        .exec();
 
       return properties.map((property) => property._id);
     } catch (error) {
       this.logger.error(
-        `Error in fuzzy place_id search: ${(error as Error).message}`,
+        `❌ Error in province search: ${(error as Error).message}`,
       );
       return [];
     }
+  }
+
+  /**
+   * Extract province/city name from address string
+   */
+  private extractProvinceFromAddress(address: string): string {
+    // Common Vietnamese provinces/cities patterns (both Vietnamese and English)
+    const provincePatterns = [
+      { vi: 'Hà Nội', en: 'Hanoi' },
+      { vi: 'Hồ Chí Minh', en: 'Ho Chi Minh' },
+      { vi: 'Đà Nẵng', en: 'Da Nang' },
+      { vi: 'Hải Phòng', en: 'Hai Phong' },
+      { vi: 'Cần Thơ', en: 'Can Tho' },
+      { vi: 'Huế', en: 'Hue' },
+      { vi: 'Nha Trang', en: 'Nha Trang' },
+      { vi: 'Đà Lạt', en: 'Da Lat' },
+      { vi: 'Vũng Tàu', en: 'Vung Tau' },
+      { vi: 'Quy Nhơn', en: 'Quy Nhon' },
+      { vi: 'Hải Dương', en: 'Hai Duong' },
+      { vi: 'Bắc Ninh', en: 'Bac Ninh' },
+      { vi: 'Thái Nguyên', en: 'Thai Nguyen' },
+      { vi: 'Lào Cai', en: 'Lao Cai' },
+      { vi: 'Sơn La', en: 'Son La' },
+      { vi: 'Yên Bái', en: 'Yen Bai' },
+      { vi: 'Tuyên Quang', en: 'Tuyen Quang' },
+      { vi: 'Phú Thọ', en: 'Phu Tho' },
+      { vi: 'Vĩnh Phúc', en: 'Vinh Phuc' },
+      { vi: 'Quảng Ninh', en: 'Quang Ninh' },
+      { vi: 'Bắc Giang', en: 'Bac Giang' },
+      { vi: 'Bắc Kạn', en: 'Bac Kan' },
+      { vi: 'Cao Bằng', en: 'Cao Bang' },
+      { vi: 'Lạng Sơn', en: 'Lang Son' },
+      { vi: 'Thái Bình', en: 'Thai Binh' },
+      { vi: 'Nam Định', en: 'Nam Dinh' },
+      { vi: 'Ninh Bình', en: 'Ninh Binh' },
+      { vi: 'Thanh Hóa', en: 'Thanh Hoa' },
+      { vi: 'Nghệ An', en: 'Nghe An' },
+      { vi: 'Hà Tĩnh', en: 'Ha Tinh' },
+      { vi: 'Quảng Bình', en: 'Quang Binh' },
+      { vi: 'Quảng Trị', en: 'Quang Tri' },
+      { vi: 'Thừa Thiên Huế', en: 'Thua Thien Hue' },
+      { vi: 'Quảng Nam', en: 'Quang Nam' },
+      { vi: 'Quảng Ngãi', en: 'Quang Ngai' },
+      { vi: 'Bình Định', en: 'Binh Dinh' },
+      { vi: 'Phú Yên', en: 'Phu Yen' },
+      { vi: 'Khánh Hòa', en: 'Khanh Hoa' },
+      { vi: 'Ninh Thuận', en: 'Ninh Thuan' },
+      { vi: 'Bình Thuận', en: 'Binh Thuan' },
+      { vi: 'Kon Tum', en: 'Kon Tum' },
+      { vi: 'Gia Lai', en: 'Gia Lai' },
+      { vi: 'Đắk Lắk', en: 'Dak Lak' },
+      { vi: 'Đắk Nông', en: 'Dak Nong' },
+      { vi: 'Lâm Đồng', en: 'Lam Dong' },
+      { vi: 'Bình Phước', en: 'Binh Phuoc' },
+      { vi: 'Tây Ninh', en: 'Tay Ninh' },
+      { vi: 'Bình Dương', en: 'Binh Duong' },
+      { vi: 'Đồng Nai', en: 'Dong Nai' },
+      { vi: 'Bà Rịa - Vũng Tàu', en: 'Ba Ria Vung Tau' },
+      { vi: 'Long An', en: 'Long An' },
+      { vi: 'Tiền Giang', en: 'Tien Giang' },
+      { vi: 'Bến Tre', en: 'Ben Tre' },
+      { vi: 'Trà Vinh', en: 'Tra Vinh' },
+      { vi: 'Vĩnh Long', en: 'Vinh Long' },
+      { vi: 'Đồng Tháp', en: 'Dong Thap' },
+      { vi: 'An Giang', en: 'An Giang' },
+      { vi: 'Kiên Giang', en: 'Kien Giang' },
+      { vi: 'Cà Mau', en: 'Ca Mau' },
+      { vi: 'Bạc Liêu', en: 'Bac Lieu' },
+      { vi: 'Sóc Trăng', en: 'Soc Trang' },
+      { vi: 'Hậu Giang', en: 'Hau Giang' },
+    ];
+
+    for (const pattern of provincePatterns) {
+      // Check both Vietnamese and English versions
+      if (address.includes(pattern.vi) || address.includes(pattern.en)) {
+        return pattern.vi; // Return Vietnamese version for consistency
+      }
+    }
+
+    return '';
   }
 
   /**
