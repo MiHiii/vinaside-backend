@@ -46,4 +46,5 @@ export class BookingResponseDto {
   cancel_policy?: string;
   payment_id?: string;
   vnpay_pay_date?: Date;
+  outstanding_amount?: number;
 }
