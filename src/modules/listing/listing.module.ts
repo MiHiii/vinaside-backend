@@ -14,9 +14,7 @@ import {
   TransactionSchema,
 } from '../transactions/schemas/transaction.schema';
 import { Service, ServiceSchema } from '../services/schemas/service.schema';
-import {
-  Property,
-  PropertySchema,
+import {  Property , PropertySchema,
 } from '../properties/schemas/property.schema';
 
 @Module({

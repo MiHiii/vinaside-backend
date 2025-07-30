@@ -8,5 +8,5 @@ export class UpdateBookingDto {
 
   @IsEnum(PaymentStatus)
   @IsOptional()
-  paymentStatus?: PaymentStatus;
+  payment_status?: PaymentStatus;
 }
