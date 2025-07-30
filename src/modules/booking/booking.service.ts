@@ -31,6 +31,8 @@ import { VoucherService } from '../vouchers/voucher.service';
 import { ServicesService } from '../services/services.service';
 import { ReservationData } from '../mail/interfaces/reservation-data.interface';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
+import { AssignmentStatus } from '../property-staff-assignment/schemas/property-staff-assignment.schema';
 import {
   NotificationType,
   RecipientType,
@@ -57,6 +59,7 @@ import { CancelPolicy } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
 import { PaymentResponseDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
+import { applyStaffFilter } from '../../utils/staff-filter.util';
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -82,6 +85,7 @@ export class BookingService {
     private readonly reviewsService: ReviewsService,
     private readonly paymentFactory: PaymentFactory,
     private readonly transactionsService: TransactionsService,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -465,7 +469,7 @@ export class BookingService {
 
     // Lấy staff emails từ property và gửi thông báo
     try {
-      const staffEmails = await this.mailService.getStaffEmailsFromProperty(
+      const staffEmails = await this.mailService.getStaffEmails(
         propertyId.toString(),
       );
 
@@ -603,7 +607,11 @@ export class BookingService {
   /**
    * Tìm danh sách theo bộ lọc và trả về dữ liệu định dạng
    */
-  async findAll(queryDto: QueryBookingDto): Promise<PaginatedBookings> {
+  async findAll(
+    queryDto: QueryBookingDto,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<PaginatedBookings> {
     const { page = 1, limit = 10, sortBy, sortOrder, ...filters } = queryDto;
     const skip = (page - 1) * limit;
 
@@ -630,11 +638,14 @@ export class BookingService {
         );
     }
 
+    // Apply staff filtering using utility function
+    const filteredQuery = applyStaffFilter(query, request, 'propertyId');
+
     const sort: Record<string, SortOrder> = {
       [sortBy || 'createdAt']: sortOrder === 'asc' ? 1 : -1,
     };
 
-    const { data, total } = await this.bookingRepo.findAll(query, {
+    const { data, total } = await this.bookingRepo.findAll(filteredQuery, {
       sort,
       skip,
       limit,
@@ -677,27 +688,6 @@ export class BookingService {
       },
     };
   }
-
-  /**
-   * Tìm danh sách booking của một properties
-   */
-  findByHost(propertyId: string, queryDto: QueryBookingDto) {
-    return this.findBookingsByGuest(propertyId, queryDto).then((result) => {
-      const { page = 1, limit = 10 } = queryDto;
-      return {
-        bookings: result.data.map((booking) =>
-          this.transformBookingToResponse(booking),
-        ),
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
-        },
-      };
-    });
-  }
-
   /**
    * Tìm danh sách booking của một listing
    */
@@ -771,86 +761,59 @@ export class BookingService {
   /**
    * Lấy tất cả bookings của staff hiện tại (tất cả bookings của properties mà staff được gán)
    */
-  async findMyBookingsAsHost(user: JwtPayload, queryDto: QueryBookingDto) {
+  async findMyBookingsAsStaff(user: JwtPayload, queryDto: QueryBookingDto) {
     if (!user || !user._id) {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
     }
 
-    if (user.role === 'admin') {
-      // Admin xem tất cả bookings
-      return this.findAll(queryDto);
-    } else if (user.role === 'staff') {
-      // Staff chỉ xem được bookings của properties mình được gán
-      const staffProperties = await this.propertyService.findByStaff(
-        user._id,
-        {},
-      );
+    // Filtering sẽ được tự động áp dụng thông qua controller decorator
+    // Admin vẫn có quyền xem tất cả
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      includeDeleted = false,
+      ...filters
+    } = queryDto;
 
-      interface PropertyWithId {
-        _id: Types.ObjectId;
-      }
+    // Tạo base query
+    const baseQuery: FilterQuery<Booking> = {
+      isDeleted: includeDeleted,
+    };
 
-      const propertyIds = staffProperties.data.map((prop) =>
-        (prop as unknown as PropertyWithId)._id.toString(),
-      );
+    // Thêm các bộ lọc khác
+    if (filters.status) baseQuery.status = filters.status;
+    if (filters.paymentStatus) baseQuery.payment_status = filters.paymentStatus;
 
-      if (propertyIds.length === 0) {
-        return {
-          bookings: [],
-          meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
-        };
-      }
+    const skip = (page - 1) * limit;
+    const sort = parseSortString(`${sortBy}:${sortOrder}`);
 
-      // Filter bookings theo properties của staff bằng cách query multiple propertyId
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'created_at',
-        sortOrder = 'desc',
-        includeDeleted = false,
-        ...filters
-      } = queryDto;
-
-      const query: FilterQuery<Booking> = {
-        propertyId: { $in: propertyIds.map((id) => new Types.ObjectId(id)) },
-        isDeleted: includeDeleted,
-      };
-
-      // Thêm các bộ lọc khác
-      if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
-
-      const skip = (page - 1) * limit;
-      const sort = parseSortString(`${sortBy}:${sortOrder}`);
-
-      const result = await this.bookingRepo.findAll(query, {
-        sort,
-        skip,
-        limit,
-        populate: [
-          {
-            path: 'listingId',
-            select: 'title address images price_per_night cancel_policy',
-          },
-          { path: 'guestId', select: 'name avatar email phone' },
-          { path: 'propertyId', select: 'name address' },
-        ],
-      });
-
-      return {
-        bookings: result.data.map((booking) =>
-          this.transformBookingToResponse(booking),
-        ),
-        meta: {
-          total: result.total,
-          page,
-          limit,
-          totalPages: Math.ceil(result.total / limit) || 1,
+    const result = await this.bookingRepo.findAll(baseQuery, {
+      sort,
+      skip,
+      limit,
+      populate: [
+        {
+          path: 'listingId',
+          select: 'title address images price_per_night cancel_policy',
         },
-      };
-    } else {
-      throw new ForbiddenException('Chỉ staff và admin mới có quyền này');
-    }
+        { path: 'guestId', select: 'name avatar email phone' },
+        { path: 'propertyId', select: 'name address' },
+      ],
+    });
+
+    return {
+      bookings: result.data.map((booking) =>
+        this.transformBookingToResponse(booking),
+      ),
+      meta: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit) || 1,
+      },
+    };
   }
 
   /**
@@ -1144,45 +1107,46 @@ export class BookingService {
     finalAmount: number,
   ): Promise<void> {
     try {
-      // Lấy danh sách staff của property
-      const staffProperties = await this.propertyService.findByStaff(
-        propertyId,
-        {},
-      );
+      // Lấy danh sách staff của property từ PropertyStaffAssignmentService
+      const staffAssignments =
+        await this.propertyStaffAssignmentService.getStaffByProperty(
+          new Types.ObjectId(propertyId),
+        );
 
-      if (staffProperties.data.length === 0) {
-        this.logger.warn(`No staff found for property ${propertyId}`);
+      if (staffAssignments.length === 0) {
+        this.logger.debug(`No staff assigned to property ${propertyId}`);
         return;
       }
 
-      const bookingId = (booking._id as Types.ObjectId).toString();
-      const bookingCode = bookingId.slice(-8);
-      const propertyName =
-        listing.propertyId.name || listing.title || 'Tài sản';
-
       // Tạo thông báo cho từng staff
-      for (const staffProperty of staffProperties.data) {
-        const staffId = (staffProperty as any).staff_id?.toString();
-        if (!staffId) continue;
-
-        try {
-          await this.notificationsService.create({
-            user_id: staffId,
+      for (const assignment of staffAssignments) {
+        if (
+          assignment.status === AssignmentStatus.ACTIVE &&
+          assignment.staffId
+        ) {
+          const createNotificationDto = {
+            user_id: assignment.staffId._id.toString(),
             recipient_type: RecipientType.STAFF,
-            title: 'Đặt phòng mới',
-            message: `Có đặt phòng mới tại ${propertyName}. Mã đặt phòng: ${bookingCode}. Tổng tiền: ${finalAmount.toLocaleString('vi-VN')} VNĐ. Khách: ${booking.guest_name}`,
+            title: `Booking mới cho property ${listing.title}`,
+            message: `Có booking mới với giá trị ${finalAmount.toLocaleString(
+              'vi-VN',
+            )} VND cho property ${listing.title}. Mã booking: ${booking._id}`,
             type: NotificationType.BOOKING,
-            status: NotificationStatus.SENT,
-            sent_method: [SentMethod.IN_APP],
-          });
-          this.logger.log(`Created staff notification for ${staffId}`);
-        } catch (error) {
-          this.logger.error(
-            `Failed to create staff notification for ${staffId}:`,
-            error,
-          );
+            metadata: {
+              bookingId: booking._id,
+              propertyId: propertyId,
+              listingId: listing._id,
+              amount: finalAmount,
+            },
+          };
+
+          await this.notificationsService.create(createNotificationDto);
         }
       }
+
+      this.logger.log(
+        `Created notifications for ${staffAssignments.length} staff members for property ${propertyId}`,
+      );
     } catch (error) {
       this.logger.error('Error creating staff notifications:', error);
     }

@@ -54,8 +54,7 @@ export class MailController {
     },
   })
   async getStaffEmailsByProperty(@Param('propertyId') propertyId: string) {
-    const staffEmails =
-      await this.mailService.getStaffEmailsFromProperty(propertyId);
+    const staffEmails = await this.mailService.getStaffEmails(propertyId);
     return {
       propertyId,
       staffEmails,

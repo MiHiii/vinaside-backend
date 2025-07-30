@@ -127,12 +127,6 @@ export class CreatePropertyDto {
   @IsEmail()
   contactEmail?: string;
 
-  @ApiPropertyOptional({ description: 'Assigned staff IDs' })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  staffIds?: string[];
-
   @ApiPropertyOptional({
     description: 'Property status',
     enum: ['active', 'inactive', 'pending'],

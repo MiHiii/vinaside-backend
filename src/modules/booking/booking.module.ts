@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { BookingController } from './booking.controller';
 import { Booking, BookingSchema } from './schemas/booking.schema';
 import { BookingService } from './booking.service';
@@ -13,6 +14,8 @@ import { MailModule } from '../mail/mail.module';
 import { VoucherModule } from '../vouchers/voucher.module';
 import { ServicesModule } from '../services/services.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
+import { StaffFilterInterceptor } from '../../common/interceptors/staff-filter.interceptor';
 import { forwardRef } from '@nestjs/common';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { TransactionsModule } from '../transactions/transactions.module';
@@ -27,11 +30,21 @@ import { TransactionsModule } from '../transactions/transactions.module';
     VoucherModule,
     ServicesModule,
     NotificationsModule,
+    PropertyStaffAssignmentModule,
     forwardRef(() => ReviewsModule),
     TransactionsModule,
   ],
   controllers: [BookingController],
-  providers: [BookingService, BookingRepo, VNPayService, PaymentFactory],
+  providers: [
+    BookingService,
+    BookingRepo,
+    VNPayService,
+    PaymentFactory,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: StaffFilterInterceptor,
+    },
+  ],
   exports: [BookingService],
 })
 export class BookingModule {}

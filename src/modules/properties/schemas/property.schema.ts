@@ -22,9 +22,6 @@ export class Property {
   })
   type: PropertyType;
 
-  @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
-  staffIds: Types.ObjectId[]; // Danh sách nhân viên được gán
-
   @Prop()
   description?: string;
 
@@ -106,7 +103,6 @@ export const PropertySchema = SchemaFactory.createForClass(Property);
 
 // Indexes for performance
 PropertySchema.index({ type: 1 });
-PropertySchema.index({ staffIds: 1 });
 PropertySchema.index({ isDeleted: 1 });
 PropertySchema.index({ status: 1 });
 PropertySchema.index({ isVerified: 1 });

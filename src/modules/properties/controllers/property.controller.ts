@@ -21,6 +21,7 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from '../../../decorators/response-message.decorator';
 import { Public } from '../../../decorators/public.decorator';
+import { StaffFiltered } from '../../../decorators/staff-filtered.decorator';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import {
   ApiTags,
@@ -54,11 +55,17 @@ export class PropertyController {
 
   @Get()
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tất cả tài sản (Chỉ Admin)' })
+  @StaffFiltered({ propertyField: '_id' })
+  @ApiOperation({
+    summary: 'Lấy tất cả tài sản (Admin: tất cả, Staff: chỉ assigned)',
+  })
   @ApiResponse({ status: 200, description: 'Danh sách tài sản' })
   @ResponseMessage('Lấy danh sách tài sản thành công')
-  findAll(@Query() queryDto: QueryPropertyDto) {
-    return this.propertyService.findAll(queryDto);
+  findAll(
+    @Query() queryDto: QueryPropertyDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.propertyService.findAll(queryDto, req.user, req);
   }
 
   @Public()
@@ -90,7 +97,10 @@ export class PropertyController {
 
   @Get('stats')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy thống kê tài sản (Chỉ Admin)' })
+  @StaffFiltered({ propertyField: '_id' })
+  @ApiOperation({
+    summary: 'Lấy thống kê tài sản (Admin: tất cả, Staff: chỉ assigned)',
+  })
   @ApiResponse({ status: 200, description: 'Thống kê tài sản' })
   @ResponseMessage('Lấy thống kê tài sản thành công')
   getStats() {
@@ -113,32 +123,6 @@ export class PropertyController {
       endDate,
       groupBy,
     );
-  }
-
-  @Get('my-properties')
-  @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy tài sản của người dùng hiện tại (Chỉ Admin)' })
-  @ApiResponse({ status: 200, description: 'Tài sản của người dùng' })
-  @ResponseMessage('Lấy tài sản của người dùng thành công')
-  getMyProperties(
-    @Query() queryDto: QueryPropertyDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.propertyService.findByStaff(req.user._id, queryDto);
-  }
-
-  @Get('staff/:staffId')
-  @RequirePermission('property.view')
-  @ApiOperation({
-    summary: 'Lấy tài sản được gán cho một nhân viên (Chỉ Admin)',
-  })
-  @ApiResponse({ status: 200, description: 'Tài sản của nhân viên' })
-  @ResponseMessage('Lấy tài sản của nhân viên thành công')
-  getStaffProperties(
-    @Param('staffId') staffId: string,
-    @Query() queryDto: QueryPropertyDto,
-  ) {
-    return this.propertyService.findByStaff(staffId, queryDto);
   }
 
   @Public()
@@ -184,15 +168,6 @@ export class PropertyController {
   @ResponseMessage('Cập nhật xác minh tài sản thành công')
   verify(@Param('id') id: string, @Body('isVerified') isVerified: boolean) {
     return this.propertyService.verify(id, isVerified);
-  }
-
-  @Patch(':id/staff')
-  @RequirePermission('property.edit')
-  @ApiOperation({ summary: 'Gán nhân viên cho tài sản (Chỉ Admin)' })
-  @ApiResponse({ status: 200, description: 'Nhân viên được gán thành công' })
-  @ResponseMessage('Gán nhân viên thành công')
-  assignStaff(@Param('id') id: string, @Body('staffIds') staffIds: string[]) {
-    return this.propertyService.assignStaff(id, staffIds);
   }
 
   @Delete(':id')

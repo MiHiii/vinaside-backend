@@ -22,6 +22,7 @@ import { PermissionGuard } from '../../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../../common/guards/property-staff.guard';
 import { RequirePermission } from '../../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../../decorators/require-property-staff.decorator';
+import { StaffFiltered } from '../../../decorators/staff-filtered.decorator';
 import { Roles } from '../../../decorators/roles.decorator';
 import { TransactionsService } from '../services/transactions.service';
 import { CreateTransactionDto } from '../dto/create-transaction.dto';
@@ -90,16 +91,21 @@ export class TransactionsController {
 
   @Get()
   @RequirePermission('transaction.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
   @ApiOperation({
-    summary: 'Lấy danh sách giao dịch',
+    summary:
+      'Lấy danh sách giao dịch (Admin: tất cả, Staff: chỉ assigned properties)',
     description: 'Lấy danh sách giao dịch với lọc và phân trang',
   })
   @ApiResponse({
     status: 200,
     description: 'Lấy danh sách giao dịch thành công',
   })
-  async getTransactions(@Query() query: QueryTransactionDto) {
-    return this.transactionsService.getTransactions(query);
+  async getTransactions(
+    @Query() query: QueryTransactionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.transactionsService.getTransactions(query, req.user, req);
   }
 
   @Get('my')

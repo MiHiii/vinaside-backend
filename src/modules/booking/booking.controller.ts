@@ -31,6 +31,7 @@ import {
 } from './dto/booking-statistics.dto';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { RequirePropertyStaff } from '../../decorators/require-property-staff.decorator';
+import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -79,11 +80,15 @@ export class BookingController {
 
   @Get()
   @RequirePermission('booking.view')
-  @ApiOperation({ summary: 'Lấy danh sách tất cả bookings (Admin)' })
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary:
+      'Lấy danh sách tất cả bookings (Admin: tất cả, Staff: chỉ assigned properties)',
+  })
   @ApiResponse({ status: 200, description: 'Danh sách bookings' })
   @ResponseMessage('Lấy danh sách bookings thành công')
-  findAll(@Query() queryDto: QueryBookingDto) {
-    return this.bookingService.findAll(queryDto);
+  findAll(@Query() queryDto: QueryBookingDto, @Request() req: RequestWithUser) {
+    return this.bookingService.findAll(queryDto, req.user, req);
   }
 
   @Get('my-bookings')
@@ -110,6 +115,22 @@ export class BookingController {
     return this.bookingService.findMyBookingsAsGuest(req.user, queryDto);
   }
 
+  @Get('my-bookings-as-staff')
+  @Roles('staff', 'admin')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy booking staff quản lý (Admin: tất cả, Staff: chỉ assigned)',
+  })
+  @ApiResponse({ status: 200, description: 'Danh sách booking của staff' })
+  @ResponseMessage('Lấy danh sách booking staff thành công')
+  findMyBookingsAsStaff(
+    @Query() queryDto: QueryBookingDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.findMyBookingsAsStaff(req.user, queryDto);
+  }
+
   @Get('guest/:guestId')
   @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy bookings của guest cụ thể' })
@@ -120,18 +141,6 @@ export class BookingController {
     @Query() queryDto: QueryBookingDto,
   ) {
     return this.bookingService.findByGuest(guestId, queryDto);
-  }
-
-  @Get('staff/:staffId')
-  @RequirePermission('booking.view')
-  @ApiOperation({ summary: 'Lấy bookings của staff cụ thể' })
-  @ApiResponse({ status: 200, description: 'Danh sách bookings của staff' })
-  @ResponseMessage('Lấy danh sách bookings của staff thành công')
-  findByStaff(
-    @Param('staffId') staffId: string,
-    @Query() queryDto: QueryBookingDto,
-  ) {
-    return this.bookingService.findByHost(staffId, queryDto);
   }
 
   @Get('property/:propertyId/listing/:listingId')
