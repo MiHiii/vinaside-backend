@@ -1,13 +1,3 @@
-import {
-  IsString,
-  IsOptional,
-  IsMongoId,
-  IsNumber,
-  Min,
-  Max,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-
 export class PropertyStaffResponseDto {
   _id: string;
   name: string;

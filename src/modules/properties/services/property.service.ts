@@ -7,6 +7,10 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
+
+interface RequestWithStaffFilter {
+  staffPropertyIds?: string[];
+}
 import { Property, PropertyDocument } from '../schemas/property.schema';
 import { Listing, ListingStatus } from '../../listing/schemas/listing.schema';
 import {
@@ -150,7 +154,7 @@ export class PropertyService {
       this.listingModel.countDocuments({
         propertyId: new Types.ObjectId(propertyId),
         isDeleted: false, // Chỉ filter này, không filter status
-      }),
+      } as FilterQuery<Listing>),
     ]);
 
     return {
@@ -224,7 +228,7 @@ export class PropertyService {
   async findAll(
     queryDto: QueryPropertyDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter | undefined,
   ): Promise<PaginatedProperties> {
     const {
       page = 1,

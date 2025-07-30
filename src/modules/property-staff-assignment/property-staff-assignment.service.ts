@@ -88,8 +88,11 @@ export class PropertyStaffAssignmentService {
 
     // Transform assignments to staff info format with avatar_url
     const staffInfoPromises = assignments.map(async (assignment) => {
-      const staff = assignment.staffId as any;
-      const staffId = staff._id || staff.toString();
+      const staff = assignment.staffId as {
+        _id?: Types.ObjectId;
+        toString(): string;
+      };
+      const staffId = staff._id ? staff._id.toString() : staff.toString();
 
       // Lấy thông tin chi tiết từ collection users để có avatar_url
       const userInfo =
@@ -97,11 +100,11 @@ export class PropertyStaffAssignmentService {
 
       return {
         _id: staffId,
-        name: userInfo?.name || staff.name || 'Unknown',
-        email: userInfo?.email || staff.email || '',
-        phone: userInfo?.phone || staff.phone || '',
-        role: userInfo?.role || staff.role || 'staff',
-        avatar_url: userInfo?.avatar_url || staff.avatar_url || '',
+        name: userInfo?.name || 'Unknown',
+        email: userInfo?.email || '',
+        phone: userInfo?.phone || '',
+        role: userInfo?.role || 'staff',
+        avatar_url: userInfo?.avatar_url || '',
         is_online: false, // Có thể tích hợp với online status sau
         last_seen: new Date(),
       };
@@ -120,8 +123,11 @@ export class PropertyStaffAssignmentService {
 
     // Lấy staff đầu tiên (có thể sửa logic sau để lấy staff chính)
     const firstAssignment = assignments[0];
-    const staff = firstAssignment.staffId as any;
-    const staffId = staff._id || staff.toString();
+    const staff = firstAssignment.staffId as {
+      _id?: Types.ObjectId;
+      toString(): string;
+    };
+    const staffId = staff._id ? staff._id.toString() : staff.toString();
 
     // Lấy thông tin chi tiết từ collection users
     const userInfo =
@@ -129,11 +135,11 @@ export class PropertyStaffAssignmentService {
 
     return {
       _id: staffId,
-      name: userInfo?.name || staff.name || 'Unknown',
-      email: userInfo?.email || staff.email || '',
-      phone: userInfo?.phone || staff.phone || '',
-      role: userInfo?.role || staff.role || 'staff',
-      avatar_url: userInfo?.avatar_url || staff.avatar_url || '',
+      name: userInfo?.name || 'Unknown',
+      email: userInfo?.email || '',
+      phone: userInfo?.phone || '',
+      role: userInfo?.role || 'staff',
+      avatar_url: userInfo?.avatar_url || '',
       is_online: false,
       last_seen: new Date(),
       is_primary: true, // Đánh dấu là staff chính
