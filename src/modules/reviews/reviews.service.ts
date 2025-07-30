@@ -26,6 +26,7 @@ import {
   SentMethod,
 } from '../notifications/schemas/notification.schema';
 import { forwardRef, Inject } from '@nestjs/common';
+import { applyStaffFilter } from '../../utils/staff-filter.util';
 
 @Injectable()
 export class ReviewsService {
@@ -114,8 +115,12 @@ export class ReviewsService {
    * Admin/Staff: Lấy tất cả reviews với filter
    * Note: Permission checking is now handled by @RequirePropertyStaff decorator
    */
-  async findAllForAdmin(queryDto: QueryReviewDto) {
-    const result = await this.findAllWithFilters(queryDto);
+  async findAllForAdmin(
+    queryDto: QueryReviewDto,
+    user?: JwtPayload,
+    request?: any,
+  ) {
+    const result = await this.findAllWithFilters(queryDto, user, request);
     const { page = 1, limit = 10 } = queryDto;
 
     return {
@@ -327,7 +332,11 @@ export class ReviewsService {
   /**
    * Tìm tất cả reviews với filters (private)
    */
-  private async findAllWithFilters(queryDto: QueryReviewDto) {
+  private async findAllWithFilters(
+    queryDto: QueryReviewDto,
+    user?: JwtPayload,
+    request?: any,
+  ) {
     const {
       page = 1,
       limit = 10,
@@ -347,6 +356,9 @@ export class ReviewsService {
     if (room_id) filter.room_id = room_id as unknown as Types.ObjectId;
     if (rating) filter.rating = rating;
 
+    // Apply staff filtering using utility function
+    const filteredFilter = applyStaffFilter(filter, request, 'room_id');
+
     const options = {
       sort,
       limit,
@@ -357,7 +369,7 @@ export class ReviewsService {
       ],
     };
 
-    return await this.reviewsRepo.findAll(filter, options);
+    return await this.reviewsRepo.findAll(filteredFilter, options);
   }
 
   /**

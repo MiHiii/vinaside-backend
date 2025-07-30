@@ -28,6 +28,7 @@ import { QueryTransactionDto } from '../dto/query-transaction.dto';
 import { BookingService } from '../../booking/booking.service';
 import { BookingStatus } from '../../booking/schemas/booking.schema';
 import { toSafeString } from 'src/utils';
+import { applyStaffFilter } from '../../../utils/staff-filter.util';
 
 interface AmountRangeFilter {
   $gte?: number;
@@ -95,7 +96,7 @@ export class TransactionsService {
     return transaction;
   }
 
-  async getTransactions(query: QueryTransactionDto) {
+  async getTransactions(query: QueryTransactionDto, user?: any, request?: any) {
     const {
       page = 1,
       limit = 10,
@@ -183,16 +184,23 @@ export class TransactionsService {
       ];
     }
 
+    // Apply staff filtering using utility function
+    const filteredConditions = applyStaffFilter(
+      filterConditions,
+      request,
+      'propertyId',
+    );
+
     const [transactions, total] = await Promise.all([
       this.transactionModel
-        .find(filterConditions)
+        .find(filteredConditions)
         .sort(sort)
         .skip(skip)
         .limit(limit)
         .populate('user_id', 'email fullName')
         .populate('created_by', 'email fullName')
         .exec(),
-      this.transactionModel.countDocuments(filterConditions),
+      this.transactionModel.countDocuments(filteredConditions),
     ]);
 
     return {

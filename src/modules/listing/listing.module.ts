@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ListingController } from './listing.controller';
 import { Listing, ListingSchema } from './schemas/listing.schema';
 import { ListingService } from './listing.service';
 import { ListingRepo } from './listing.repo';
 import { LocationModule } from '../location/location.module';
 import { PropertyModule } from '../properties/property.module';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
+import { StaffFilterInterceptor } from '../../common/interceptors/staff-filter.interceptor';
 import { Booking, BookingSchema } from '../booking/schemas/booking.schema';
 import { Review, ReviewSchema } from '../reviews/schemas/review.schema';
 import { Wishlist, WishlistSchema } from '../wishlist/schemas/wishlist.schema';
@@ -30,9 +33,17 @@ import {  Property , PropertySchema,
     ]),
     LocationModule,
     PropertyModule,
+    PropertyStaffAssignmentModule,
   ],
   controllers: [ListingController],
-  providers: [ListingService, ListingRepo],
+  providers: [
+    ListingService,
+    ListingRepo,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: StaffFilterInterceptor,
+    },
+  ],
   exports: [ListingService, ListingRepo],
 })
 export class ListingModule {}

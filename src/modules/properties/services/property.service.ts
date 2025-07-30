@@ -24,6 +24,10 @@ import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
 import { GooglePlacesService } from '../../location/google-places.service';
 import { PropertyStaffAssignmentService } from '../../property-staff-assignment/property-staff-assignment.service';
 import {
+  applyStaffFilter,
+  createEmptyResult,
+} from '../../../utils/staff-filter.util';
+import {
   PropertyVoucherStatistics,
   PropertyServiceStatistics,
   PropertyChartDataPoint,
@@ -155,7 +159,11 @@ export class PropertyService {
     return property.save();
   }
 
-  async findAll(queryDto: QueryPropertyDto): Promise<PaginatedProperties> {
+  async findAll(
+    queryDto: QueryPropertyDto,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<PaginatedProperties> {
     const {
       page = 1,
       limit = 10,
@@ -167,6 +175,17 @@ export class PropertyService {
 
     // Build filter object with proper typing
     const filterQuery: FilterQuery<PropertyDocument> = { isDeleted: false };
+
+    // Apply staff filtering using utility function
+    const filteredQuery = applyStaffFilter(filterQuery, request, '_id');
+
+    // If staff has no assigned properties, return empty result
+    if (
+      user?.role === 'staff' &&
+      (!request?.staffPropertyIds || request.staffPropertyIds.length === 0)
+    ) {
+      return createEmptyResult(page, limit);
+    }
 
     if (filters.keyword) {
       filterQuery.$text = { $search: filters.keyword };
@@ -221,12 +240,12 @@ export class PropertyService {
 
     const [data, total] = await Promise.all([
       this.propertyModel
-        .find(filterQuery)
+        .find(filteredQuery)
         .sort(sortObj)
         .skip(skip)
         .limit(limit)
         .exec(),
-      this.propertyModel.countDocuments(filterQuery),
+      this.propertyModel.countDocuments(filteredQuery),
     ]);
 
     return {

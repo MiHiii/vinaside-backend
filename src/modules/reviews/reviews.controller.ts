@@ -21,6 +21,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
+import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -55,9 +56,13 @@ export class ReviewsController {
 
   @Get()
   @RequirePermission('review.view')
-  @ApiOperation({ summary: 'Lấy danh sách đánh giá của tôi' })
-  @ApiResponse({ status: 200, description: 'Danh sách đánh giá của user' })
-  @ResponseMessage('Lấy danh sách đánh giá của tôi thành công')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary:
+      'Lấy danh sách đánh giá (Admin: tất cả, Staff: chỉ assigned properties)',
+  })
+  @ApiResponse({ status: 200, description: 'Danh sách đánh giá' })
+  @ResponseMessage('Lấy danh sách đánh giá thành công')
   findMyReviews(
     @Query() queryDto: QueryReviewDto,
     @Request() req: RequestWithUser,
@@ -108,11 +113,18 @@ export class ReviewsController {
 
   @Get('admin/all')
   @RequirePermission('review.view')
-  @ApiOperation({ summary: 'Lấy tất cả đánh giá (Admin)' })
+  @StaffFiltered({ propertyField: 'room_id' })
+  @ApiOperation({
+    summary:
+      'Lấy tất cả đánh giá (Admin: tất cả, Staff: chỉ assigned properties)',
+  })
   @ApiResponse({ status: 200, description: 'Danh sách tất cả đánh giá' })
   @ResponseMessage('Lấy tất cả đánh giá thành công')
-  findAllForAdmin(@Query() queryDto: QueryReviewDto) {
-    return this.reviewsService.findAllForAdmin(queryDto);
+  findAllForAdmin(
+    @Query() queryDto: QueryReviewDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.reviewsService.findAllForAdmin(queryDto, req.user, req);
   }
 
   @Delete('admin/:id')
