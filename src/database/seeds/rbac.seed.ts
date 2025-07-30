@@ -40,12 +40,6 @@ export class RbacSeedService {
           action: 'delete',
           description: 'Xóa/khôi phục tài sản',
         },
-        {
-          key: 'property.manage_staff',
-          module: 'property',
-          action: 'manage_staff',
-          description: 'Quản lý nhân viên của tài sản',
-        },
 
         // === LISTING MANAGEMENT ===
         {
@@ -477,7 +471,8 @@ export class RbacSeedService {
             'property.view',
             'property.create',
             'property.edit',
-            'property.manage_staff',
+            'property_staff.edit',
+            'property_staff.view',
             'listing.view',
             'listing.create',
             'listing.edit',
