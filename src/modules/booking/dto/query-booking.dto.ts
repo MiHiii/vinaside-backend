@@ -28,7 +28,7 @@ export class QueryBookingDto {
 
   @IsOptional()
   @IsString()
-  sortBy?: string = 'createdAt';
+  sortBy?: string = 'created_at';
 
   @IsOptional()
   @IsString()
