@@ -10,6 +10,8 @@ import { Service } from '../services/schemas/service.schema';
 import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { VoucherUsage } from '../vouchers/schemas/voucher-usage.schema';
 
+import { Public } from '../../decorators/public.decorator';
+
 @Controller('internal-data')
 export class InternalDataController {
   constructor(
@@ -25,6 +27,7 @@ export class InternalDataController {
   ) {}
 
   @Get()
+  @Public()
   async getData() {
     const listings = await this.listingModel.find();
     const properties = await this.propertyModel.find();

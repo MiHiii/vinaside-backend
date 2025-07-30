@@ -10,6 +10,10 @@ export class CreateMessageDto {
   content: string;
 
   @IsOptional()
+  @IsMongoId({ message: 'property_id must be a valid MongoDB ObjectId' })
+  property_id?: string;
+
+  @IsOptional()
   @IsEnum(MessageStatus)
   is_read?: MessageStatus;
 

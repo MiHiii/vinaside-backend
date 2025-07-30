@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
   Delete,
   Query,
@@ -11,7 +10,6 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
-  BadRequestException,
 } from '@nestjs/common';
 import { ChatbotService } from './chatbot.service';
 import { CreateChatbotMessageDto } from './types/chatbot-message.dto';
@@ -26,7 +24,6 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
-  ApiParam,
 } from '@nestjs/swagger';
 import { GuestOrPermissionGuard } from '../../common/guards/guest-or-permission.guard';
 

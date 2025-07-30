@@ -82,6 +82,64 @@ export class PropertyStaffAssignmentService {
     return this.propertyStaffAssignmentRepo.getStaffByProperty(propertyId);
   }
 
+  async getStaffInfoByProperty(propertyId: Types.ObjectId): Promise<any[]> {
+    const assignments =
+      await this.propertyStaffAssignmentRepo.getStaffByProperty(propertyId);
+
+    // Transform assignments to staff info format with avatar_url
+    const staffInfoPromises = assignments.map(async (assignment) => {
+      const staff = assignment.staffId as any;
+      const staffId = staff._id || staff.toString();
+
+      // Lấy thông tin chi tiết từ collection users để có avatar_url
+      const userInfo =
+        await this.propertyStaffAssignmentRepo.getUserInfo(staffId);
+
+      return {
+        _id: staffId,
+        name: userInfo?.name || staff.name || 'Unknown',
+        email: userInfo?.email || staff.email || '',
+        phone: userInfo?.phone || staff.phone || '',
+        role: userInfo?.role || staff.role || 'staff',
+        avatar_url: userInfo?.avatar_url || staff.avatar_url || '',
+        is_online: false, // Có thể tích hợp với online status sau
+        last_seen: new Date(),
+      };
+    });
+
+    return Promise.all(staffInfoPromises);
+  }
+
+  async getPrimaryStaffByProperty(propertyId: Types.ObjectId): Promise<any> {
+    const assignments =
+      await this.propertyStaffAssignmentRepo.getStaffByProperty(propertyId);
+
+    if (assignments.length === 0) {
+      return null;
+    }
+
+    // Lấy staff đầu tiên (có thể sửa logic sau để lấy staff chính)
+    const firstAssignment = assignments[0];
+    const staff = firstAssignment.staffId as any;
+    const staffId = staff._id || staff.toString();
+
+    // Lấy thông tin chi tiết từ collection users
+    const userInfo =
+      await this.propertyStaffAssignmentRepo.getUserInfo(staffId);
+
+    return {
+      _id: staffId,
+      name: userInfo?.name || staff.name || 'Unknown',
+      email: userInfo?.email || staff.email || '',
+      phone: userInfo?.phone || staff.phone || '',
+      role: userInfo?.role || staff.role || 'staff',
+      avatar_url: userInfo?.avatar_url || staff.avatar_url || '',
+      is_online: false,
+      last_seen: new Date(),
+      is_primary: true, // Đánh dấu là staff chính
+    };
+  }
+
   async getPropertiesByStaff(
     staffId: Types.ObjectId,
   ): Promise<PropertyStaffAssignmentDocument[]> {

@@ -11,6 +11,7 @@ import { Model, Types } from 'mongoose';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto, RemoveReactionDto } from './dto/reaction.dto';
+import { PropertyStaffResponseDto } from './dto/property-message.dto';
 import { Message, MessageStatus, ReactionType } from './schemas/message.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { MessagesGateway } from './messages.gateway';
@@ -26,6 +27,7 @@ import {
   RecipientType,
   SentMethod,
 } from '../notifications/schemas/notification.schema';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 // ============= TYPE DEFINITIONS =============
 
@@ -55,6 +57,7 @@ export class MessagesService {
     @Inject(forwardRef(() => MessagesGateway))
     private readonly messagesGateway: MessagesGateway,
     private readonly notificationsService: NotificationsService,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   async create(
@@ -92,8 +95,23 @@ export class MessagesService {
       }
     }
 
+    // Nếu có property_id, kiểm tra staff assignment
+    if (createMessageDto.property_id) {
+      const isStaffAssigned =
+        await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+          new Types.ObjectId(createMessageDto.receiver_id),
+          new Types.ObjectId(createMessageDto.property_id),
+        );
+
+      if (!isStaffAssigned) {
+        throw new BadRequestException(
+          'Staff không được assign cho property này',
+        );
+      }
+    }
+
     // Convert string IDs to ObjectId before saving
-    const messageData: Record<string, unknown> = {
+    const messageData: any = {
       ...createMessageDto,
       sender_id: new Types.ObjectId(user._id),
       receiver_id: new Types.ObjectId(createMessageDto.receiver_id),
@@ -101,9 +119,16 @@ export class MessagesService {
       is_read: MessageStatus.SENT,
     };
 
+    // Add property_id if provided
+    if (createMessageDto.property_id) {
+      messageData.property_id = new Types.ObjectId(
+        createMessageDto.property_id,
+      );
+    }
+
     // Add reply_to_message_id if provided
     if (createMessageDto.reply_to_message_id) {
-      messageData['reply_to_message_id'] = new Types.ObjectId(
+      messageData.reply_to_message_id = new Types.ObjectId(
         createMessageDto.reply_to_message_id,
       );
     }
@@ -114,8 +139,9 @@ export class MessagesService {
     // Populate the saved message to get full data including reply info
     const populatedMessage = await this.messageModel
       .findById(savedMessage._id)
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
       .populate('reactions.user_id', 'username email name avatar_url')
       .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
       .populate({
@@ -144,6 +170,14 @@ export class MessagesService {
         // Emit đến người gửi (sync across devices)
         this.messagesGateway.emitNewMessage(formattedMessage, user._id);
 
+        // Nếu có property_id, emit property message event
+        if (createMessageDto.property_id) {
+          this.messagesGateway.emitPropertyMessage(
+            populatedMessage,
+            createMessageDto.property_id,
+          );
+        }
+
         // Update delivered status nếu user online
         if (this.messagesGateway.isUserOnline(createMessageDto.receiver_id)) {
           await this.update(
@@ -161,6 +195,11 @@ export class MessagesService {
             username?: string;
             avatar_url?: string;
           };
+          const receiver = populatedMessage.receiver_id as {
+            _id?: Types.ObjectId | string;
+            role?: string;
+          };
+
           const senderName =
             typeof sender?.name === 'string'
               ? sender.name
@@ -170,11 +209,35 @@ export class MessagesService {
           const senderUserId = sender?._id ? sender._id.toString() : user._id;
           const avatar_url =
             typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
+
+          // Xác định recipient_type dựa trên role của người nhận
+          let recipientType = RecipientType.GUEST;
+          if (receiver?.role === 'staff') {
+            recipientType = RecipientType.STAFF;
+          } else if (receiver?.role === 'admin') {
+            recipientType = RecipientType.ADMIN;
+          }
+
+          // Tạo message tùy theo loại tin nhắn
+          let notificationTitle = 'Bạn có tin nhắn mới';
+          let notificationMessage = `Bạn vừa nhận được tin nhắn từ ${senderName}`;
+
+          // Nếu là tin nhắn property, thêm thông tin property
+          if (createMessageDto.property_id) {
+            const property = populatedMessage.property_id as {
+              name?: string;
+              address?: string;
+            };
+            const propertyName = property?.name || 'Property';
+            notificationTitle = `Tin nhắn mới từ ${propertyName}`;
+            notificationMessage = `${senderName} vừa gửi tin nhắn về ${propertyName}`;
+          }
+
           await this.notificationsService.createAndSend({
             user_id: createMessageDto.receiver_id,
-            recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
-            title: 'Bạn có tin nhắn mới',
-            message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
+            recipient_type: recipientType,
+            title: notificationTitle,
+            message: notificationMessage,
             type: NotificationType.MESSAGE,
             sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
             sender_user_id: senderUserId,
@@ -206,12 +269,21 @@ export class MessagesService {
         // Filter messages for the specific user
         const userObjectId = new Types.ObjectId(user._id);
 
+        // Build filter
+        const filter: any = {
+          $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
+        };
+
+        // Add property_id filter if provided
+        if (queryDto.property_id) {
+          filter.property_id = new Types.ObjectId(queryDto.property_id);
+        }
+
         messages = await this.messageModel
-          .find({
-            $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
-          })
-          .populate('sender_id', 'username email name avatar_url')
-          .populate('receiver_id', 'username email name avatar_url')
+          .find(filter)
+          .populate('sender_id', 'username email name avatar_url role')
+          .populate('receiver_id', 'username email name avatar_url role')
+          .populate('property_id', 'name address')
           .populate('reactions.user_id', 'username email name avatar_url')
           .populate(
             'reply_to_message_id',
@@ -233,8 +305,9 @@ export class MessagesService {
       } else {
         messages = await this.messageModel
           .find()
-          .populate('sender_id', 'username email name avatar_url')
-          .populate('receiver_id', 'username email name avatar_url')
+          .populate('sender_id', 'username email name avatar_url role')
+          .populate('receiver_id', 'username email name avatar_url role')
+          .populate('property_id', 'name address')
           .populate('reactions.user_id', 'username email name avatar_url')
           .populate(
             'reply_to_message_id',
@@ -266,8 +339,9 @@ export class MessagesService {
 
     const message = await this.messageModel
       .findById(id)
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
       .populate('reactions.user_id', 'username email name avatar_url')
       .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
       .populate({
@@ -323,8 +397,9 @@ export class MessagesService {
             { sender_id: otherUserId, receiver_id: userId },
           ],
         })
-        .populate('sender_id', 'username email name avatar_url')
-        .populate('receiver_id', 'username email name avatar_url')
+        .populate('sender_id', 'username email name avatar_url role')
+        .populate('receiver_id', 'username email name avatar_url role')
+        .populate('property_id', 'name address')
         .populate('reactions.user_id', 'username email name avatar_url')
         .populate(
           'reply_to_message_id',
@@ -426,17 +501,95 @@ export class MessagesService {
             from: 'users',
             localField: 'userIdToLookup',
             foreignField: '_id',
-            as: 'user',
+            as: 'userInfo',
           },
         },
         {
-          $unwind: '$user',
+          $unwind: {
+            path: '$userInfo',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $addFields: {
+            'lastMessage.sender_id': {
+              $cond: [
+                { $eq: [{ $type: '$lastMessage.sender_id' }, 'objectId'] },
+                '$lastMessage.sender_id',
+                { $toObjectId: '$lastMessage.sender_id' },
+              ],
+            },
+            'lastMessage.receiver_id': {
+              $cond: [
+                { $eq: [{ $type: '$lastMessage.receiver_id' }, 'objectId'] },
+                '$lastMessage.receiver_id',
+                { $toObjectId: '$lastMessage.receiver_id' },
+              ],
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'lastMessage.sender_id',
+            foreignField: '_id',
+            as: 'senderInfo',
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'lastMessage.receiver_id',
+            foreignField: '_id',
+            as: 'receiverInfo',
+          },
+        },
+        {
+          $unwind: {
+            path: '$senderInfo',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $unwind: {
+            path: '$receiverInfo',
+            preserveNullAndEmptyArrays: true,
+          },
         },
         {
           $project: {
-            user: { username: 1, email: 1, name: 1, avatar_url: 1 },
-            lastMessage: 1,
+            _id: 1,
+            lastMessage: {
+              _id: '$lastMessage._id',
+              content: '$lastMessage.content',
+              sent_at: '$lastMessage.sent_at',
+              is_read: '$lastMessage.is_read',
+              sender_id: {
+                _id: '$senderInfo._id',
+                username: '$senderInfo.username',
+                email: '$senderInfo.email',
+                name: '$senderInfo.name',
+                avatar_url: '$senderInfo.avatar_url',
+                role: '$senderInfo.role',
+              },
+              receiver_id: {
+                _id: '$receiverInfo._id',
+                username: '$receiverInfo.username',
+                email: '$receiverInfo.email',
+                name: '$receiverInfo.name',
+                avatar_url: '$receiverInfo.avatar_url',
+                role: '$receiverInfo.role',
+              },
+            },
             unreadCount: 1,
+            userInfo: {
+              _id: '$userInfo._id',
+              username: '$userInfo.username',
+              email: '$userInfo.email',
+              name: '$userInfo.name',
+              avatar_url: '$userInfo.avatar_url',
+              role: '$userInfo.role',
+            },
           },
         },
         {
@@ -794,20 +947,26 @@ export class MessagesService {
    */
   async search(searchDto: MessageSearchDto, user: JwtPayload): Promise<any[]> {
     try {
+      const { keyword, limit = 10 } = searchDto;
       const userObjectId = new Types.ObjectId(user._id);
+
+      if (!keyword || keyword.trim().length === 0) {
+        return [];
+      }
 
       const query: Record<string, any> = {
         $or: [{ sender_id: userObjectId }, { receiver_id: userObjectId }],
       };
 
-      if (searchDto?.keyword && typeof searchDto.keyword === 'string') {
-        query.content = { $regex: searchDto.keyword, $options: 'i' };
+      if (keyword && typeof keyword === 'string') {
+        query.content = { $regex: keyword, $options: 'i' };
       }
 
       const messages = await this.messageModel
         .find(query)
-        .populate('sender_id', 'username email name avatar_url')
-        .populate('receiver_id', 'username email name avatar_url')
+        .populate('sender_id', 'username email name avatar_url role')
+        .populate('receiver_id', 'username email name avatar_url role')
+        .populate('property_id', 'name address')
         .populate('reactions.user_id', 'username email name avatar_url')
         .populate(
           'reply_to_message_id',
@@ -821,7 +980,7 @@ export class MessagesService {
           },
         })
         .sort({ sent_at: -1 })
-        .limit(searchDto?.limit || 20)
+        .limit(limit)
         .exec();
 
       // Format all messages với emoji reactions
@@ -846,10 +1005,17 @@ export class MessagesService {
   }
 
   /**
-   * Xóa reaction với messageId
+   * Xóa reaction với messageId và type
    */
-  async removeReaction(messageId: string, user: JwtPayload): Promise<unknown> {
-    const removeReactionDto: RemoveReactionDto = { message_id: messageId };
+  async removeReaction(
+    messageId: string,
+    type: ReactionType,
+    user: JwtPayload,
+  ): Promise<unknown> {
+    const removeReactionDto: RemoveReactionDto = {
+      message_id: messageId,
+      type,
+    };
     const message = await this.removeReactionInternal(removeReactionDto, user);
     return this.formatReactionResponse(message);
   }
@@ -866,111 +1032,124 @@ export class MessagesService {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
-    const message = await this.messageModel.findById(message_id);
+    const message = await this.messageModel
+      .findById(message_id)
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
+      .populate('reactions.user_id', 'username email name avatar_url')
+      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
+      .populate({
+        path: 'reply_to_message_id',
+        populate: {
+          path: 'sender_id',
+          select: 'username email name avatar_url',
+        },
+      })
+      .exec();
+
     if (!message) {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ sender hoặc receiver mới có thể react
+    // Authorization: chỉ sender hoặc receiver mới reaction được
     const senderId = message.sender_id.toString();
     const receiverId = message.receiver_id.toString();
 
-    if (user._id !== senderId && user._id !== receiverId) {
-      throw new ForbiddenException('You can only react to your own messages');
+    if (
+      user.role !== 'admin' &&
+      user._id !== senderId &&
+      user._id !== receiverId
+    ) {
+      throw new ForbiddenException('Bạn chỉ có thể reaction tin nhắn của mình');
     }
 
-    // Remove existing reaction from this user (if any)
-    await this.messageModel.updateOne(
-      { _id: message_id },
-      { $pull: { reactions: { user_id: new Types.ObjectId(user._id) } } },
+    // Check if user already reacted with this type
+    const existingReaction = message.reactions.find(
+      (reaction) =>
+        reaction.user_id.toString() === user._id && reaction.type === type,
     );
 
+    if (existingReaction) {
+      throw new BadRequestException(
+        `Bạn đã reaction với ${type} cho tin nhắn này rồi`,
+      );
+    }
+
     // Add new reaction
-    const updatedMessage = await this.messageModel
-      .findByIdAndUpdate(
-        message_id,
-        {
-          $push: {
-            reactions: {
-              user_id: new Types.ObjectId(user._id),
-              type,
-              created_at: new Date(),
-            },
-          },
-        },
-        { new: true },
-      )
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
-      .populate('reactions.user_id', 'username email name avatar_url')
-      .exec();
+    message.reactions.push({
+      user_id: new Types.ObjectId(user._id),
+      type,
+      created_at: new Date(),
+    });
 
-    if (!updatedMessage) {
-      throw new NotFoundException('Failed to update message');
-    }
+    const updatedMessage = await message.save();
 
-    // Emit real-time notification
-    try {
-      // Emit to both sender and receiver (sync all devices)
-      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
-      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
-    } catch (error) {
-      console.error('Failed to emit reaction update:', error);
-    }
-
-    return updatedMessage;
+    // Format reactions với emoji
+    return this.formatReactionResponse(updatedMessage) as Message;
   }
 
   private async removeReactionInternal(
     removeReactionDto: RemoveReactionDto,
     user: JwtPayload,
   ): Promise<Message> {
-    const { message_id } = removeReactionDto;
+    const { message_id, type } = removeReactionDto;
 
     if (!isValidObjectId(message_id)) {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
-    const message = await this.messageModel.findById(message_id);
+    const message = await this.messageModel
+      .findById(message_id)
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
+      .populate('reactions.user_id', 'username email name avatar_url')
+      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
+      .populate({
+        path: 'reply_to_message_id',
+        populate: {
+          path: 'sender_id',
+          select: 'username email name avatar_url',
+        },
+      })
+      .exec();
+
     if (!message) {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ sender hoặc receiver mới có thể react
+    // Authorization: chỉ sender hoặc receiver mới remove reaction được
     const senderId = message.sender_id.toString();
     const receiverId = message.receiver_id.toString();
 
-    if (user._id !== senderId && user._id !== receiverId) {
+    if (
+      user.role !== 'admin' &&
+      user._id !== senderId &&
+      user._id !== receiverId
+    ) {
       throw new ForbiddenException(
-        'You can only remove reactions from your own messages',
+        'Bạn chỉ có thể remove reaction tin nhắn của mình',
       );
     }
 
-    // Remove reaction
-    const updatedMessage = await this.messageModel
-      .findByIdAndUpdate(
-        message_id,
-        { $pull: { reactions: { user_id: new Types.ObjectId(user._id) } } },
-        { new: true },
-      )
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
-      .populate('reactions.user_id', 'username email name avatar_url')
-      .exec();
+    // Find and remove the reaction
+    const reactionIndex = message.reactions.findIndex(
+      (reaction) =>
+        reaction.user_id.toString() === user._id && reaction.type === type,
+    );
 
-    if (!updatedMessage) {
-      throw new NotFoundException('Failed to update message');
+    if (reactionIndex === -1) {
+      throw new BadRequestException(
+        `Bạn chưa reaction với ${type} cho tin nhắn này`,
+      );
     }
 
-    // Emit real-time notification
-    try {
-      const otherUserId = user._id === senderId ? receiverId : senderId;
-      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
-    } catch (error) {
-      console.error('Failed to emit reaction update:', error);
-    }
+    message.reactions.splice(reactionIndex, 1);
+    const updatedMessage = await message.save();
 
-    return updatedMessage;
+    // Format reactions với emoji
+    return this.formatReactionResponse(updatedMessage) as Message;
   }
 
   /**
@@ -1067,111 +1246,77 @@ export class MessagesService {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
-    const message = await this.messageModel.findById(messageId);
+    const message = await this.messageModel
+      .findById(messageId)
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
+      .populate('reactions.user_id', 'username email name avatar_url')
+      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
+      .populate({
+        path: 'reply_to_message_id',
+        populate: {
+          path: 'sender_id',
+          select: 'username email name avatar_url',
+        },
+      })
+      .exec();
+
     if (!message) {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization check - user phải là sender hoặc receiver của cuộc trò chuyện
+    // Authorization: chỉ sender hoặc receiver mới reaction được
     const senderId = message.sender_id.toString();
     const receiverId = message.receiver_id.toString();
 
-    if (user._id !== senderId && user._id !== receiverId) {
-      throw new ForbiddenException(
-        'Bạn chỉ có thể react vào tin nhắn trong cuộc trò chuyện của mình',
-      );
+    if (
+      user.role !== 'admin' &&
+      user._id !== senderId &&
+      user._id !== receiverId
+    ) {
+      throw new ForbiddenException('Bạn chỉ có thể reaction tin nhắn của mình');
     }
 
-    // Check if user already has a reaction
-    const existingReaction = message.reactions.find(
-      (reaction) => reaction.user_id.toString() === user._id,
+    // Check if user already reacted with this type
+    const existingReactionIndex = message.reactions.findIndex(
+      (reaction) =>
+        reaction.user_id.toString() === user._id &&
+        reaction.type === reactionType,
     );
 
-    let action: 'added' | 'removed';
-    let updatedMessage: Message;
+    if (existingReactionIndex !== -1) {
+      // Remove existing reaction
+      message.reactions.splice(existingReactionIndex, 1);
+      const updatedMessage = await message.save();
 
-    if (existingReaction) {
-      if (existingReaction.type === reactionType) {
-        // Same reaction type - remove it
-        const result = await this.messageModel
-          .findByIdAndUpdate(
-            messageId,
-            { $pull: { reactions: { user_id: new Types.ObjectId(user._id) } } },
-            { new: true },
-          )
-          .populate('sender_id', 'username email name avatar_url')
-          .populate('receiver_id', 'username email name avatar_url')
-          .populate('reactions.user_id', 'username email name avatar_url')
-          .exec();
+      // Emit reaction update to other participants
+      const otherUserId = user._id === senderId ? receiverId : senderId;
+      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
 
-        if (!result) {
-          throw new NotFoundException('Failed to update message');
-        }
-        updatedMessage = result;
-        action = 'removed';
-      } else {
-        // Different reaction type - update it
-        await this.messageModel.updateOne(
-          { _id: messageId, 'reactions.user_id': new Types.ObjectId(user._id) },
-          { $set: { 'reactions.$.type': reactionType } },
-        );
-        const result = await this.messageModel
-          .findById(messageId)
-          .populate('sender_id', 'username email name avatar_url')
-          .populate('receiver_id', 'username email name avatar_url')
-          .populate('reactions.user_id', 'username email name avatar_url')
-          .exec();
-
-        if (!result) {
-          throw new NotFoundException('Failed to find updated message');
-        }
-        updatedMessage = result;
-        action = 'added';
-      }
+      return {
+        action: 'removed',
+        message: this.formatReactionResponse(updatedMessage),
+      };
     } else {
-      // No existing reaction - add new one
-      const result = await this.messageModel
-        .findByIdAndUpdate(
-          messageId,
-          {
-            $push: {
-              reactions: {
-                user_id: new Types.ObjectId(user._id),
-                type: reactionType,
-                created_at: new Date(),
-              },
-            },
-          },
-          { new: true },
-        )
-        .populate('sender_id', 'username email name avatar_url')
-        .populate('receiver_id', 'username email name avatar_url')
-        .populate('reactions.user_id', 'username email name avatar_url')
-        .exec();
+      // Add new reaction
+      message.reactions.push({
+        user_id: new Types.ObjectId(user._id),
+        type: reactionType,
+        created_at: new Date(),
+      });
 
-      if (!result) {
-        throw new NotFoundException('Failed to update message');
-      }
-      updatedMessage = result;
-      action = 'added';
+      const updatedMessage = await message.save();
+
+      // Emit reaction update to other participants
+      const otherUserId = user._id === senderId ? receiverId : senderId;
+      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
+
+      return {
+        action: 'added',
+        message: this.formatReactionResponse(updatedMessage),
+      };
     }
-
-    // Emit real-time notification
-    try {
-      // Emit to both sender and receiver (sync all devices)
-      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
-      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
-    } catch (error) {
-      console.error('Failed to emit reaction update:', error);
-    }
-
-    // Format response với emoji mapping
-    const formattedMessage = this.formatReactionResponse(updatedMessage);
-
-    return {
-      action,
-      message: formattedMessage,
-    };
   }
 
   /**
@@ -1182,54 +1327,114 @@ export class MessagesService {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
 
-    const message = await this.messageModel.findById(messageId);
+    const message = await this.messageModel
+      .findById(messageId)
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('property_id', 'name address')
+      .populate('reactions.user_id', 'username email name avatar_url')
+      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
+      .populate({
+        path: 'reply_to_message_id',
+        populate: {
+          path: 'sender_id',
+          select: 'username email name avatar_url',
+        },
+      })
+      .exec();
+
     if (!message) {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ người gửi mới có thể thu hồi tin nhắn của mình
-    if (user.role !== 'admin' && user._id !== message.sender_id.toString()) {
-      throw new ForbiddenException('Bạn chỉ có thể thu hồi tin nhắn của mình');
+    // Authorization: chỉ sender mới recall được tin nhắn
+    const senderId = message.sender_id.toString();
+
+    if (user.role !== 'admin' && user._id !== senderId) {
+      throw new ForbiddenException('Bạn chỉ có thể recall tin nhắn của mình');
     }
 
-    // Kiểm tra tin nhắn đã được thu hồi chưa
-    if (message.is_recalled) {
-      throw new BadRequestException('Tin nhắn đã được thu hồi trước đó');
+    // Check if message is within recall time limit (e.g., 5 minutes)
+    const messageTime = new Date(message.sent_at);
+    const currentTime = new Date();
+    const timeDifference = currentTime.getTime() - messageTime.getTime();
+    const recallTimeLimit = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+    if (timeDifference > recallTimeLimit) {
+      throw new BadRequestException(
+        'Chỉ có thể recall tin nhắn trong vòng 5 phút sau khi gửi',
+      );
     }
 
-    // Cập nhật trạng thái thu hồi
-    const updatedMessage = await this.messageModel
-      .findByIdAndUpdate(
-        messageId,
-        {
-          is_recalled: true,
-          recalled_at: new Date(),
-          content: 'Bạn đã thu hồi một tin nhắn', // Thay đổi nội dung để hiển thị
-        },
-        { new: true },
-      )
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
-      .exec();
+    // Mark message as recalled
+    message.is_recalled = true;
+    message.recalled_at = new Date();
+    message.content = '[Tin nhắn đã được thu hồi]';
 
-    if (!updatedMessage) {
-      throw new NotFoundException('Failed to recall message');
-    }
+    const updatedMessage = await message.save();
 
-    // Emit real-time notification để cả 2 bên đều nhận được thông báo
-    try {
-      const senderId = message.sender_id.toString();
-      const receiverId = message.receiver_id.toString();
+    // Emit recall notification to other participants
+    const receiverId = message.receiver_id.toString();
+    this.messagesGateway.emitMessageRecalled(updatedMessage, receiverId);
 
-      // Emit đến người nhận
-      this.messagesGateway.emitMessageRecalled(updatedMessage, receiverId);
+    // Format reactions với emoji
+    return this.formatReactionResponse(updatedMessage) as Message;
+  }
 
-      // Emit đến người gửi (để sync trên các device khác)
-      this.messagesGateway.emitMessageRecalled(updatedMessage, senderId);
-    } catch (error) {
-      console.error('Failed to emit message recall notification:', error);
-    }
+  // =========================== PROPERTY MESSAGES METHODS ===========================
 
-    return updatedMessage;
+  /**
+   * Lấy danh sách staff của property
+   */
+  async getPropertyStaff(
+    propertyId: string,
+  ): Promise<PropertyStaffResponseDto[]> {
+    const staffAssignments =
+      await this.propertyStaffAssignmentService.getStaffByProperty(
+        new Types.ObjectId(propertyId),
+      );
+
+    return staffAssignments.map((assignment) => ({
+      _id: assignment.staffId.toString(),
+      name: assignment.staffId['name'] || 'Unknown',
+      email: assignment.staffId['email'] || '',
+      phone: assignment.staffId['phone'] || '',
+      avatar_url: assignment.staffId['avatar_url'] || '',
+      role: assignment.staffId['role'] || 'staff',
+      is_online: false, // Có thể tích hợp với online status sau
+      last_seen: new Date(),
+    }));
+  }
+
+  /**
+   * Lấy danh sách properties mà staff được assign
+   */
+  async getStaffProperties(staffId: string): Promise<any[]> {
+    const propertyAssignments =
+      await this.propertyStaffAssignmentService.getPropertiesByStaff(
+        new Types.ObjectId(staffId),
+      );
+
+    return propertyAssignments.map((assignment) => ({
+      _id: assignment.propertyId._id.toString(),
+      name: (assignment.propertyId as any).name || 'Unknown',
+      type: (assignment.propertyId as any).type || '',
+      address: (assignment.propertyId as any).address || '',
+      assignedAt: assignment.assignedAt,
+      assignedBy: assignment.assignedBy,
+    }));
+  }
+
+  /**
+   * Kiểm tra staff có được assign cho property không
+   */
+  async isStaffAssignedToProperty(
+    staffId: string,
+    propertyId: string,
+  ): Promise<boolean> {
+    return this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+      new Types.ObjectId(staffId),
+      new Types.ObjectId(propertyId),
+    );
   }
 }

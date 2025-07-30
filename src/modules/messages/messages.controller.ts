@@ -19,6 +19,7 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/reaction.dto';
 import { QueryMessageDto } from './dto/query-message.dto';
 import { SearchMessageDto } from './dto/search-message.dto';
+
 import {
   UserProfileResponseDto,
   UserResponseDto,
@@ -258,13 +259,40 @@ export class MessagesController {
     return this.messagesService.addReaction(id, addReactionDto, req.user);
   }
 
-  @Delete(':id/reactions')
+  @Delete(':id/reactions/:type')
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Xóa reaction khỏi tin nhắn' })
+  @ApiOperation({ summary: 'Xóa reaction cho tin nhắn' })
+  @ApiParam({
+    name: 'id',
+    description: 'ID của tin nhắn',
+    type: 'string',
+  })
+  @ApiParam({
+    name: 'type',
+    description: 'Loại reaction',
+    enum: ReactionType,
+    example: 'like',
+  })
   @ApiResponse({ status: 200, description: 'Reaction được xóa thành công' })
   @ResponseMessage('Xóa reaction thành công')
-  removeReaction(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.removeReaction(id, req.user);
+  removeReaction(
+    @Param('id') id: string,
+    @Param('type') type: string,
+    @Request() req: RequestWithUser,
+  ) {
+    // Validate reaction type
+    const validTypes = Object.values(ReactionType);
+    if (!validTypes.includes(type as ReactionType)) {
+      throw new BadRequestException(
+        `Loại reaction không hợp lệ. Chỉ hỗ trợ: ${validTypes.join(', ')}`,
+      );
+    }
+
+    return this.messagesService.removeReaction(
+      id,
+      type as ReactionType,
+      req.user,
+    );
   }
 
   @Post(':id/reactions/toggle/:type')
@@ -353,6 +381,51 @@ export class MessagesController {
       req.user._id,
       otherUserId,
     );
+  }
+
+  // =========================== PROPERTY MESSAGES ENDPOINTS ===========================
+
+  @Get('property/:propertyId/staff')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({
+    summary: 'Lấy danh sách staff quản lý property',
+    description: 'Lấy danh sách staff được assign quản lý property cụ thể',
+  })
+  @ApiResponse({ status: 200, description: 'Danh sách staff quản lý property' })
+  @ResponseMessage('Lấy danh sách staff quản lý property thành công')
+  getPropertyStaff(@Param('propertyId') propertyId: string) {
+    return this.messagesService.getPropertyStaff(propertyId);
+  }
+
+  @Get('staff/:staffId/properties')
+  @Roles('staff', 'admin')
+  @ApiOperation({
+    summary: 'Lấy danh sách properties mà staff được assign',
+    description: 'Chỉ staff và admin mới có thể xem',
+  })
+  @ApiResponse({ status: 200, description: 'Danh sách properties của staff' })
+  @ResponseMessage('Lấy danh sách properties của staff thành công')
+  getStaffProperties(@Param('staffId') staffId: string) {
+    return this.messagesService.getStaffProperties(staffId);
+  }
+
+  @Get('property/:propertyId/staff/:staffId/check')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({
+    summary: 'Kiểm tra staff có được assign cho property không',
+    description: 'Kiểm tra quyền truy cập của staff với property',
+  })
+  @ApiResponse({ status: 200, description: 'Kết quả kiểm tra assignment' })
+  @ResponseMessage('Kiểm tra assignment thành công')
+  async checkStaffAssignment(
+    @Param('propertyId') propertyId: string,
+    @Param('staffId') staffId: string,
+  ) {
+    const isAssigned = await this.messagesService.isStaffAssignedToProperty(
+      staffId,
+      propertyId,
+    );
+    return { isAssigned };
   }
 
   // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================

@@ -39,9 +39,9 @@ export class ChatbotService {
       context = '';
     }
 
-    // Hướng dẫn rõ ràng cho AI về ý nghĩa từng trường
+    // Hướng dẫn cứng rắn cho AI: chỉ trả lời dựa trên dữ liệu JSON, không bịa thêm
     const guide =
-      'Dưới đây là danh sách phòng (listings), mỗi phòng có các trường: "title" (tên phòng), "price_per_night" (giá tiền mỗi đêm), "description" (mô tả). Hãy phân tích và trả lời chính xác dựa trên dữ liệu này. Nếu người dùng hỏi về số lượng phòng, hãy đếm số lượng phần tử trong "listings" và trả lời con số cụ thể. Nếu hỏi về phòng rẻ nhất, hãy trả về title và price_per_night của phòng đó.';
+      'Chỉ trả lời dựa trên dữ liệu JSON bên dưới, tuyệt đối không bịa thêm thông tin ngoài dữ liệu này. Nếu không tìm thấy thông tin, hãy trả lời "Không có dữ liệu". Dưới đây là danh sách phòng (listings), mỗi phòng có các trường: "title" (tên phòng), "price_per_night" (giá tiền mỗi đêm), "description" (mô tả).';
     const prompt = PromptBuilder.buildPrompt(
       dto.content,
       context ? guide + '\nDữ liệu: ' + context : undefined,

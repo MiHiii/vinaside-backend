@@ -64,6 +64,16 @@ export class PropertyStaffAssignmentController {
     return this.propertyStaffAssignmentService.getStaffByProperty(propertyId);
   }
 
+  @Get('public/property/:propertyId/staff-info')
+  @UseGuards(JwtAuthGuard)
+  async getPublicStaffInfoByProperty(
+    @Param('propertyId', ParseMongoIdPipe) propertyId: Types.ObjectId,
+  ) {
+    return this.propertyStaffAssignmentService.getStaffInfoByProperty(
+      propertyId,
+    );
+  }
+
   @Get('staff/:staffId/properties')
   @RequirePermission('property_staff.view')
   async getPropertiesByStaff(
