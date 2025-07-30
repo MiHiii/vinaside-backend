@@ -740,7 +740,7 @@ export class BookingService {
   async getBookedDates(listingId: string) {
     const { data } = await this.bookingRepo.findAll({
       listingId: new Types.ObjectId(listingId),
-      status: BookingStatus.CONFIRMED,
+      payment_status: { $in: ['paid', 'partially_paid'] },
       isDeleted: false,
     });
 

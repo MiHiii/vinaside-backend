@@ -115,12 +115,6 @@ export class ListingService {
     listings: any[];
     meta: { total: number; page: number; limit: number; totalPages: number };
   }> {
-    console.log('🔥🔥🔥 NEW CODE IS RUNNING! 🔥🔥🔥');
-    this.logger.log(
-      `🚀 NEW LOGIC: findAll called with place_id: ${queryDto.place_id}`,
-    );
-    this.logger.log(`📋 Query DTO: ${JSON.stringify(queryDto)}`);
-
     const {
       page = 1,
       limit = 14,
@@ -128,11 +122,6 @@ export class ListingService {
       sortOrder = 'desc',
       ...filters
     } = queryDto;
-
-    this.logger.log(
-      `📊 Parsed params: page=${page}, limit=${limit}, sortBy=${sortBy}, sortOrder=${sortOrder}`,
-    );
-    this.logger.log(`🔍 Filters: ${JSON.stringify(filters)}`);
 
     const skip = (page - 1) * limit;
 
@@ -149,16 +138,11 @@ export class ListingService {
       (filters.lat && filters.lng)
     );
 
-    this.logger.log(
-      `🔍 hasLocationFilter: ${hasLocationFilter}, place_id: ${filters.place_id}`,
-    );
-
     if (hasLocationFilter) {
       propertyIds = await this.findPropertiesByLocation(filters);
 
       // If no properties match location criteria, return empty result
       if (propertyIds && propertyIds.length === 0) {
-        this.logger.log(`❌ No properties found for location filters`);
         return {
           listings: [],
           meta: {
@@ -967,61 +951,39 @@ export class ListingService {
   private async findPropertiesByLocation(
     filters: any,
   ): Promise<Types.ObjectId[]> {
-    this.logger.log(
-      `🔍 Starting location search with filters: ${JSON.stringify(filters)}`,
-    );
-
     // Priority 1: Google Places ID (most precise)
     if (filters.place_id) {
-      this.logger.log(`📍 Searching by place_id: ${filters.place_id}`);
-
       // First try exact match
       const exactMatch = await this.findPropertiesByExactPlaceId(
         filters.place_id,
       );
       if (exactMatch.length > 0) {
-        this.logger.log(`✅ Found ${exactMatch.length} exact place_id matches`);
         return exactMatch;
       }
 
       // If no exact match and fuzzy search is enabled (default: true), try fuzzy search
       const enableFuzzy = filters.fuzzy_place_search !== false; // Default to true
-      this.logger.log(`🔍 Fuzzy search enabled: ${enableFuzzy}`);
 
       if (enableFuzzy) {
         const fuzzyMatch = await this.findPropertiesByFuzzyPlaceId(
           filters.place_id,
         );
         if (fuzzyMatch.length > 0) {
-          this.logger.log(
-            `✅ Found ${fuzzyMatch.length} fuzzy place_id matches within 2km`,
-          );
           return fuzzyMatch;
         }
 
         // If no fuzzy match found, try searching by province/city from place_id
-        this.logger.log(`🔍 No fuzzy matches found, trying province search...`);
         const provinceMatch = await this.findPropertiesByPlaceIdProvince(
           filters.place_id,
         );
         if (provinceMatch.length > 0) {
-          this.logger.log(
-            `✅ Found ${provinceMatch.length} properties in same province/city`,
-          );
           return provinceMatch;
         }
-
-        this.logger.log(
-          `❌ No matches found for place_id: ${filters.place_id}`,
-        );
       }
     }
 
     // Priority 2: City + District + Ward combination
     if (filters.city || filters.district || filters.ward) {
-      this.logger.log(
-        `🏙️ Searching by city/district/ward: ${filters.city}/${filters.district}/${filters.ward}`,
-      );
       const locationQuery: FilterQuery<Property> = { isDeleted: false };
 
       if (filters.city) {
@@ -1041,9 +1003,6 @@ export class ListingService {
           .exec();
 
         if (properties.length > 0) {
-          this.logger.log(
-            `✅ Found ${properties.length} properties by city/district/ward`,
-          );
           return properties.map((property) => property._id);
         }
       } catch (error) {
@@ -1054,9 +1013,6 @@ export class ListingService {
     }
 
     // Priority 3: Address + Location keyword + Geospatial search
-    this.logger.log(
-      `🔍 No place_id or city filters, using general location search`,
-    );
     const propertyQuery: FilterQuery<Property> = { isDeleted: false };
 
     if (filters.address) {
@@ -1100,9 +1056,6 @@ export class ListingService {
         .lean()
         .exec();
 
-      this.logger.log(
-        `✅ Found ${properties.length} properties by general location search`,
-      );
       return properties.map((property) => property._id);
     } catch (error) {
       this.logger.error(
@@ -1146,8 +1099,6 @@ export class ListingService {
     placeId: string,
   ): Promise<Types.ObjectId[]> {
     try {
-      this.logger.log(`🔍 Starting fuzzy search for place_id: ${placeId}`);
-
       // Get place details from Google Places
       const placeDetails =
         await this.googlePlacesService.getPlaceDetails(placeId);
@@ -1162,13 +1113,6 @@ export class ListingService {
       // Convert radius from km to degrees (approximate)
       const latRange = searchRadius / 111;
       const lngRange = searchRadius / (111 * Math.cos((lat * Math.PI) / 180));
-
-      this.logger.log(
-        `📍 Fuzzy search coordinates: ${lat}, ${lng}, radius: ${searchRadius}km`,
-      );
-      this.logger.log(
-        `📍 Search range: lat [${lat - latRange}, ${lat + latRange}], lng [${lng - lngRange}, ${lng + lngRange}]`,
-      );
 
       const properties = await this.propertyModel
         .find(
@@ -1188,17 +1132,6 @@ export class ListingService {
         .lean()
         .exec();
 
-      this.logger.log(
-        `✅ Fuzzy place_id search found ${properties.length} properties within ${searchRadius}km of ${placeId}`,
-      );
-
-      // Log details of found properties for debugging
-      properties.forEach((property, index) => {
-        this.logger.log(
-          `📍 Property ${index + 1}: ${property._id.toString()} - ${property.location?.city || 'No city'} - ${property.location?.district || 'No district'}`,
-        );
-      });
-
       return properties.map((property) => property._id);
     } catch (error) {
       this.logger.error(
@@ -1215,8 +1148,6 @@ export class ListingService {
     placeId: string,
   ): Promise<Types.ObjectId[]> {
     try {
-      this.logger.log(`🏙️ Starting province search for place_id: ${placeId}`);
-
       // Get place details from Google Places
       const placeDetails =
         await this.googlePlacesService.getPlaceDetails(placeId);
@@ -1228,19 +1159,9 @@ export class ListingService {
       const placeAddress = placeDetails.description;
       const province = this.extractProvinceFromAddress(placeAddress);
 
-      this.logger.log(`📍 Place address: ${placeAddress}`);
-      this.logger.log(`📍 Extracted province: ${province}`);
-
       if (!province) {
-        this.logger.warn(
-          `❌ Could not extract province from address: ${placeAddress}`,
-        );
         return [];
       }
-
-      this.logger.log(
-        `🔍 Searching properties in province: ${province} from place_id: ${placeId}`,
-      );
 
       // Search by province/city
       const properties = await this.propertyModel
@@ -1257,17 +1178,6 @@ export class ListingService {
         )
         .lean()
         .exec();
-
-      this.logger.log(
-        `✅ Found ${properties.length} properties in province: ${province}`,
-      );
-
-      // Log details of found properties for debugging
-      properties.forEach((property, index) => {
-        this.logger.log(
-          `🏙️ Property ${index + 1}: ${property._id.toString()} - ${property.location?.city || 'No city'} - ${property.location?.district || 'No district'}`,
-        );
-      });
 
       return properties.map((property) => property._id);
     } catch (error) {
@@ -1351,9 +1261,6 @@ export class ListingService {
     for (const pattern of provincePatterns) {
       // Check both Vietnamese and English versions
       if (address.includes(pattern.vi) || address.includes(pattern.en)) {
-        this.logger.log(
-          `✅ Found province: ${pattern.vi} (${pattern.en}) in address: ${address}`,
-        );
         return pattern.vi; // Return Vietnamese version for consistency
       }
     }
