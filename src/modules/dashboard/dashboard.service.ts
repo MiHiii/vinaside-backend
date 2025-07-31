@@ -119,6 +119,11 @@ interface MessageStats {
   totalReactions: number;
 }
 
+interface WishlistStats {
+  totalWishlists: number;
+  totalWishlistItems: number;
+}
+
 interface CustomerData {
   totalCustomers: number;
   newCustomers: number;
@@ -496,7 +501,7 @@ export class DashboardService {
           totalWishlistItems: { $sum: 1 },
         },
       },
-    ])) as any[];
+    ])) as WishlistStats[];
 
     const wishlistData = wishlistStats[0] || {
       totalWishlists: 0,

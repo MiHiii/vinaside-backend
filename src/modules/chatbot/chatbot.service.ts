@@ -70,10 +70,7 @@ export class ChatbotService {
     return 'general_inquiry';
   }
 
-  async generateResponse(
-    message: string,
-    context: string,
-  ): Promise<string> {
+  async generateResponse(message: string, context: string): Promise<string> {
     try {
       const guide =
         'Chỉ trả lời dựa trên danh sách phòng dưới đây. Không bịa thêm thông tin. Nếu không có thông tin phù hợp, trả lời: "Không có dữ liệu".';
