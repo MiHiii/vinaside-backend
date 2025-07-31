@@ -10,7 +10,7 @@ export enum BookingStatus {
 }
 
 export enum PaymentStatus {
-  UNPAID = 'unpaid',
+  PENDING = 'pending',
   PARTIALLY_PAID = 'partially_paid',
   PAID = 'paid',
   REFUNDING = 'refunding',
@@ -91,7 +91,7 @@ export class Booking extends Document {
   @Prop({
     type: String,
     enum: PaymentStatus,
-    default: PaymentStatus.UNPAID,
+    default: PaymentStatus.PENDING,
   })
   payment_status: PaymentStatus;
 
