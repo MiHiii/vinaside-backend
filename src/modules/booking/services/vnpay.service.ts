@@ -108,9 +108,9 @@ export class VNPayService extends PaymentServiceInterface {
       : 0;
     const amountAfterDiscount = subtotalAmount - voucherDiscount;
 
-    // Tính phí và thuế dựa trên subtotalAmount (trước khi trừ voucher)
-    const serviceFee = Math.round(subtotalAmount * 0.1);
-    const tax = Math.round(subtotalAmount * 0.08);
+    // Tính phí và thuế dựa trên amountAfterDiscount (sau khi trừ voucher) - nhất quán với booking.service.ts
+    const serviceFee = Math.round(amountAfterDiscount * 0.1);
+    const tax = Math.round(amountAfterDiscount * 0.08);
     const baseTotal = amountAfterDiscount + serviceFee + tax;
 
     if (paymentType === 'deposit') {
