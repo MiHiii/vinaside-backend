@@ -188,12 +188,8 @@ export class ChatbotController {
   @ApiOperation({ summary: 'Gửi feedback cho chatbot' })
   @ApiResponse({ status: 201, description: 'Feedback được gửi thành công' })
   @ResponseMessage('Gửi feedback thành công')
-  sendFeedback(
-    @Body()
-    feedbackDto: { message_id: string; rating: number; comment?: string },
-    @Request() req: RequestWithUser,
-  ) {
-    return this.chatbotService.sendFeedback(feedbackDto, req.user);
+  sendFeedback() {
+    return this.chatbotService.sendFeedback();
   }
 
   @Get(':id')

@@ -252,7 +252,6 @@ export class ChatbotGateway {
       const response = await this.chatbotService.generateResponse(
         data.message,
         listingsText,
-        intent,
       );
 
       // Lưu phản hồi vào database

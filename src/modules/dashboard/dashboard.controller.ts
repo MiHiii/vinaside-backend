@@ -29,7 +29,6 @@ export class DashboardController {
   })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
-  @ApiQuery({ name: 'groupBy', required: false, type: String })
   @ApiQuery({ name: 'propertyId', required: false, type: String })
   async getDashboardStatistics(
     @Query() queryDto: QueryDashboardDto,
@@ -44,7 +43,6 @@ export class DashboardController {
       queryDto.startDate,
       queryDto.endDate,
       queryDto.propertyId,
-      queryDto.groupBy,
     );
   }
 

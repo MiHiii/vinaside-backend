@@ -73,7 +73,6 @@ export class ChatbotService {
   async generateResponse(
     message: string,
     context: string,
-    _intent: string,
   ): Promise<string> {
     try {
       const guide =
@@ -273,10 +272,7 @@ export class ChatbotService {
     };
   }
 
-  sendFeedback(
-    _feedbackDto: { message_id: string; rating: number; comment?: string },
-    _user: JwtPayload,
-  ) {
+  sendFeedback() {
     // Implementation for feedback
     return { success: true, message: 'Feedback sent successfully' };
   }

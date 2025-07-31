@@ -64,6 +64,10 @@ export interface DashboardOverviewStatistics {
   totalMessages: number;
   totalConversations: number;
   totalReactions: number;
+
+  // Wishlist statistics
+  totalWishlists: number;
+  totalWishlistItems: number;
 }
 
 // ==================== FINANCIAL STATISTICS ====================
@@ -363,6 +367,13 @@ export class DashboardOverviewResponseDto
 
   @ApiProperty({ description: 'Tổng số reactions' })
   totalReactions: number;
+
+  // Wishlist statistics
+  @ApiProperty({ description: 'Tổng số wishlists' })
+  totalWishlists: number;
+
+  @ApiProperty({ description: 'Tổng số mục trong wishlists' })
+  totalWishlistItems: number;
 }
 
 export class DashboardStatisticsResponseDto implements DashboardStatistics {

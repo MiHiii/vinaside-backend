@@ -13,6 +13,7 @@ import { Review, ReviewSchema } from '../reviews/schemas/review.schema';
 import { Voucher, VoucherSchema } from '../vouchers/schemas/voucher.schema';
 import { Service, ServiceSchema } from '../services/schemas/service.schema';
 import { Message, MessageSchema } from '../messages/schemas/message.schema';
+import { Wishlist, WishlistSchema } from '../wishlist/schemas/wishlist.schema';
 import {
   VoucherUsage,
   VoucherUsageSchema,
@@ -30,6 +31,7 @@ import {
       { name: VoucherUsage.name, schema: VoucherUsageSchema },
       { name: Service.name, schema: ServiceSchema },
       { name: Message.name, schema: MessageSchema },
+      { name: Wishlist.name, schema: WishlistSchema },
     ]),
   ],
   controllers: [DashboardController],
