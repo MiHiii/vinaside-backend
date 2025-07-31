@@ -1,98 +1,88 @@
-import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
-import { DashboardService } from './dashboard.service';
-import {
-  DashboardStatisticsQueryDto,
-  DashboardStatisticsResponseDto,
-  DashboardOverviewResponseDto,
-} from './dto/dashboard-statistics';
+  Controller,
+  Get,
+  Query,
+  UseGuards,
+  Request,
+  BadRequestException,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RequirePermission } from '../../decorators/require-permission.decorator';
-import { Roles } from '../../decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { User } from '../../decorators/user.decorator';
+import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { DashboardService } from './dashboard.service';
+import { QueryDashboardDto } from './dto/query-dashboard.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 @ApiTags('Dashboard')
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@ApiBearerAuth()
+@RequirePermission('dashboard.view')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('statistics')
-  @Roles('admin', 'staff')
-  @RequirePermission('dashboard.view')
-  @ApiOperation({ summary: 'Lấy thống kê tổng quan dashboard' })
+  @ApiOperation({ summary: 'Get comprehensive dashboard statistics' })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê dashboard thành công',
-    type: DashboardStatisticsResponseDto,
+    description: 'Dashboard statistics retrieved successfully',
   })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
+  @ApiQuery({ name: 'groupBy', required: false, type: String })
   @ApiQuery({ name: 'propertyId', required: false, type: String })
-  @ApiQuery({
-    name: 'groupBy',
-    required: false,
-    enum: ['auto', 'day', 'week', 'month', 'year'],
-  })
   async getDashboardStatistics(
-    @Query() query: DashboardStatisticsQueryDto,
-    @User() user: JwtPayload,
+    @Query() queryDto: QueryDashboardDto,
+    @Request() req: { user: JwtPayload },
   ) {
-    const { startDate, endDate, propertyId, groupBy } = query;
-
-    // Nếu user là staff, chỉ cho phép xem thống kê của property được assign
-    if (user.role === 'staff' && !propertyId) {
-      throw new Error('Staff phải chỉ định propertyId để xem thống kê');
+    // Enforce propertyId for staff users
+    if (req.user.role === 'staff' && !queryDto.propertyId) {
+      throw new BadRequestException('Property ID is required for staff users');
     }
 
     return this.dashboardService.getDashboardStatistics(
-      startDate,
-      endDate,
-      propertyId,
-      groupBy,
+      queryDto.startDate,
+      queryDto.endDate,
+      queryDto.propertyId,
+      queryDto.groupBy,
     );
   }
 
   @Get('overview')
-  @Roles('admin', 'staff')
-  @RequirePermission('dashboard.view')
-  @ApiOperation({ summary: 'Lấy thống kê tổng quan nhanh' })
+  @ApiOperation({ summary: 'Get quick dashboard overview' })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê tổng quan thành công',
-    type: DashboardOverviewResponseDto,
+    description: 'Dashboard overview retrieved successfully',
   })
   @ApiQuery({ name: 'propertyId', required: false, type: String })
   async getDashboardOverview(
-    @Query('propertyId') propertyId?: string,
-    @User() user?: JwtPayload,
+    @Query() queryDto: QueryDashboardDto,
+    @Request() req: { user: JwtPayload },
   ) {
-    // Nếu user là staff, chỉ cho phép xem thống kê của property được assign
-    if (user?.role === 'staff' && !propertyId) {
-      throw new Error('Staff phải chỉ định propertyId để xem thống kê');
+    // Enforce propertyId for staff users
+    if (req.user.role === 'staff' && !queryDto.propertyId) {
+      throw new BadRequestException('Property ID is required for staff users');
     }
 
-    return this.dashboardService.getDashboardOverview(propertyId);
+    return this.dashboardService.getDashboardOverview(queryDto.propertyId);
   }
 
   @Get('realtime')
-  @Roles('admin', 'staff')
-  @RequirePermission('dashboard.view')
-  @ApiOperation({ summary: 'Lấy thống kê real-time' })
+  @ApiOperation({ summary: 'Get real-time dashboard data' })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê real-time thành công',
+    description: 'Real-time dashboard data retrieved successfully',
   })
-  async getRealTimeStatistics() {
+  @ApiQuery({ name: 'propertyId', required: false, type: String })
+  async getRealTimeData(
+    @Query() queryDto: QueryDashboardDto,
+    @Request() req: { user: JwtPayload },
+  ) {
+    // Enforce propertyId for staff users
+    if (req.user.role === 'staff' && !queryDto.propertyId) {
+      throw new BadRequestException('Property ID is required for staff users');
+    }
+
     return this.dashboardService.getRealTimeStatistics();
   }
 }

@@ -65,7 +65,7 @@ export class PropertyController {
     @Query() queryDto: QueryPropertyDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.propertyService.findAll(queryDto, req.user, req);
+    return this.propertyService.findAll(queryDto, req.user, req as any);
   }
 
   @Public()

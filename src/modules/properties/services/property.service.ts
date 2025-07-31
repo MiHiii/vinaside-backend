@@ -154,7 +154,7 @@ export class PropertyService {
       this.listingModel.countDocuments({
         propertyId: new Types.ObjectId(propertyId),
         isDeleted: false, // Chỉ filter này, không filter status
-      } as FilterQuery<Listing>),
+      }),
     ]);
 
     return {
@@ -228,7 +228,7 @@ export class PropertyService {
   async findAll(
     queryDto: QueryPropertyDto,
     user?: JwtPayload,
-    request?: RequestWithStaffFilter | undefined,
+    request?: RequestWithStaffFilter,
   ): Promise<PaginatedProperties> {
     const {
       page = 1,

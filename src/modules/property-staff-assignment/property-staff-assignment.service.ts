@@ -95,8 +95,15 @@ export class PropertyStaffAssignmentService {
       const staffId = staff._id ? staff._id.toString() : staff.toString();
 
       // Lấy thông tin chi tiết từ collection users để có avatar_url
-      const userInfo =
-        await this.propertyStaffAssignmentRepo.getUserInfo(staffId);
+      const userInfo = (await this.propertyStaffAssignmentRepo.getUserInfo(
+        staffId,
+      )) as {
+        name?: string;
+        email?: string;
+        phone?: string;
+        role?: string;
+        avatar_url?: string;
+      } | null;
 
       return {
         _id: staffId,
@@ -130,8 +137,15 @@ export class PropertyStaffAssignmentService {
     const staffId = staff._id ? staff._id.toString() : staff.toString();
 
     // Lấy thông tin chi tiết từ collection users
-    const userInfo =
-      await this.propertyStaffAssignmentRepo.getUserInfo(staffId);
+    const userInfo = (await this.propertyStaffAssignmentRepo.getUserInfo(
+      staffId,
+    )) as {
+      name?: string;
+      email?: string;
+      phone?: string;
+      role?: string;
+      avatar_url?: string;
+    } | null;
 
     return {
       _id: staffId,

@@ -846,7 +846,10 @@ export class MessagesService {
    * Xóa reaction với messageId
    */
   async removeReaction(messageId: string, user: JwtPayload): Promise<unknown> {
-    const removeReactionDto: RemoveReactionDto = { message_id: messageId };
+    const removeReactionDto: RemoveReactionDto = {
+      message_id: messageId,
+      type: undefined,
+    };
     const message = await this.removeReactionInternal(removeReactionDto, user);
     return this.formatReactionResponse(message);
   }

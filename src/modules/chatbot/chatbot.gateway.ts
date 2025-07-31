@@ -8,7 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ChatbotMessage } from './schemas/chatbot-message.schema';
 import { ChatbotService } from './chatbot.service';
 
@@ -44,6 +44,7 @@ interface Voucher {
 
 interface Service {
   // Add properties as needed
+  name?: string;
 }
 
 interface Review {
@@ -55,6 +56,8 @@ interface Review {
   cors: {
     origin: '*',
   },
+  namespace: '/ws/chatbot',
+  path: '/socket.io',
 })
 export class ChatbotGateway {
   @WebSocketServer()
@@ -89,10 +92,10 @@ export class ChatbotGateway {
   }
 
   @SubscribeMessage('join_room')
-  async handleJoinRoom(
+  handleJoinRoom(
     @MessageBody() data: { userId: string },
     @ConnectedSocket() client: Socket,
-  ): Promise<{ success: boolean; message: string }> {
+  ): { success: boolean; message: string } {
     try {
       this.connectedUsers.set(data.userId, {
         userId: data.userId,
@@ -114,10 +117,8 @@ export class ChatbotGateway {
     try {
       // Lưu tin nhắn vào database
       await this.chatbotMessageModel.create({
-        userId: data.userId,
-        message: data.message,
-        sender: 'user',
-        timestamp: new Date(),
+        content: data.message,
+        user_id: new Types.ObjectId(data.userId),
       });
 
       // Phân tích intent
@@ -129,9 +130,10 @@ export class ChatbotGateway {
       if (intent === 'ask_cheapest_room') {
         try {
           const axios = (await import('axios')).default;
-          const { data: internalData } = await axios.get<InternalData>(
+          const response = await axios.get<InternalData>(
             'http://localhost:8080/api/v1/internal-data',
           );
+          const internalData = response.data;
           const listings = internalData?.data?.listings || [];
           if (listings.length === 0) {
             client.emit('receive_message', {
@@ -161,9 +163,10 @@ export class ChatbotGateway {
       // Gọi API nội bộ để lấy dữ liệu tổng hợp (chỉ khi cần Gemini)
       try {
         const axios = (await import('axios')).default;
-        const { data: internalData } = await axios.get<InternalData>(
+        const response = await axios.get<InternalData>(
           'http://localhost:8080/api/v1/internal-data',
         );
+        const internalData = response.data;
 
         // Lấy các bảng dữ liệu
         const listings = internalData?.data?.listings || [];
@@ -254,10 +257,9 @@ export class ChatbotGateway {
 
       // Lưu phản hồi vào database
       await this.chatbotMessageModel.create({
-        userId: data.userId,
-        message: response,
-        sender: 'bot',
-        timestamp: new Date(),
+        content: response,
+        user_id: new Types.ObjectId(data.userId),
+        reply: response,
       });
 
       client.emit('receive_message', { message: response });

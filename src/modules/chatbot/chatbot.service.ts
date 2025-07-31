@@ -8,13 +8,18 @@ import { ChatbotMessage } from './schemas/chatbot-message.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 interface InternalDataResponse {
-  data: {
-    listings: Array<{
-      title: string;
-      price_per_night: number;
-      description: string;
-    }>;
-  };
+  listings: Array<{
+    title: string;
+    price_per_night: number;
+    description: string;
+  }>;
+  properties: any[];
+  bookings: any[];
+  vouchers: any[];
+  reviews: any[];
+  services: any[];
+  wishlists: any[];
+  voucherUsages: any[];
 }
 
 @Injectable()
@@ -68,7 +73,7 @@ export class ChatbotService {
   async generateResponse(
     message: string,
     context: string,
-    intent: string,
+    _intent: string,
   ): Promise<string> {
     try {
       const guide =
@@ -92,9 +97,10 @@ export class ChatbotService {
     // Chỉ lấy các trường cần thiết và đúng tên thực tế của listings (title, price_per_night, description)
     let context = '';
     try {
-      const { data } = await axios.get<InternalDataResponse>(
+      const response = await axios.get<InternalDataResponse>(
         'http://localhost:8080/api/v1/internal-data',
       );
+      const data = response.data;
       if (data && data.listings) {
         const listings = data.listings.map((item) => ({
           title: item.title,
@@ -145,12 +151,22 @@ export class ChatbotService {
         },
       );
       // Gemini API trả về reply ở response.data.candidates[0].content.parts[0].text
+      const responseData = response.data as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              text?: string;
+            }>;
+          };
+        }>;
+      };
+
       if (
-        response.data &&
-        response.data.candidates &&
-        response.data.candidates[0]?.content?.parts[0]?.text
+        responseData &&
+        responseData.candidates &&
+        responseData.candidates[0]?.content?.parts?.[0]?.text
       ) {
-        return response.data.candidates[0].content.parts[0].text;
+        return responseData.candidates[0].content.parts[0].text;
       }
       throw new Error('No reply from Gemini API');
     } catch (error) {
@@ -257,9 +273,9 @@ export class ChatbotService {
     };
   }
 
-  async sendFeedback(
-    feedbackDto: { message_id: string; rating: number; comment?: string },
-    user: JwtPayload,
+  sendFeedback(
+    _feedbackDto: { message_id: string; rating: number; comment?: string },
+    _user: JwtPayload,
   ) {
     // Implementation for feedback
     return { success: true, message: 'Feedback sent successfully' };
