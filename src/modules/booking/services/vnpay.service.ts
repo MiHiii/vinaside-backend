@@ -99,17 +99,26 @@ export class VNPayService extends PaymentServiceInterface {
     // Tính số tiền cần thanh toán dựa vào paymentType
     let amountToPay = booking.final_amount;
     const roomTotal = booking.price_per_night * booking.nights;
-    const serviceFee = Math.round(roomTotal * 0.1);
-    const tax = Math.round(roomTotal * 0.08);
-    const baseTotal = roomTotal + serviceFee + tax;
     const servicesAmount = booking.services_total_amount || 0;
+    const subtotalAmount = roomTotal + servicesAmount;
+
+    // Tính discount từ voucher
+    const voucherDiscount = booking.voucher_discount_percent
+      ? Math.round((subtotalAmount * booking.voucher_discount_percent) / 100)
+      : 0;
+    const amountAfterDiscount = subtotalAmount - voucherDiscount;
+
+    // Tính phí và thuế dựa trên subtotalAmount (trước khi trừ voucher)
+    const serviceFee = Math.round(subtotalAmount * 0.1);
+    const tax = Math.round(subtotalAmount * 0.08);
+    const baseTotal = amountAfterDiscount + serviceFee + tax;
 
     if (paymentType === 'deposit') {
-      // Lần 1: 50% tổng tiền phòng + phí + thuế
+      // Lần 1: 50% tổng tiền (giá phòng + dịch vụ + phí + thuế - voucher)
       amountToPay = Math.round(baseTotal * 0.5);
     } else if (paymentType === 'remaining') {
-      // Lần 2: 50% còn lại + toàn bộ dịch vụ kèm theo
-      amountToPay = Math.round(baseTotal * 0.5) + servicesAmount;
+      // Lần 2: 50% còn lại
+      amountToPay = Math.round(baseTotal * 0.5);
       if (amountToPay <= 0) {
         throw new BadRequestException('Không còn số tiền nào cần thanh toán');
       }
