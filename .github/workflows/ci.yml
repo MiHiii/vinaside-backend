@@ -6,11 +6,11 @@ on:
       - develop
       - release
       - main
-  # pull_request:
-  #   branches:
-  #     - develop
-  #     - release
-  #     - main
+  pull_request:
+    branches:
+      - develop
+      - release
+      - main
 
 jobs:
   build-and-test:
