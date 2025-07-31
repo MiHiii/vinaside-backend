@@ -7,11 +7,13 @@ import {
 import { WishlistService } from './wishlist.service';
 import { WishlistRepo } from './wishlist.repo';
 import { Wishlist, WishlistSchema } from './schemas/wishlist.schema';
+import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Wishlist.name, schema: WishlistSchema },
+      { name: Listing.name, schema: ListingSchema },
     ]),
   ],
   controllers: [WishlistController, AdminWishlistController],

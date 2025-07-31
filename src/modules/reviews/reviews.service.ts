@@ -241,7 +241,12 @@ export class ReviewsService {
       const populatedReview = await this.reviewsRepo.findById(
         (review as { _id: { toString: () => string } })._id.toString(),
         [
-          { path: 'user_id', select: 'name avatar_url email' },
+          {
+            path: 'user_id',
+            select:
+              'name avatar_url email phone role is_verified language customRoles',
+          },
+          { path: 'property_id', select: 'name address' },
           { path: 'room_id', select: 'title images address' },
         ],
       );
@@ -266,7 +271,12 @@ export class ReviewsService {
    */
   private async findReviewById(id: string): Promise<Review> {
     const review = await this.reviewsRepo.findById(id, [
-      { path: 'user_id', select: 'name avatar_url email' },
+      {
+        path: 'user_id',
+        select:
+          'name avatar_url email phone role is_verified language customRoles',
+      },
+      { path: 'property_id', select: 'name address' },
       { path: 'room_id', select: 'title images address' },
     ]);
 
@@ -295,7 +305,12 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar_url email' },
+        {
+          path: 'user_id',
+          select:
+            'name avatar_url email phone role is_verified language customRoles',
+        },
+        { path: 'property_id', select: 'name address' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -321,7 +336,12 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar_url email' },
+        {
+          path: 'user_id',
+          select:
+            'name avatar_url email phone role is_verified language customRoles',
+        },
+        { path: 'property_id', select: 'name address' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -343,6 +363,7 @@ export class ReviewsService {
       sortBy = 'created_at',
       sortOrder = 'desc',
       user_id,
+      property_id,
       room_id,
       rating,
     } = queryDto;
@@ -353,6 +374,8 @@ export class ReviewsService {
     // Build filter
     const filter: FilterQuery<Review> = {};
     if (user_id) filter.user_id = user_id as unknown as Types.ObjectId;
+    if (property_id)
+      filter.property_id = property_id as unknown as Types.ObjectId;
     if (room_id) filter.room_id = room_id as unknown as Types.ObjectId;
     if (rating) filter.rating = rating;
 
@@ -364,7 +387,12 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar_url email' },
+        {
+          path: 'user_id',
+          select:
+            'name avatar_url email phone role is_verified language customRoles',
+        },
+        { path: 'property_id', select: 'name address' },
         { path: 'room_id', select: 'title images address' },
       ],
     };
@@ -390,7 +418,12 @@ export class ReviewsService {
       limit,
       skip,
       populate: [
-        { path: 'user_id', select: 'name avatar_url email' },
+        {
+          path: 'user_id',
+          select:
+            'name avatar_url email phone role is_verified language customRoles',
+        },
+        { path: 'property_id', select: 'name address' },
         { path: 'room_id', select: 'title images address' },
       ],
     };

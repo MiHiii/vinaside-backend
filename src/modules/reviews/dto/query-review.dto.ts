@@ -36,6 +36,10 @@ export class QueryReviewDto {
 
   @IsOptional()
   @IsMongoId()
+  property_id?: string;
+
+  @IsOptional()
+  @IsMongoId()
   room_id?: string;
 
   @IsOptional()

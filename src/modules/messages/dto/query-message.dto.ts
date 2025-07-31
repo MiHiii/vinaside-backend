@@ -74,6 +74,11 @@ export class QueryMessageDto {
   @IsMongoId()
   receiver_id?: string;
 
+  @ApiProperty({ description: 'ID của property', required: false })
+  @IsOptional()
+  @IsMongoId()
+  property_id?: string;
+
   @ApiProperty({ description: 'Nội dung tin nhắn', required: false })
   @IsOptional()
   @IsString()

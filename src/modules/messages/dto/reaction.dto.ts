@@ -11,7 +11,6 @@ export class AddReactionDto {
 }
 
 export class RemoveReactionDto {
-  @IsString()
-  @IsMongoId({ message: 'message_id must be a valid MongoDB ObjectId' })
   message_id: string;
+  type?: ReactionType;
 }

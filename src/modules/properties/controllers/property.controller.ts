@@ -65,7 +65,7 @@ export class PropertyController {
     @Query() queryDto: QueryPropertyDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.propertyService.findAll(queryDto, req.user, req);
+    return this.propertyService.findAll(queryDto, req.user, req as any);
   }
 
   @Public()
@@ -199,5 +199,22 @@ export class PropertyController {
   })
   async findRoomStatus(@Param('propertyId') propertyId: string) {
     return this.propertyService.getRoomStatus(propertyId);
+  }
+
+  @Public()
+  @Get(':propertyId/rooms')
+  @ApiOperation({
+    summary: 'Lấy danh sách tất cả phòng trong property (public)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách phòng trong property',
+  })
+  @ResponseMessage('Lấy danh sách phòng trong property thành công')
+  getPropertyRooms(
+    @Param('propertyId') propertyId: string,
+    @Query() queryDto: any,
+  ) {
+    return this.propertyService.getPropertyRooms(propertyId, queryDto);
   }
 }

@@ -17,6 +17,7 @@ import {
   PaymentStatus,
 } from './schemas/booking.schema';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { parseSortString } from '../../utils/common.util';
@@ -540,78 +541,9 @@ export class BookingService {
    */
   async update(
     id: string,
-    updateBookingDto: any, // mở rộng để nhận selected_services
+    updateBookingDto: UpdateBookingDto,
     user: JwtPayload,
-  ): Promise<any> {
-    // 1. Lấy booking hiện tại
-    const booking = await this.bookingRepo.findById(id);
-    if (!booking) throw new NotFoundException('Không tìm thấy booking.');
-
-    // 2. Check quyền
-    const isGuest = user.role === 'guest';
-    if (isGuest) {
-      if (booking.guestId.toString() !== user._id.toString()) {
-        throw new ForbiddenException(
-          'Bạn chỉ được sửa booking của chính mình.',
-        );
-      }
-      if (['cancelled', 'completed', 'rejected'].includes(booking.status)) {
-        throw new BadRequestException(
-          'Không thể sửa booking đã cancelled/completed/rejected.',
-        );
-      }
-    }
-    // Staff đã được check quyền ở controller
-
-    // 3. Nếu có selected_services mới
-    if (updateBookingDto.selected_services) {
-      // a. Không được giảm số lượng dịch vụ hoặc xóa dịch vụ cũ
-      const oldServices = booking.selected_services || [];
-      const newServices = updateBookingDto.selected_services;
-      // Map dịch vụ cũ theo id
-      const oldMap = new Map<string, any>();
-      oldServices.forEach((s) => oldMap.set(s.service_id.toString(), s));
-      // Map dịch vụ mới theo id
-      const newMap = new Map<string, any>();
-      newServices.forEach((s) => newMap.set(s.service_id.toString(), s));
-      // Không được xóa dịch vụ cũ
-      for (const oldId of oldMap.keys()) {
-        if (!newMap.has(oldId)) {
-          throw new BadRequestException('Không được xóa dịch vụ đã có.');
-        }
-        // Không được giảm số lượng
-        if (newMap.get(oldId).quantity < oldMap.get(oldId).quantity) {
-          throw new BadRequestException(
-            'Không được giảm số lượng dịch vụ đã có.',
-          );
-        }
-      }
-      // b. Tính tổng tiền dịch vụ cũ và mới
-      const oldTotal = oldServices.reduce(
-        (sum, s) => sum + (s.total_price || 0),
-        0,
-      );
-      const newTotal = newServices.reduce(
-        (sum, s) => sum + (s.total_price || 0),
-        0,
-      );
-      if (newTotal < oldTotal) {
-        throw new BadRequestException('Không được giảm tổng tiền dịch vụ.');
-      }
-      // c. Cộng phần chênh lệch vào final_amount
-      const diff = newTotal - oldTotal;
-      if (diff > 0) {
-        updateBookingDto.final_amount = booking.final_amount + diff;
-      } else {
-        updateBookingDto.final_amount = booking.final_amount;
-      }
-      // d. Cập nhật lại services_total_amount
-      updateBookingDto.services_total_amount = newTotal;
-    }
-    // Không động vào deposit_paid_amount
-    delete updateBookingDto.deposit_paid_amount;
-
-    // 4. Update booking
+  ): Promise<Booking> {
     const updated = await this.bookingRepo.updateById(
       id,
       updateBookingDto,
@@ -621,12 +553,7 @@ export class BookingService {
       throw new NotFoundException(
         'Không tìm thấy booking hoặc không thể cập nhật.',
       );
-
-    // 5. Trả về booking + outstanding_amount
-    const result = this.transformBookingToResponse(updated);
-    result.outstanding_amount =
-      (result.final_amount || 0) - (updated.deposit_paid_amount || 0);
-    return result;
+    return updated;
   }
 
   /**
@@ -639,11 +566,7 @@ export class BookingService {
 
     // Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    if ((booking.deposit_paid_amount || 0) > 0) {
-      booking.payment_status = PaymentStatus.REFUNDING;
-    } else {
-      booking.payment_status = PaymentStatus.UNPAID;
-    }
+    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Admin/staff cancelled';
 
@@ -938,11 +861,7 @@ export class BookingService {
 
     // 2. Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    if ((booking.deposit_paid_amount || 0) > 0) {
-      booking.payment_status = PaymentStatus.REFUNDING;
-    } else {
-      booking.payment_status = PaymentStatus.UNPAID;
-    }
+    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Public user cancelled';
 
@@ -2341,7 +2260,7 @@ export class BookingService {
     // ✅ Kiểm tra trạng thái thanh toán hiện tại
     if (
       !booking.deposit_paid ||
-      booking.payment_status !== PaymentStatus.UNPAID
+      booking.payment_status !== PaymentStatus.PARTIALLY_PAID
     ) {
       throw new BadRequestException(
         'Chỉ cho phép thanh toán phần còn lại khi đã đặt cọc và chưa thanh toán đủ',

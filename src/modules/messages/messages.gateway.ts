@@ -178,15 +178,35 @@ export class MessagesGateway
 
   // Method public để emit message recalled event
   emitMessageRecalled(message: Message, userId: string): void {
-    const userRoom = buildUserRoom(userId);
-    this.server.to(userRoom).emit('message_recalled', {
-      messageId: message._id?.toString(),
-      content: message.content,
-      is_recalled: message.is_recalled,
-      recalled_at: message.recalled_at,
-      timestamp: new Date().toISOString(),
-    });
-    this.logger.log(`Emitted message_recalled to ${userRoom}`);
+    try {
+      const userRoom = buildUserRoom(userId);
+      this.server.to(userRoom).emit('message_recalled', {
+        messageId: message._id,
+        content: message.content,
+        recalled_at: message.recalled_at,
+      });
+      this.logger.log(`Message recall notification sent to ${userRoom}`);
+    } catch (error) {
+      this.logger.error('Failed to emit message recall notification:', error);
+    }
+  }
+
+  emitPropertyMessage(message: Message, propertyId: string): void {
+    try {
+      const propertyRoom = `property_${propertyId}`;
+      this.server.to(propertyRoom).emit('property_message', {
+        messageId: message._id,
+        sender_id: message.sender_id,
+        receiver_id: message.receiver_id,
+        property_id: message.property_id,
+        content: message.content,
+        sent_at: message.sent_at,
+        is_read: message.is_read,
+      });
+      this.logger.log(`Property message notification sent to ${propertyRoom}`);
+    } catch (error) {
+      this.logger.error('Failed to emit property message notification:', error);
+    }
   }
 
   // Getter để có thể access server từ controller nếu cần

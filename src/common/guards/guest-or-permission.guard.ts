@@ -40,8 +40,8 @@ export class GuestOrPermissionGuard implements CanActivate {
       return true;
     }
 
-    // Nếu user có role là guest
-    if (user.role === 'guest') {
+    // Nếu user có role là guest hoặc staff
+    if (user.role === 'guest' || user.role === 'staff') {
       return true;
     }
 

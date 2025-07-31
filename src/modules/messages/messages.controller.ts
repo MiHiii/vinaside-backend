@@ -7,37 +7,29 @@ import {
   Param,
   Delete,
   Query,
-  Request,
-  HttpCode,
-  HttpStatus,
   UseGuards,
+  Request,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
-import { AddReactionDto } from './dto/reaction.dto';
 import { QueryMessageDto } from './dto/query-message.dto';
 import { SearchMessageDto } from './dto/search-message.dto';
+import { AddReactionDto } from './dto/reaction.dto';
 import {
   UserProfileResponseDto,
   UserResponseDto,
 } from './dto/user-response.dto';
-import { ReactionType } from './schemas/message.schema';
-import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RequirePermission } from '../../decorators/require-permission.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import { Roles } from '../../decorators/roles.decorator';
-import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-} from '@nestjs/swagger';
-import { GuestOrPermissionGuard } from '../../common/guards/guest-or-permission.guard';
+import { Message } from './schemas/message.schema';
+import { ReactionType } from './schemas/message.schema';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -45,14 +37,13 @@ interface RequestWithUser extends Request {
 
 @ApiTags('Messages')
 @Controller('messages')
-@UseGuards(JwtAuthGuard, PermissionGuard)
-@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionGuard)
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @Post()
-  // @RequirePermission('message.create')
-  @UseGuards(GuestOrPermissionGuard)
+  @Roles('guest', 'staff', 'admin')
+  @UseGuards(RolesGuard)
   @ApiOperation({
     summary: 'Gửi tin nhắn mới hoặc reply tin nhắn',
     description:
@@ -63,7 +54,6 @@ export class MessagesController {
     description:
       'Tin nhắn được gửi thành công. Response bao gồm thông tin reply nếu có.',
   })
-  @ResponseMessage('Gửi tin nhắn thành công')
   create(
     @Body() createMessageDto: CreateMessageDto,
     @Request() req: RequestWithUser,
@@ -72,10 +62,9 @@ export class MessagesController {
   }
 
   @Get()
-  @RequirePermission('message.view')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy danh sách tin nhắn' })
   @ApiResponse({ status: 200, description: 'Danh sách tin nhắn' })
-  @ResponseMessage('Lấy danh sách tin nhắn thành công')
   async findAll(
     @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
@@ -93,7 +82,6 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy danh sách cuộc trò chuyện' })
   @ApiResponse({ status: 200, description: 'Danh sách cuộc trò chuyện' })
-  @ResponseMessage('Lấy danh sách cuộc trò chuyện thành công')
   async getConversations(@Request() req: RequestWithUser): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getConversations(req.user._id);
@@ -115,7 +103,6 @@ export class MessagesController {
     status: 200,
     description: 'Tin nhắn trong cuộc trò chuyện với đầy đủ thông tin reply',
   })
-  @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
   async getConversation(
     @Request() req: RequestWithUser,
     @Query('otherUserId') otherUserId?: string,
@@ -155,20 +142,28 @@ export class MessagesController {
     summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể (deprecated)',
   })
   @ApiResponse({ status: 200, description: 'Tin nhắn trong cuộc trò chuyện' })
-  @ResponseMessage('Lấy tin nhắn trong cuộc trò chuyện thành công')
-  getConversationDeprecated(
+  async getConversationDeprecated(
     @Param('userId') userId: string,
     @Query() query: QueryMessageDto,
     @Request() req: RequestWithUser,
-  ) {
-    return this.messagesService.getConversation(req.user._id, userId, query);
+  ): Promise<unknown[]> {
+    try {
+      const result = await this.messagesService.getConversation(
+        req.user._id,
+        userId,
+        query,
+      );
+      return Array.isArray(result) ? (result as unknown[]) : [];
+    } catch (error) {
+      console.error('Error in getConversationDeprecated controller:', error);
+      return [];
+    }
   }
 
   @Get('unread-count')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy số tin nhắn chưa đọc' })
   @ApiResponse({ status: 200, description: 'Số tin nhắn chưa đọc' })
-  @ResponseMessage('Lấy số tin nhắn chưa đọc thành công')
   getUnreadCount(@Request() req: RequestWithUser) {
     return this.messagesService.getUnreadCount(req.user._id);
   }
@@ -181,7 +176,6 @@ export class MessagesController {
     description: 'Danh sách người dùng',
     type: [UserResponseDto],
   })
-  @ResponseMessage('Lấy danh sách tất cả người dùng thành công')
   async getAllUsers(
     @Request() req: RequestWithUser,
   ): Promise<UserResponseDto[]> {
@@ -202,7 +196,6 @@ export class MessagesController {
     description: 'Danh sách người dùng có lịch sử chat',
     type: [UserResponseDto],
   })
-  @ResponseMessage('Lấy danh sách người dùng có lịch sử chat thành công')
   async getAvailableUsers(
     @Request() req: RequestWithUser,
   ): Promise<UserResponseDto[]> {
@@ -224,7 +217,6 @@ export class MessagesController {
     description: 'Thông tin người dùng',
     type: UserProfileResponseDto,
   })
-  @ResponseMessage('Lấy thông tin người dùng thành công')
   async getUserProfile(
     @Param('userId') userId: string,
     @Request() req: RequestWithUser,
@@ -249,7 +241,6 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Thêm reaction vào tin nhắn' })
   @ApiResponse({ status: 201, description: 'Reaction được thêm thành công' })
-  @ResponseMessage('Thêm reaction thành công')
   addReaction(
     @Param('id') id: string,
     @Body() addReactionDto: AddReactionDto,
@@ -258,12 +249,34 @@ export class MessagesController {
     return this.messagesService.addReaction(id, addReactionDto, req.user);
   }
 
-  @Delete(':id/reactions')
+  @Delete(':id/reactions/:type')
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Xóa reaction khỏi tin nhắn' })
+  @ApiOperation({ summary: 'Xóa reaction cho tin nhắn' })
+  @ApiParam({
+    name: 'id',
+    description: 'ID của tin nhắn',
+    type: 'string',
+  })
+  @ApiParam({
+    name: 'type',
+    description: 'Loại reaction',
+    enum: ReactionType,
+    example: 'like',
+  })
   @ApiResponse({ status: 200, description: 'Reaction được xóa thành công' })
-  @ResponseMessage('Xóa reaction thành công')
-  removeReaction(@Param('id') id: string, @Request() req: RequestWithUser) {
+  removeReaction(
+    @Param('id') id: string,
+    @Param('type') type: string,
+    @Request() req: RequestWithUser,
+  ) {
+    // Validate reaction type
+    const validTypes = Object.values(ReactionType);
+    if (!validTypes.includes(type as ReactionType)) {
+      throw new BadRequestException(
+        `Loại reaction không hợp lệ. Chỉ hỗ trợ: ${validTypes.join(', ')}`,
+      );
+    }
+
     return this.messagesService.removeReaction(id, req.user);
   }
 
@@ -282,7 +295,6 @@ export class MessagesController {
     example: 'like',
   })
   @ApiResponse({ status: 200, description: 'Toggle reaction thành công' })
-  @ResponseMessage('Toggle reaction thành công')
   toggleReaction(
     @Param('id') id: string,
     @Param('type') type: string,
@@ -307,7 +319,6 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Thu hồi tin nhắn đã gửi' })
   @ApiResponse({ status: 200, description: 'Thu hồi tin nhắn thành công' })
-  @ResponseMessage('Thu hồi tin nhắn thành công')
   recallMessage(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.messagesService.recallMessage(id, req.user);
   }
@@ -316,7 +327,6 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Tìm kiếm tin nhắn theo nội dung' })
   @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm tin nhắn' })
-  @ResponseMessage('Tìm kiếm tin nhắn thành công')
   async search(
     @Body() searchMessageDto: SearchMessageDto,
     @Request() req: RequestWithUser,
@@ -340,7 +350,6 @@ export class MessagesController {
     status: 200,
     description: 'Cuộc hội thoại được đánh dấu đã đọc',
   })
-  @ResponseMessage('Đánh dấu cuộc hội thoại đã đọc thành công')
   markConversationAsRead(
     @Query('otherUserId') otherUserId: string,
     @Request() req: RequestWithUser,
@@ -358,46 +367,67 @@ export class MessagesController {
   // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================
 
   @Get(':id')
-  @RequirePermission('message.view')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết tin nhắn' })
   @ApiResponse({ status: 200, description: 'Thông tin tin nhắn' })
-  @ResponseMessage('Lấy thông tin tin nhắn thành công')
-  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.findOne(id, req.user);
+  async findOne(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<Message | null> {
+    try {
+      const result = await this.messagesService.findOne(id, req.user);
+      return result;
+    } catch (error) {
+      console.error('Error in findOne controller:', error);
+      throw new NotFoundException('Tin nhắn không tìm thấy');
+    }
   }
 
   @Patch(':id')
-  @RequirePermission('message.edit')
+  @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Cập nhật nội dung tin nhắn' })
   @ApiResponse({
     status: 200,
     description: 'Tin nhắn được cập nhật thành công',
   })
-  @ResponseMessage('Cập nhật tin nhắn thành công')
-  update(
+  async update(
     @Param('id') id: string,
     @Body() updateMessageDto: UpdateMessageDto,
     @Request() req: RequestWithUser,
-  ) {
-    return this.messagesService.update(id, updateMessageDto, req.user);
+  ): Promise<Message | null> {
+    try {
+      const result = await this.messagesService.update(
+        id,
+        updateMessageDto,
+        req.user,
+      );
+      return result;
+    } catch (error) {
+      console.error('Error in update controller:', error);
+      throw new NotFoundException('Tin nhắn không tìm thấy');
+    }
   }
 
   @Patch(':id/read')
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Đánh dấu tin nhắn đã đọc' })
   @ApiResponse({ status: 200, description: 'Tin nhắn được đánh dấu đã đọc' })
-  @ResponseMessage('Đánh dấu tin nhắn đã đọc thành công')
   markAsRead(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.messagesService.markAsRead(id, req.user._id);
   }
 
   @Delete(':id')
-  @RequirePermission('message.delete')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Xóa tin nhắn của mình' })
-  @ApiResponse({ status: 204, description: 'Tin nhắn được xóa thành công' })
-  @ResponseMessage('Xóa tin nhắn thành công')
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.messagesService.remove(id, req.user);
+  @Roles('guest', 'staff', 'admin')
+  async remove(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<Message | null> {
+    try {
+      const result = await this.messagesService.remove(id, req.user);
+      return result;
+    } catch (error) {
+      console.error('Error in remove controller:', error);
+      throw new NotFoundException('Tin nhắn không tìm thấy');
+    }
   }
 }

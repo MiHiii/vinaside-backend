@@ -6,6 +6,7 @@ import { MessagesGateway } from './messages.gateway';
 import { Message, MessageSchema } from './schemas/message.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AuthModule } from '../auth/auth.module';
+import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
 import { GuestOrPermissionGuard } from '../../common/guards/guest-or-permission.guard';
 
 @Module({
@@ -13,6 +14,7 @@ import { GuestOrPermissionGuard } from '../../common/guards/guest-or-permission.
     MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
     NotificationsModule,
     AuthModule,
+    PropertyStaffAssignmentModule,
   ],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesGateway, GuestOrPermissionGuard],

@@ -26,6 +26,7 @@ import {
   RecipientType,
   SentMethod,
 } from '../notifications/schemas/notification.schema';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 // ============= TYPE DEFINITIONS =============
 
@@ -55,143 +56,139 @@ export class MessagesService {
     @Inject(forwardRef(() => MessagesGateway))
     private readonly messagesGateway: MessagesGateway,
     private readonly notificationsService: NotificationsService,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   async create(
     createMessageDto: CreateMessageDto,
     user: JwtPayload,
   ): Promise<Message> {
-    // Validation
-    if (!isValidObjectId(createMessageDto.receiver_id)) {
-      throw new BadRequestException('Định dạng ID người nhận không hợp lệ');
-    }
-
-    // Validate reply_to_message_id if provided
-    if (createMessageDto.reply_to_message_id) {
-      if (!isValidObjectId(createMessageDto.reply_to_message_id)) {
-        throw new BadRequestException(
-          'Định dạng ID tin nhắn reply không hợp lệ',
-        );
-      }
-
-      // Check if reply message exists and user has permission to reply
-      const replyToMessage = await this.messageModel.findById(
-        createMessageDto.reply_to_message_id,
-      );
-      if (!replyToMessage) {
-        throw new NotFoundException('Không tìm thấy tin nhắn để reply');
-      }
-
-      // Check if user is part of the conversation
-      const replySenderId = replyToMessage.sender_id.toString();
-      const replyReceiverId = replyToMessage.receiver_id.toString();
-      if (user._id !== replySenderId && user._id !== replyReceiverId) {
-        throw new ForbiddenException(
-          'Bạn chỉ có thể reply tin nhắn trong cuộc trò chuyện của mình',
-        );
-      }
-    }
-
-    // Convert string IDs to ObjectId before saving
-    const messageData: Record<string, unknown> = {
-      ...createMessageDto,
-      sender_id: new Types.ObjectId(user._id),
-      receiver_id: new Types.ObjectId(createMessageDto.receiver_id),
-      sent_at: new Date(),
-      is_read: MessageStatus.SENT,
-    };
-
-    // Add reply_to_message_id if provided
-    if (createMessageDto.reply_to_message_id) {
-      messageData['reply_to_message_id'] = new Types.ObjectId(
-        createMessageDto.reply_to_message_id,
-      );
-    }
-
-    const createdMessage = new this.messageModel(messageData);
-    const savedMessage = await createdMessage.save();
-
-    // Populate the saved message to get full data including reply info
-    const populatedMessage = await this.messageModel
-      .findById(savedMessage._id)
-      .populate('sender_id', 'username email name avatar_url')
-      .populate('receiver_id', 'username email name avatar_url')
-      .populate('reactions.user_id', 'username email name avatar_url')
-      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
-      .populate({
-        path: 'reply_to_message_id',
-        populate: {
-          path: 'sender_id',
-          select: 'username email name avatar_url',
-        },
-      })
-      .exec();
-
-    // Emit realtime notification
     try {
-      const messageId = extractMessageId(savedMessage);
-      if (messageId && populatedMessage) {
-        // Format message với đầy đủ thông tin reply và reactions
-        const formattedMessage = this.formatReactionResponse(populatedMessage);
-
-        // Emit realtime đơn giản - CHỈ SỬ DỤNG new_message EVENT
-        // Emit đến người nhận
-        this.messagesGateway.emitNewMessage(
-          formattedMessage,
-          createMessageDto.receiver_id,
-        );
-
-        // Emit đến người gửi (sync across devices)
-        this.messagesGateway.emitNewMessage(formattedMessage, user._id);
-
-        // Update delivered status nếu user online
-        if (this.messagesGateway.isUserOnline(createMessageDto.receiver_id)) {
-          await this.update(
-            messageId,
-            { is_read: MessageStatus.DELIVERED },
-            user,
+      // Kiểm tra nếu là property message
+      if (createMessageDto.property_id) {
+        const isAssigned =
+          await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            new Types.ObjectId(createMessageDto.property_id),
           );
-        }
-
-        // Tự động gửi thông báo cho người nhận
-        try {
-          const sender = populatedMessage.sender_id as {
-            _id?: Types.ObjectId | string;
-            name?: string;
-            username?: string;
-            avatar_url?: string;
-          };
-          const senderName =
-            typeof sender?.name === 'string'
-              ? sender.name
-              : typeof sender?.username === 'string'
-                ? sender.username
-                : 'Someone';
-          const senderUserId = sender?._id ? sender._id.toString() : user._id;
-          const avatar_url =
-            typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
-          await this.notificationsService.createAndSend({
-            user_id: createMessageDto.receiver_id,
-            recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
-            title: 'Bạn có tin nhắn mới',
-            message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
-            type: NotificationType.MESSAGE,
-            sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
-            sender_user_id: senderUserId,
-            avatar_url,
-          });
-        } catch (notificationError) {
-          console.error(
-            'Failed to send message notification:',
-            notificationError,
+        if (!isAssigned) {
+          throw new BadRequestException(
+            'Staff không được assign cho property này',
           );
         }
       }
-    } catch (error) {
-      console.error('Failed to emit realtime message:', error);
-    }
 
-    return populatedMessage || savedMessage;
+      // Kiểm tra reply message
+      if (createMessageDto.reply_to_message_id) {
+        const replyMessage = await this.messageModel.findById(
+          createMessageDto.reply_to_message_id,
+        );
+        if (!replyMessage) {
+          throw new BadRequestException('Tin nhắn reply không tồn tại');
+        }
+      }
+
+      // Tạo message mới
+      const messageData = {
+        ...createMessageDto,
+        sender_id: user._id,
+        sent_at: new Date(),
+        is_read: MessageStatus.SENT,
+      };
+
+      const savedMessage = await this.messageModel.create(messageData);
+
+      // Populate thông tin đầy đủ
+      const populatedMessage = await this.messageModel
+        .findById(savedMessage._id)
+        .populate('sender_id', 'username email name avatar_url')
+        .populate('receiver_id', 'username email name avatar_url')
+        .populate('reactions.user_id', 'username email name avatar_url')
+        .populate(
+          'reply_to_message_id',
+          'content sender_id receiver_id sent_at',
+        )
+        .populate({
+          path: 'reply_to_message_id',
+          populate: {
+            path: 'sender_id',
+            select: 'username email name avatar_url',
+          },
+        })
+        .exec();
+
+      // Emit realtime notification
+      try {
+        const messageId = extractMessageId(savedMessage);
+        if (messageId && populatedMessage) {
+          // Format message với đầy đủ thông tin reply và reactions
+          const formattedMessage =
+            this.formatReactionResponse(populatedMessage);
+
+          // Emit realtime đơn giản - CHỈ SỬ DỤNG new_message EVENT
+          // Emit đến người nhận
+          this.messagesGateway.emitNewMessage(
+            formattedMessage,
+            createMessageDto.receiver_id,
+          );
+
+          // Emit đến người gửi (sync across devices)
+          this.messagesGateway.emitNewMessage(formattedMessage, user._id);
+
+          // Update delivered status nếu user online
+          if (this.messagesGateway.isUserOnline(createMessageDto.receiver_id)) {
+            await this.update(
+              messageId,
+              { is_read: MessageStatus.DELIVERED },
+              user,
+            );
+          }
+
+          // Tự động gửi thông báo cho người nhận
+          try {
+            const sender = populatedMessage.sender_id as {
+              _id?: Types.ObjectId | string;
+              name?: string;
+              username?: string;
+              avatar_url?: string;
+            };
+            const senderName =
+              typeof sender?.name === 'string'
+                ? sender.name
+                : typeof sender?.username === 'string'
+                  ? sender.username
+                  : 'Someone';
+            const senderUserId = sender?._id ? sender._id.toString() : user._id;
+            const avatar_url =
+              typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
+            await this.notificationsService.createAndSend({
+              user_id: createMessageDto.receiver_id,
+              recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
+              title: 'Bạn có tin nhắn mới',
+              message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
+              type: NotificationType.MESSAGE,
+              sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
+              sender_user_id: senderUserId,
+              avatar_url,
+            });
+          } catch (notificationError) {
+            console.error(
+              'Failed to send message notification:',
+              notificationError,
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Failed to emit realtime message:', error);
+      }
+
+      return populatedMessage || savedMessage;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Không thể tạo tin nhắn');
+    }
   }
 
   /**
@@ -849,7 +846,10 @@ export class MessagesService {
    * Xóa reaction với messageId
    */
   async removeReaction(messageId: string, user: JwtPayload): Promise<unknown> {
-    const removeReactionDto: RemoveReactionDto = { message_id: messageId };
+    const removeReactionDto: RemoveReactionDto = {
+      message_id: messageId,
+      type: undefined,
+    };
     const message = await this.removeReactionInternal(removeReactionDto, user);
     return this.formatReactionResponse(message);
   }

@@ -8,6 +8,7 @@ import {
   Types,
 } from 'mongoose';
 import { Review } from './schemas/review.schema';
+import { Listing } from '../listing/schemas/listing.schema';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 
@@ -15,6 +16,7 @@ import { UpdateReviewDto } from './dto/update-review.dto';
 export class ReviewsRepo {
   constructor(
     @InjectModel(Review.name) private readonly reviewModel: Model<Review>,
+    @InjectModel(Listing.name) private readonly listingModel: Model<Listing>,
   ) {}
 
   /**
@@ -27,6 +29,7 @@ export class ReviewsRepo {
     const data = {
       ...createReviewDto,
       user_id: new Types.ObjectId(userId),
+      property_id: new Types.ObjectId(createReviewDto.property_id),
       room_id: new Types.ObjectId(createReviewDto.room_id),
     };
 
@@ -155,7 +158,10 @@ export class ReviewsRepo {
     return await this.reviewModel
       .findByIdAndUpdate(id, updateData, { new: true })
       .populate([
-        { path: 'user_id', select: 'name avatar email' },
+        {
+          path: 'user_id',
+          select: 'name avatar_url email phone role is_verified customRoles',
+        },
         { path: 'room_id', select: 'title images address' },
       ])
       .exec();
@@ -279,5 +285,24 @@ export class ReviewsRepo {
         (averageRating[0] as { avgRating: number })?.avgRating || 0,
       ratingDistribution: distributionMap,
     };
+  }
+
+  /**
+   * Tìm reviews theo danh sách room IDs
+   */
+  async findByRoomIds(
+    roomIds: Types.ObjectId[],
+    options: {
+      sort?: Record<string, SortOrder>;
+      limit?: number;
+      skip?: number;
+      populate?: PopulateOptions | Array<PopulateOptions>;
+    } = {},
+  ): Promise<{ data: Review[]; total: number }> {
+    const filter: FilterQuery<Review> = {
+      room_id: { $in: roomIds },
+    };
+
+    return await this.findAll(filter, options);
   }
 }
