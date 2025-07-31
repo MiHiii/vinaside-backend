@@ -101,49 +101,50 @@ interface PropertyBookingStats {
   average: number;
 }
 
-interface VoucherStats {
+// Aggregation result interfaces for type safety
+interface VoucherAggregation {
   totalVouchers: number;
   activeVouchers: number;
   usedVouchers: number;
   totalVoucherDiscount: number;
 }
 
-interface ServiceStats {
+interface ServiceAggregation {
   totalServices: number;
   activeServices: number;
 }
 
-interface MessageStats {
+interface MessageAggregation {
   totalMessages: number;
   total: number;
   totalReactions: number;
 }
 
-interface WishlistStats {
+interface WishlistAggregation {
   totalWishlists: number;
   totalWishlistItems: number;
 }
 
-interface CustomerData {
+interface CustomerAggregation {
   totalCustomers: number;
   newCustomers: number;
 }
 
-interface EngagementData {
+interface EngagementAggregation {
   averageNightsPerBooking: number;
   averageGuestsPerBooking: number;
   customersUsingVouchers: number;
   customersUsingServices: number;
 }
 
-interface ReviewData {
+interface ReviewAggregation {
   total: number;
   average: number;
   positiveReviews: number;
   negativeReviews: number;
 }
 
-interface BookingDayStats {
+interface BookingDayAggregation {
   _id: {
     year: number;
     month: number;
@@ -153,7 +154,7 @@ interface BookingDayStats {
   revenue: number;
 }
 
-interface BookingWeekStats {
+interface BookingWeekAggregation {
   _id: {
     year: number;
     week: number;
@@ -162,7 +163,7 @@ interface BookingWeekStats {
   revenue: number;
 }
 
-interface BookingMonthStats {
+interface BookingMonthAggregation {
   _id: {
     year: number;
     month: number;
@@ -171,7 +172,7 @@ interface BookingMonthStats {
   revenue: number;
 }
 
-interface UserGrowthStats {
+interface UserGrowthAggregation {
   _id: {
     year: number;
     month: number;
@@ -179,7 +180,7 @@ interface UserGrowthStats {
   newUsers: number;
 }
 
-interface PropertyGrowthStats {
+interface PropertyGrowthAggregation {
   _id: {
     year: number;
     month: number;
@@ -187,7 +188,7 @@ interface PropertyGrowthStats {
   newProperties: number;
 }
 
-interface ReviewTrendStats {
+interface ReviewTrendAggregation {
   _id: {
     year: number;
     month: number;
@@ -196,25 +197,30 @@ interface ReviewTrendStats {
   averageRating: number;
 }
 
-interface BookingPatternData {
+interface BookingPatternAggregation {
   averageAdvanceBookingDays: number;
   averageStayDuration: number;
 }
 
-interface VoucherPerformanceData {
+interface VoucherPerformanceAggregation {
   voucherUsageRate: number;
   averageVoucherDiscount: number;
 }
 
-interface ServicePerformanceData {
+interface ServicePerformanceAggregation {
   averageServicesPerBooking: number;
 }
 
-interface AggregationResult {
-  _id: string | null;
-  total?: number;
-  average?: number;
-  returningCustomers?: number;
+interface TotalAggregation {
+  total: number;
+}
+
+interface AverageAggregation {
+  average: number;
+}
+
+interface ReturningCustomersAggregation {
+  returningCustomers: number;
 }
 
 @Injectable()
@@ -294,7 +300,7 @@ export class DashboardService {
       : {};
 
     // User statistics
-    const userStats = await this.userModel.aggregate([
+    const userStats: UserRoleCount[] = await this.userModel.aggregate([
       {
         $group: {
           _id: '$role',
@@ -322,14 +328,15 @@ export class DashboardService {
     );
 
     // Property statistics
-    const propertyStats = await this.propertyModel.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
+    const propertyStats: PropertyStatusCount[] =
+      await this.propertyModel.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
     const propertiesByStatus = {
       active: 0,
@@ -351,15 +358,16 @@ export class DashboardService {
     );
 
     // Listing statistics
-    const listingStats = await this.listingModel.aggregate([
-      { $match: propertyFilter },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
+    const listingStats: ListingStatusCount[] =
+      await this.listingModel.aggregate([
+        { $match: propertyFilter },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
     const listingsByStatus = {
       active: 0,
@@ -380,15 +388,16 @@ export class DashboardService {
     );
 
     // Booking statistics
-    const bookingStats = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
+    const bookingStats: BookingStatusCount[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
     const bookingsByStatus = {
       pending: 0,
@@ -411,7 +420,7 @@ export class DashboardService {
     );
 
     // Review statistics
-    const reviewStats = await this.reviewModel.aggregate([
+    const reviewStats: RatingDistribution[] = await this.reviewModel.aggregate([
       {
         $group: {
           _id: '$rating',
@@ -431,25 +440,26 @@ export class DashboardService {
     );
 
     // Voucher statistics
-    const voucherStats = await this.voucherModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalVouchers: { $sum: 1 },
-          activeVouchers: {
-            $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
-          },
-          usedVouchers: {
-            $sum: { $cond: [{ $gt: ['$uses_count', 0] }, 1, 0] },
-          },
-          totalVoucherDiscount: {
-            $sum: { $multiply: ['$discount_percent', 0.01] },
+    const voucherStats: VoucherAggregation[] =
+      await this.voucherModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalVouchers: { $sum: 1 },
+            activeVouchers: {
+              $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
+            },
+            usedVouchers: {
+              $sum: { $cond: [{ $gt: ['$uses_count', 0] }, 1, 0] },
+            },
+            totalVoucherDiscount: {
+              $sum: { $multiply: ['$discount_percent', 0.01] },
+            },
           },
         },
-      },
-    ]);
+      ]);
 
-    const voucherData = voucherStats[0] || {
+    const voucherData: VoucherAggregation = voucherStats[0] || {
       totalVouchers: 0,
       activeVouchers: 0,
       usedVouchers: 0,
@@ -457,53 +467,56 @@ export class DashboardService {
     };
 
     // Service statistics
-    const serviceStats = await this.serviceModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalServices: { $sum: 1 },
-          activeServices: {
-            $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
+    const serviceStats: ServiceAggregation[] =
+      await this.serviceModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalServices: { $sum: 1 },
+            activeServices: {
+              $sum: { $cond: [{ $eq: ['$is_active', true] }, 1, 0] },
+            },
           },
         },
-      },
-    ]);
+      ]);
 
-    const serviceData = serviceStats[0] || {
+    const serviceData: ServiceAggregation = serviceStats[0] || {
       totalServices: 0,
       activeServices: 0,
     };
 
     // Message statistics
-    const messageStats = await this.messageModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalMessages: { $sum: 1 },
-          total: { $sum: 1 },
-          totalReactions: { $sum: 1 },
+    const messageStats: MessageAggregation[] =
+      await this.messageModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalMessages: { $sum: 1 },
+            total: { $sum: 1 },
+            totalReactions: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
-    const messageData = messageStats[0] || {
+    const messageData: MessageAggregation = messageStats[0] || {
       totalMessages: 0,
       total: 0,
       totalReactions: 0,
     };
 
     // Wishlist statistics
-    const wishlistStats = await this.wishlistModel.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalWishlists: { $sum: 1 },
-          totalWishlistItems: { $sum: 1 },
+    const wishlistStats: WishlistAggregation[] =
+      await this.wishlistModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalWishlists: { $sum: 1 },
+            totalWishlistItems: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ]);
 
-    const wishlistData = wishlistStats[0] || {
+    const wishlistData: WishlistAggregation = wishlistStats[0] || {
       totalWishlists: 0,
       totalWishlistItems: 0,
     };
@@ -563,7 +576,7 @@ export class DashboardService {
       : {};
 
     // Revenue by month
-    const revenueByMonth = await this.bookingModel.aggregate([
+    const revenueByMonth: RevenueByMonth[] = await this.bookingModel.aggregate([
       { $match: { ...dateFilter, ...propertyFilter } },
       {
         $group: {
@@ -595,28 +608,29 @@ export class DashboardService {
     }));
 
     // Top performing properties
-    const topPropertiesByRevenue = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $lookup: {
-          from: 'properties',
-          localField: 'propertyId',
-          foreignField: '_id',
-          as: 'propertyInfo',
+    const topPropertiesByRevenue: TopPropertyRevenue[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'propertyId',
+            foreignField: '_id',
+            as: 'propertyInfo',
+          },
         },
-      },
-      { $unwind: '$propertyInfo' },
-      {
-        $group: {
-          _id: '$propertyId',
-          propertyName: { $first: '$propertyInfo.name' },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
+        { $unwind: '$propertyInfo' },
+        {
+          $group: {
+            _id: '$propertyId',
+            propertyName: { $first: '$propertyInfo.name' },
+            revenue: { $sum: '$final_amount' },
+            bookings: { $sum: 1 },
+          },
         },
-      },
-      { $sort: { revenue: -1 } },
-      { $limit: 10 },
-    ]);
+        { $sort: { revenue: -1 } },
+        { $limit: 10 },
+      ]);
 
     const formattedTopProperties: Array<{
       propertyId: string;
@@ -684,24 +698,26 @@ export class DashboardService {
       : {};
 
     // Customer counts
-    const customerStats = await this.userModel.aggregate([
-      { $match: { ...dateFilter, role: 'guest' } },
-      {
-        $group: {
-          _id: null,
-          totalCustomers: { $sum: 1 },
-          newCustomers: { $sum: 1 },
+    const customerStats: CustomerAggregation[] = await this.userModel.aggregate(
+      [
+        { $match: { ...dateFilter, role: 'guest' } },
+        {
+          $group: {
+            _id: null,
+            totalCustomers: { $sum: 1 },
+            newCustomers: { $sum: 1 },
+          },
         },
-      },
-    ]);
+      ],
+    );
 
-    const customerData = customerStats[0] || {
+    const customerData: CustomerAggregation = customerStats[0] || {
       totalCustomers: 0,
       newCustomers: 0,
     };
 
     // Top customers
-    const topCustomers = await this.bookingModel.aggregate([
+    const topCustomers: CustomerStats[] = await this.bookingModel.aggregate([
       { $match: { ...dateFilter, ...propertyFilter } },
       {
         $lookup: {
@@ -737,24 +753,25 @@ export class DashboardService {
     }));
 
     // Customer engagement metrics
-    const engagementStats = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: null,
-          averageNightsPerBooking: { $avg: '$nights' },
-          averageGuestsPerBooking: { $avg: '$guests' },
-          customersUsingVouchers: {
-            $sum: { $cond: [{ $gt: ['$voucher_discount_amount', 0] }, 1, 0] },
-          },
-          customersUsingServices: {
-            $sum: { $cond: [{ $gt: ['$services_total_amount', 0] }, 1, 0] },
+    const engagementStats: EngagementAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: null,
+            averageNightsPerBooking: { $avg: '$nights' },
+            averageGuestsPerBooking: { $avg: '$guests' },
+            customersUsingVouchers: {
+              $sum: { $cond: [{ $gt: ['$voucher_discount_amount', 0] }, 1, 0] },
+            },
+            customersUsingServices: {
+              $sum: { $cond: [{ $gt: ['$services_total_amount', 0] }, 1, 0] },
+            },
           },
         },
-      },
-    ]);
+      ]);
 
-    const engagementData = engagementStats[0] || {
+    const engagementData: EngagementAggregation = engagementStats[0] || {
       averageNightsPerBooking: 0,
       averageGuestsPerBooking: 0,
       customersUsingVouchers: 0,
@@ -762,7 +779,7 @@ export class DashboardService {
     };
 
     // Customer satisfaction
-    const reviewStats = await this.reviewModel.aggregate([
+    const reviewStats: ReviewAggregation[] = await this.reviewModel.aggregate([
       { $match: { ...dateFilter, ...propertyFilter } },
       {
         $group: {
@@ -779,7 +796,7 @@ export class DashboardService {
       },
     ]);
 
-    const reviewData = reviewStats[0] || {
+    const reviewData: ReviewAggregation = reviewStats[0] || {
       total: 0,
       average: 0,
       positiveReviews: 0,
@@ -816,27 +833,28 @@ export class DashboardService {
       : {};
 
     // Bookings by day
-    const bookingsByDay = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
-            day: { $dayOfMonth: '$created_at' },
+    const bookingsByDay: BookingDayAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+              day: { $dayOfMonth: '$created_at' },
+            },
+            bookings: { $sum: 1 },
+            revenue: { $sum: '$final_amount' },
           },
-          bookings: { $sum: 1 },
-          revenue: { $sum: '$final_amount' },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]);
 
     const formattedBookingsByDay: Array<{
       date: string;
       bookings: number;
       revenue: number;
-    }> = bookingsByDay.map((item) => ({
+    }> = bookingsByDay.map((item: BookingDayAggregation) => ({
       date: `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(
         item._id.day,
       ).padStart(2, '0')}`,
@@ -845,128 +863,133 @@ export class DashboardService {
     }));
 
     // Bookings by week
-    const bookingsByWeek = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            week: { $week: '$created_at' },
+    const bookingsByWeek: BookingWeekAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              week: { $week: '$created_at' },
+            },
+            bookings: { $sum: 1 },
+            revenue: { $sum: '$final_amount' },
           },
-          bookings: { $sum: 1 },
-          revenue: { $sum: '$final_amount' },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.week': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.week': 1 } },
+      ]);
 
     const formattedBookingsByWeek: Array<{
       week: string;
       bookings: number;
       revenue: number;
-    }> = bookingsByWeek.map((item) => ({
+    }> = bookingsByWeek.map((item: BookingWeekAggregation) => ({
       week: `${item._id.year}-W${String(item._id.week).padStart(2, '0')}`,
       bookings: item.bookings,
       revenue: item.revenue,
     }));
 
     // Bookings by month
-    const bookingsByMonth = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const bookingsByMonth: BookingMonthAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            bookings: { $sum: 1 },
+            revenue: { $sum: '$final_amount' },
           },
-          bookings: { $sum: 1 },
-          revenue: { $sum: '$final_amount' },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
 
     const formattedBookingsByMonth: Array<{
       month: string;
       bookings: number;
       revenue: number;
-    }> = bookingsByMonth.map((item) => ({
+    }> = bookingsByMonth.map((item: BookingMonthAggregation) => ({
       month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
       bookings: item.bookings,
       revenue: item.revenue,
     }));
 
     // User growth
-    const newUsersByMonth = await this.userModel.aggregate([
-      { $match: { ...dateFilter, role: 'guest' } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const newUsersByMonth: UserGrowthAggregation[] =
+      await this.userModel.aggregate([
+        { $match: { ...dateFilter, role: 'guest' } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            newUsers: { $sum: 1 },
           },
-          newUsers: { $sum: 1 },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
 
     const formattedNewUsersByMonth: Array<{
       month: string;
       newUsers: number;
       totalUsers: number;
-    }> = newUsersByMonth.map((item) => ({
+    }> = newUsersByMonth.map((item: UserGrowthAggregation) => ({
       month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
       newUsers: item.newUsers,
       totalUsers: 0, // Will be calculated
     }));
 
     // Property growth
-    const newPropertiesByMonth = await this.propertyModel.aggregate([
-      { $match: dateFilter },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const newPropertiesByMonth: PropertyGrowthAggregation[] =
+      await this.propertyModel.aggregate([
+        { $match: dateFilter },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            newProperties: { $sum: 1 },
           },
-          newProperties: { $sum: 1 },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
 
     const formattedNewPropertiesByMonth: Array<{
       month: string;
       newProperties: number;
       totalProperties: number;
-    }> = newPropertiesByMonth.map((item) => ({
+    }> = newPropertiesByMonth.map((item: PropertyGrowthAggregation) => ({
       month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
       newProperties: item.newProperties,
       totalProperties: 0, // Will be calculated
     }));
 
     // Review trends
-    const reviewsByMonth = await this.reviewModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$created_at' },
-            month: { $month: '$created_at' },
+    const reviewsByMonth: ReviewTrendAggregation[] =
+      await this.reviewModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$created_at' },
+              month: { $month: '$created_at' },
+            },
+            reviews: { $sum: 1 },
+            averageRating: { $avg: '$rating' },
           },
-          reviews: { $sum: 1 },
-          averageRating: { $avg: '$rating' },
         },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+      ]);
 
     const formattedReviewsByMonth: Array<{
       month: string;
       reviews: number;
       averageRating: number;
-    }> = reviewsByMonth.map((item) => ({
+    }> = reviewsByMonth.map((item: ReviewTrendAggregation) => ({
       month: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
       reviews: item.reviews,
       averageRating: item.averageRating,
@@ -991,7 +1014,7 @@ export class DashboardService {
       : {};
 
     // Occupancy rates
-    const occupancyStats = await this.bookingModel.aggregate([
+    const occupancyStats: BookingStats[] = await this.bookingModel.aggregate([
       { $match: { ...dateFilter, ...propertyFilter } },
       {
         $group: {
@@ -1011,26 +1034,27 @@ export class DashboardService {
         : 0;
 
     // Occupancy by property
-    const occupancyByProperty = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $lookup: {
-          from: 'properties',
-          localField: 'propertyId',
-          foreignField: '_id',
-          as: 'propertyInfo',
+    const occupancyByProperty: PropertyBookingStats[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'propertyId',
+            foreignField: '_id',
+            as: 'propertyInfo',
+          },
         },
-      },
-      { $unwind: '$propertyInfo' },
-      {
-        $group: {
-          _id: '$propertyId',
-          propertyName: { $first: '$propertyInfo.name' },
-          totalNights: { $sum: '$nights' },
-          average: { $avg: '$nights' },
+        { $unwind: '$propertyInfo' },
+        {
+          $group: {
+            _id: '$propertyId',
+            propertyName: { $first: '$propertyInfo.name' },
+            totalNights: { $sum: '$nights' },
+            average: { $avg: '$nights' },
+          },
         },
-      },
-    ]);
+      ]);
 
     const formattedOccupancyByProperty: Array<{
       propertyId: string;
@@ -1043,50 +1067,53 @@ export class DashboardService {
     }));
 
     // Booking patterns
-    const bookingPatterns = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: null,
-          averageAdvanceBookingDays: {
-            $avg: {
-              $divide: [
-                { $subtract: ['$checkInDate', '$created_at'] },
-                1000 * 60 * 60 * 24,
-              ],
+    const bookingPatterns: BookingPatternAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: null,
+            averageAdvanceBookingDays: {
+              $avg: {
+                $divide: [
+                  { $subtract: ['$checkInDate', '$created_at'] },
+                  1000 * 60 * 60 * 24,
+                ],
+              },
             },
+            averageStayDuration: { $avg: '$nights' },
           },
-          averageStayDuration: { $avg: '$nights' },
         },
-      },
-    ]);
+      ]);
 
-    const patternData = bookingPatterns[0] || {
+    const patternData: BookingPatternAggregation = bookingPatterns[0] || {
       averageAdvanceBookingDays: 0,
       averageStayDuration: 0,
     };
 
     // Voucher performance
-    const voucherPerformance = await this.voucherModel.aggregate([
-      { $match: dateFilter },
-      {
-        $group: {
-          _id: null,
-          voucherUsageRate: {
-            $avg: { $divide: ['$uses_count', '$max_uses'] },
+    const voucherPerformance: VoucherPerformanceAggregation[] =
+      await this.voucherModel.aggregate([
+        { $match: dateFilter },
+        {
+          $group: {
+            _id: null,
+            voucherUsageRate: {
+              $avg: { $divide: ['$uses_count', '$max_uses'] },
+            },
+            averageVoucherDiscount: { $avg: '$discount_percent' },
           },
-          averageVoucherDiscount: { $avg: '$discount_percent' },
         },
-      },
-    ]);
+      ]);
 
-    const voucherData = voucherPerformance[0] || {
-      voucherUsageRate: 0,
-      averageVoucherDiscount: 0,
-    };
+    const voucherData: VoucherPerformanceAggregation =
+      voucherPerformance[0] || {
+        voucherUsageRate: 0,
+        averageVoucherDiscount: 0,
+      };
 
     // Top vouchers
-    const topVouchers = await this.voucherModel.aggregate([
+    const topVouchers: VoucherUsage[] = await this.voucherModel.aggregate([
       { $match: dateFilter },
       {
         $group: {
@@ -1113,22 +1140,26 @@ export class DashboardService {
     }));
 
     // Service performance - calculate from booking data instead
-    const servicePerformance = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      {
-        $group: {
-          _id: null,
-          averageServicesPerBooking: { $avg: { $size: '$selected_services' } },
+    const servicePerformance: ServicePerformanceAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        {
+          $group: {
+            _id: null,
+            averageServicesPerBooking: {
+              $avg: { $size: '$selected_services' },
+            },
+          },
         },
-      },
-    ]);
+      ]);
 
-    const serviceData = servicePerformance[0] || {
-      averageServicesPerBooking: 0,
-    };
+    const serviceData: ServicePerformanceAggregation =
+      servicePerformance[0] || {
+        averageServicesPerBooking: 0,
+      };
 
     // Top services - calculate from booking data instead
-    const topServices = await this.bookingModel.aggregate([
+    const topServices: ServiceUsage[] = await this.bookingModel.aggregate([
       { $match: { ...dateFilter, ...propertyFilter } },
       { $unwind: '$selected_services' },
       {
@@ -1210,7 +1241,7 @@ export class DashboardService {
   private async calculateTotalRevenue(
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
+    const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: propertyFilter },
       { $group: { _id: null, total: { $sum: '$final_amount' } } },
     ]);
@@ -1220,7 +1251,7 @@ export class DashboardService {
   private async calculateAveragePricePerNight(
     propertyFilter: FilterQuery<Listing>,
   ): Promise<number> {
-    const result = await this.listingModel.aggregate([
+    const result: AverageAggregation[] = await this.listingModel.aggregate([
       { $match: { ...propertyFilter, status: 'active' } },
       { $group: { _id: null, average: { $avg: '$price_per_night' } } },
     ]);
@@ -1239,7 +1270,7 @@ export class DashboardService {
   private async calculateAverageRating(
     propertyFilter: FilterQuery<Review>,
   ): Promise<number> {
-    const result = await this.reviewModel.aggregate([
+    const result: AverageAggregation[] = await this.reviewModel.aggregate([
       { $match: propertyFilter },
       { $group: { _id: null, average: { $avg: '$rating' } } },
     ]);
@@ -1249,7 +1280,7 @@ export class DashboardService {
   private async calculateTotalServicesRevenue(
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
+    const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: propertyFilter },
       { $group: { _id: null, total: { $sum: '$services_total_amount' } } },
     ]);
@@ -1269,19 +1300,20 @@ export class DashboardService {
     dateFilter: DateFilter,
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyFilter } },
-      { $group: { _id: '$customer', bookingCount: { $sum: 1 } } },
-      { $match: { bookingCount: { $gt: 1 } } },
-      { $count: 'returningCustomers' },
-    ]);
+    const result: ReturningCustomersAggregation[] =
+      await this.bookingModel.aggregate([
+        { $match: { ...dateFilter, ...propertyFilter } },
+        { $group: { _id: '$customer', bookingCount: { $sum: 1 } } },
+        { $match: { bookingCount: { $gt: 1 } } },
+        { $count: 'returningCustomers' },
+      ]);
     return result[0]?.returningCustomers || 0;
   }
 
   private async calculateTotalServiceFees(
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
+    const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: propertyFilter },
       { $group: { _id: null, total: { $sum: '$service_fee' } } },
     ]);
@@ -1291,7 +1323,7 @@ export class DashboardService {
   private async calculateTotalTaxAmount(
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
+    const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: propertyFilter },
       { $group: { _id: null, total: { $sum: '$tax_amount' } } },
     ]);
@@ -1301,7 +1333,7 @@ export class DashboardService {
   private async calculateTotalRefunds(
     propertyFilter: FilterQuery<Booking>,
   ): Promise<number> {
-    const result = await this.bookingModel.aggregate([
+    const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: { ...propertyFilter, status: 'cancelled' } },
       { $group: { _id: null, total: { $sum: '$refund_amount' } } },
     ]);
