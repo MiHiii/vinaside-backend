@@ -8,6 +8,7 @@ import {
 
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
+import { SearchWishlistDto } from './dto/search-wishlist.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { WishlistRepo } from './wishlist.repo';
 
@@ -94,6 +95,31 @@ export class WishlistService {
     }
   }
 
+  /**
+   * Tìm kiếm wishlist với nhiều tiêu chí
+   */
+  async searchWishlists(user: JwtPayload, searchDto: SearchWishlistDto) {
+    try {
+      const result = await this.wishlistRepo.searchWishlists(
+        searchDto,
+        user._id,
+      );
+
+      return {
+        success: true,
+        data: result.data,
+        meta: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: Math.ceil(result.total / result.limit) || 1,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'tìm kiếm wishlist');
+    }
+  }
+
   // =========================== ADMIN API METHODS ===========================
 
   /**
@@ -115,6 +141,28 @@ export class WishlistService {
       };
     } catch (error) {
       this.handleError(error, 'lấy danh sách wishlist (admin)');
+    }
+  }
+
+  /**
+   * Admin tìm kiếm wishlist với nhiều tiêu chí
+   */
+  async searchWishlistsForAdmin(searchDto: SearchWishlistDto) {
+    try {
+      const result = await this.wishlistRepo.searchWishlists(searchDto);
+
+      return {
+        success: true,
+        data: result.data,
+        meta: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: Math.ceil(result.total / result.limit) || 1,
+        },
+      };
+    } catch (error) {
+      this.handleError(error, 'tìm kiếm wishlist (admin)');
     }
   }
 

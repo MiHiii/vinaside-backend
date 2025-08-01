@@ -23,7 +23,7 @@ export class ReviewsRepo {
    * Tạo review mới
    */
   async create(
-    createReviewDto: CreateReviewDto,
+    createReviewDto: CreateReviewDto & { property_id?: string },
     userId: string,
   ): Promise<Review> {
     const data = {

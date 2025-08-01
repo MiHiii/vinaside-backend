@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 export interface IReview {
   _id?: Types.ObjectId;
   user_id: Types.ObjectId;
+  property_id: Types.ObjectId;
   room_id: Types.ObjectId;
   rating: number;
   comment: string;
@@ -18,6 +19,7 @@ export interface IReviewStatistics {
 
 export interface IReviewFilters {
   user_id?: string;
+  property_id?: string;
   room_id?: string;
   rating?: number;
   keyword?: string;

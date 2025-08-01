@@ -29,6 +29,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { Roles } from 'src/decorators/roles.decorator';
+import { ParseMongoIdPipe } from '../../pipes/parse-mongo-id.pipe';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -76,7 +77,7 @@ export class ReviewsController {
   @ApiResponse({ status: 200, description: 'Danh sách đánh giá của phòng' })
   @ResponseMessage('Lấy danh sách đánh giá của phòng thành công')
   findRoomReviews(
-    @Param('roomId') roomId: string,
+    @Param('roomId', ParseMongoIdPipe) roomId: string,
     @Query() queryDto: QueryReviewDto,
   ) {
     return this.reviewsService.findRoomReviews(roomId, queryDto);
@@ -87,7 +88,7 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Lấy chi tiết đánh giá' })
   @ApiResponse({ status: 200, description: 'Chi tiết đánh giá' })
   @ResponseMessage('Lấy chi tiết đánh giá thành công')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseMongoIdPipe) id: string) {
     return this.reviewsService.findOne(id);
   }
 
@@ -133,7 +134,7 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Xóa đánh giá vi phạm' })
   @ApiResponse({ status: 204, description: 'Đánh giá được xóa thành công' })
   @ResponseMessage('Xóa đánh giá thành công')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseMongoIdPipe) id: string) {
     return this.reviewsService.remove(id);
   }
 }
