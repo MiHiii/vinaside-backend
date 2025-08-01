@@ -131,11 +131,10 @@ export class ChatbotGateway {
       });
       await client.join(`chatbot_${data.userId}`);
       return { success: true, message: 'Joined chatbot room successfully' };
-    } catch (error: unknown) {
-      this.logger.error(
-        'Error joining room:',
-        error instanceof Error ? error.message : String(error),
-      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error('Error joining room:', errorMessage);
       return { success: false, message: 'Failed to join room' };
     }
   }
@@ -172,13 +171,10 @@ export class ChatbotGateway {
       });
 
       client.emit('receive_message', { message: response });
-    } catch (error: unknown) {
-      this.logger.error(
-        'Error handling message:',
-        error instanceof Error
-          ? error.stack || error.message
-          : JSON.stringify(error),
-      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger.error('Error handling message:', errorMessage);
       client.emit('receive_message', {
         message: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau nhé!',
       });
