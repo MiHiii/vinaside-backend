@@ -182,13 +182,29 @@ export class RbacService {
       throw new Error('Role or Permission not found');
     }
 
+    // Kiểm tra xem có assignment nào đã tồn tại (kể cả đã bị soft delete)
     const existingAssignment = await this.customRolePermissionModel.findOne({
       customRoleId: role._id,
       permissionId: permission._id,
-      $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }],
     });
 
-    if (!existingAssignment) {
+    if (existingAssignment) {
+      // Nếu assignment đã tồn tại và chưa bị soft delete, không làm gì
+      if (!existingAssignment.isDeleted) {
+        return; // Assignment đã tồn tại và active
+      }
+
+      // Nếu assignment đã bị soft delete, restore nó
+      await this.customRolePermissionModel.updateOne(
+        { _id: existingAssignment._id },
+        {
+          isDeleted: false,
+          deletedAt: undefined,
+          updatedAt: new Date(),
+        },
+      );
+    } else {
+      // Tạo assignment mới
       await this.customRolePermissionModel.create({
         customRoleId: role._id,
         permissionId: permission._id,
