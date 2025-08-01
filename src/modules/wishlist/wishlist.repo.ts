@@ -613,7 +613,8 @@ export class WishlistRepo {
       this.wishlistModel.aggregate(countPipeline),
     ]);
 
-    const total = totalResult.length > 0 ? (totalResult[0] as { total: number }).total : 0;
+    const total =
+      totalResult.length > 0 ? (totalResult[0] as { total: number }).total : 0;
 
     return { data: data as Wishlist[], total, page, limit };
   }

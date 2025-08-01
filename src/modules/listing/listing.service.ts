@@ -573,10 +573,14 @@ export class ListingService {
       const sortedListings = roomIds
         .map((roomId) => {
           const listing = listings.data.find(
-            (l) => (l._id as Types.ObjectId).toString() === roomId.toString(),
+            (l) =>
+              (l._id as Types.ObjectId).toString() ===
+              (roomId as Types.ObjectId).toString(),
           );
           const wishlistData = wishlistCounts.find(
-            (w) => (w._id as Types.ObjectId).toString() === roomId.toString(),
+            (w) =>
+              (w._id as Types.ObjectId).toString() ===
+              (roomId as Types.ObjectId).toString(),
           );
           return listing
             ? {
