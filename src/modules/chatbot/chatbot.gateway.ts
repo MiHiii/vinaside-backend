@@ -120,18 +120,18 @@ export class ChatbotGateway {
   }
 
   @SubscribeMessage('join_room')
-  handleJoinRoom(
+  async handleJoinRoom(
     @MessageBody() data: { userId: string },
     @ConnectedSocket() client: Socket,
-  ): { success: boolean; message: string } {
+  ): Promise<{ success: boolean; message: string }> {
     try {
       this.connectedUsers.set(data.userId, {
         userId: data.userId,
         socketId: client.id,
       });
-      client.join(`chatbot_${data.userId}`);
+      await client.join(`chatbot_${data.userId}`);
       return { success: true, message: 'Joined chatbot room successfully' };
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Error joining room:', error);
       return { success: false, message: 'Failed to join room' };
     }
@@ -169,7 +169,7 @@ export class ChatbotGateway {
       });
 
       client.emit('receive_message', { message: response });
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Error handling message:', error);
       client.emit('receive_message', {
         message: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau nhé!',
