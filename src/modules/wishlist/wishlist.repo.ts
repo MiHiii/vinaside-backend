@@ -512,7 +512,7 @@ export class WishlistRepo {
 
     // Lọc theo khoảng giá
     if (minPrice !== undefined || maxPrice !== undefined) {
-      const priceFilter: any = {};
+      const priceFilter: Record<string, number> = {};
       if (minPrice !== undefined) priceFilter.$gte = minPrice;
       if (maxPrice !== undefined) priceFilter.$lte = maxPrice;
       searchConditions.push({ 'room.price_per_night': priceFilter });
@@ -520,7 +520,7 @@ export class WishlistRepo {
 
     // Lọc theo số khách
     if (minGuests !== undefined || maxGuests !== undefined) {
-      const guestsFilter: any = {};
+      const guestsFilter: Record<string, number> = {};
       if (minGuests !== undefined) guestsFilter.$gte = minGuests;
       if (maxGuests !== undefined) guestsFilter.$lte = maxGuests;
       searchConditions.push({ 'room.max_guests': guestsFilter });
@@ -528,7 +528,7 @@ export class WishlistRepo {
 
     // Lọc theo rating
     if (minRating !== undefined || maxRating !== undefined) {
-      const ratingFilter: any = {};
+      const ratingFilter: Record<string, number> = {};
       if (minRating !== undefined) ratingFilter.$gte = minRating;
       if (maxRating !== undefined) ratingFilter.$lte = maxRating;
       searchConditions.push({ 'room.average_rating': ratingFilter });
@@ -613,9 +613,9 @@ export class WishlistRepo {
       this.wishlistModel.aggregate(countPipeline),
     ]);
 
-    const total = totalResult.length > 0 ? totalResult[0].total : 0;
+    const total = totalResult.length > 0 ? (totalResult[0] as { total: number }).total : 0;
 
-    return { data, total, page, limit };
+    return { data: data as Wishlist[], total, page, limit };
   }
 
   /**
