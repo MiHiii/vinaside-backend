@@ -29,7 +29,7 @@ export class InternalDataController {
   @Get()
   @Public()
   async getData() {
-    const listings = await this.listingModel.find();
+    const listings = await this.listingModel.find().populate('propertyId');
     const properties = await this.propertyModel.find();
     const bookings = await this.bookingModel.find();
     const vouchers = await this.voucherModel.find();

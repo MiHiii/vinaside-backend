@@ -889,13 +889,15 @@ export class BookingService {
   /**
    * Lấy tất cả bookings của staff hiện tại (tất cả bookings của properties mà staff được gán)
    */
-  async findMyBookingsAsStaff(user: JwtPayload, queryDto: QueryBookingDto) {
+  async findMyBookingsAsStaff(
+    user: JwtPayload,
+    queryDto: QueryBookingDto,
+    request?: any,
+  ) {
     if (!user || !user._id) {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
     }
 
-    // Filtering sẽ được tự động áp dụng thông qua controller decorator
-    // Admin vẫn có quyền xem tất cả
     const {
       page = 1,
       limit = 10,
@@ -913,6 +915,29 @@ export class BookingService {
     // Thêm các bộ lọc khác
     if (filters.status) baseQuery.status = filters.status;
     if (filters.paymentStatus) baseQuery.payment_status = filters.paymentStatus;
+
+    // Áp dụng staff filter nếu là staff user
+    if (user.role === 'staff' && request?.staffPropertyIds) {
+      if (request.staffPropertyIds.length === 0) {
+        // Staff không được assign property nào, trả về empty result
+        return {
+          bookings: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+
+      // Filter theo properties được assign
+      baseQuery.propertyId = {
+        $in: request.staffPropertyIds.map(
+          (id: string) => new Types.ObjectId(id),
+        ),
+      };
+    }
 
     const skip = (page - 1) * limit;
     const sort = parseSortString(`${sortBy}:${sortOrder}`);
