@@ -88,39 +88,56 @@ export class VNPayService extends PaymentServiceInterface {
     }
 
     // Kiểm tra trạng thái booking
-    if (booking.payment_status === PaymentStatus.PAID) {
-      throw new BadRequestException('Booking này đã được thanh toán');
-    }
-
     if (booking.payment_status === PaymentStatus.REFUNDED) {
       throw new BadRequestException('Booking này đã được hoàn tiền');
     }
 
-    // Tính số tiền cần thanh toán dựa vào paymentType
-    let amountToPay = booking.final_amount;
-    const roomTotal = booking.price_per_night * booking.nights;
-    const servicesAmount = booking.services_total_amount || 0;
-    const subtotalAmount = roomTotal + servicesAmount;
+    // Kiểm tra PAID và PARTIALLY_PAID status - chỉ cho phép thanh toán nếu có outstanding amount
+    if (
+      booking.payment_status === PaymentStatus.PAID ||
+      booking.payment_status === PaymentStatus.PARTIALLY_PAID
+    ) {
+      const depositPaidAmount = booking.deposit_paid_amount || 0;
+      const outstandingAmount = booking.final_amount - depositPaidAmount;
 
-    // Tính discount từ voucher
-    const voucherDiscount = booking.voucher_discount_percent
-      ? Math.round((subtotalAmount * booking.voucher_discount_percent) / 100)
-      : 0;
-    const amountAfterDiscount = subtotalAmount - voucherDiscount;
+      if (outstandingAmount <= 0) {
+        throw new BadRequestException('Booking này đã được thanh toán');
+      }
+    }
 
-    // Tính phí và thuế dựa trên amountAfterDiscount (sau khi trừ voucher) - nhất quán với booking.service.ts
-    const serviceFee = Math.round(amountAfterDiscount * 0.1);
-    const tax = Math.round(amountAfterDiscount * 0.08);
-    const baseTotal = amountAfterDiscount + serviceFee + tax;
+    // Tính số tiền cần thanh toán
+    let amountToPay: number;
 
-    if (paymentType === 'deposit') {
-      // Lần 1: 50% tổng tiền (giá phòng + dịch vụ + phí + thuế - voucher)
-      amountToPay = Math.round(baseTotal * 0.5);
-    } else if (paymentType === 'remaining') {
-      // Lần 2: 50% còn lại
-      amountToPay = Math.round(baseTotal * 0.5);
-      if (amountToPay <= 0) {
-        throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+    if (request.amount && request.amount > 0) {
+      // Sử dụng số tiền được chỉ định (cho trường hợp thanh toán phần còn lại)
+      amountToPay = request.amount;
+    } else {
+      // Tính toán theo logic cũ cho trường hợp tạo booking mới
+      amountToPay = booking.final_amount;
+      const roomTotal = booking.price_per_night * booking.nights;
+      const servicesAmount = booking.services_total_amount || 0;
+      const subtotalAmount = roomTotal + servicesAmount;
+
+      // Tính discount từ voucher
+      const voucherDiscount = booking.voucher_discount_percent
+        ? Math.round((subtotalAmount * booking.voucher_discount_percent) / 100)
+        : 0;
+      const amountAfterDiscount = subtotalAmount - voucherDiscount;
+
+      // Tính phí và thuế dựa trên amountAfterDiscount (sau khi trừ voucher) - nhất quán với booking.service.ts
+      const serviceFee = Math.round(amountAfterDiscount * 0.1);
+      const tax = Math.round(amountAfterDiscount * 0.08);
+      const baseTotal = amountAfterDiscount + serviceFee + tax;
+
+      if (paymentType === 'deposit') {
+        // Lần 1: 50% tổng tiền (giá phòng + dịch vụ + phí + thuế - voucher)
+        amountToPay = Math.round(baseTotal * 0.5);
+      } else if (paymentType === 'remaining') {
+        // Lần 2: 50% còn lại
+        amountToPay = Math.round(baseTotal * 0.5);
+        if (amountToPay <= 0) {
+          throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+        }
       }
     }
     // Nếu cần, có thể cập nhật booking để bỏ dịch vụ/voucher ở đây
