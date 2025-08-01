@@ -249,6 +249,23 @@ export class BookingController {
     );
   }
 
+  @Patch('my-bookings/:id')
+  @Roles('guest')
+  @ApiOperation({ summary: 'Cập nhật booking của tôi (Guest)' })
+  @ApiResponse({ status: 200, description: 'Booking được cập nhật thành công' })
+  @ResponseMessage('Cập nhật booking thành công')
+  async updateMyBooking(
+    @Param('id') id: string,
+    @Body() updateBookingDto: UpdateBookingDto,
+    @Request() req: RequestWithUser,
+  ): Promise<any> {
+    return this.bookingService.update(
+      id,
+      updateBookingDto,
+      req.user as any as JwtPayload,
+    );
+  }
+
   @Patch('my-bookings/:id/cancel')
   @Roles('guest')
   @ApiOperation({ summary: 'Hủy booking của tôi (Guest)' })

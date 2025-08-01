@@ -17,7 +17,6 @@ import {
   PaymentStatus,
 } from './schemas/booking.schema';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import { parseSortString } from '../../utils/common.util';
@@ -117,15 +116,10 @@ export class BookingService {
       _id: booking._id ? booking._id.toString() : null,
       propertyId:
         booking.propertyId && typeof booking.propertyId === 'object'
-          ? {
-              _id: booking.propertyId._id?.toString?.() || '',
-              name: booking.propertyId.name,
-              address: booking.propertyId.address,
-              location: booking.propertyId.location,
-            }
+          ? booking.propertyId._id?.toString?.() || ''
           : booking.propertyId
             ? booking.propertyId.toString()
-            : null,
+            : '',
       listingId: booking.listingId
         ? typeof booking.listingId === 'object' && booking.listingId._id
           ? {
@@ -187,6 +181,9 @@ export class BookingService {
       updated_at: booking.updated_at,
       payment_id: booking.payment_id,
       vnpay_pay_date: booking.vnpay_pay_date,
+      deposit_paid_amount: booking.deposit_paid_amount,
+      outstanding_amount:
+        (booking.final_amount || 0) - (booking.deposit_paid_amount || 0),
     };
   }
 
@@ -541,19 +538,145 @@ export class BookingService {
    */
   async update(
     id: string,
-    updateBookingDto: UpdateBookingDto,
+    updateBookingDto: any, // mở rộng để nhận selected_services
     user: JwtPayload,
-  ): Promise<Booking> {
+  ): Promise<any> {
+    // 1. Lấy booking hiện tại
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking) throw new NotFoundException('Không tìm thấy booking.');
+
+    // 2. Check quyền
+    const isGuest = user.role === 'guest';
+    if (isGuest) {
+      if (booking.guestId.toString() !== user._id.toString()) {
+        throw new ForbiddenException(
+          'Bạn chỉ được sửa booking của chính mình.',
+        );
+      }
+      if (['cancelled', 'completed', 'rejected'].includes(booking.status)) {
+        throw new BadRequestException(
+          'Không thể sửa booking đã cancelled/completed/rejected.',
+        );
+      }
+    }
+    // Staff đã được check quyền ở controller
+
+    // 4. Nếu có selected_services mới
+    if (updateBookingDto.selected_services) {
+      // Chuyển đổi từ BookingServiceDto sang format cần thiết
+      const processedServices: any[] = [];
+      let totalServicesAmount = 0;
+
+      for (const serviceDto of updateBookingDto.selected_services) {
+        // Lấy thông tin service từ database
+        const service = await this.servicesService.findOne(
+          serviceDto.serviceId,
+        );
+        if (!service) {
+          throw new BadRequestException(
+            `Không tìm thấy dịch vụ với ID: ${serviceDto.serviceId}`,
+          );
+        }
+
+        console.log('Found service:', service);
+
+        const totalPrice = service.default_price * serviceDto.quantity;
+        totalServicesAmount += totalPrice;
+
+        processedServices.push({
+          service_id: new Types.ObjectId(serviceDto.serviceId),
+          service_name: service.name,
+          service_price: service.default_price,
+          quantity: serviceDto.quantity,
+          total_price: totalPrice,
+        });
+      }
+
+      console.log('Processed services:', processedServices);
+      console.log('Total services amount:', totalServicesAmount);
+
+      // a. Kiểm tra và validate dịch vụ cũ (nếu có)
+      const oldServices = booking.selected_services || [];
+      if (oldServices.length > 0) {
+        const oldMap = new Map<string, any>();
+        oldServices.forEach((s) => oldMap.set(s.service_id.toString(), s));
+
+        const newMap = new Map<string, any>();
+        processedServices.forEach((s) =>
+          newMap.set(s.service_id.toString(), s),
+        );
+
+        // Cho phép thay thế hoàn toàn danh sách dịch vụ
+        // Chỉ validate nếu có dịch vụ cũ trong danh sách mới
+        for (const oldId of oldMap.keys()) {
+          if (newMap.has(oldId)) {
+            // Nếu dịch vụ cũ vẫn có trong danh sách mới, không được giảm số lượng
+            if (newMap.get(oldId).quantity < oldMap.get(oldId).quantity) {
+              throw new BadRequestException(
+                'Không được giảm số lượng dịch vụ đã có.',
+              );
+            }
+          }
+        }
+      }
+
+      // b. Tính tổng tiền dịch vụ cũ và mới
+      const oldTotal = oldServices.reduce(
+        (sum, s) => sum + (s.total_price || 0),
+        0,
+      );
+
+      // Chỉ validate giảm tổng tiền nếu có dịch vụ cũ
+      if (oldServices.length > 0 && totalServicesAmount < oldTotal) {
+        throw new BadRequestException('Không được giảm tổng tiền dịch vụ.');
+      }
+
+      // c. Cộng phần chênh lệch vào final_amount
+      const diff = totalServicesAmount - oldTotal;
+      if (diff > 0) {
+        updateBookingDto.final_amount = booking.final_amount + diff;
+      } else {
+        updateBookingDto.final_amount = booking.final_amount;
+      }
+
+      // d. Cập nhật lại services_total_amount và selected_services
+      updateBookingDto.services_total_amount = totalServicesAmount;
+      updateBookingDto.selected_services = processedServices;
+
+      // e. Cập nhật payment_status nếu có thêm dịch vụ và booking đã PAID
+      if (diff > 0 && booking.payment_status === PaymentStatus.PAID) {
+        updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
+        console.log(
+          'Chuyển payment_status từ PAID sang PARTIALLY_PAID do thêm dịch vụ',
+        );
+      }
+
+      console.log('Final updateBookingDto:', updateBookingDto);
+    }
+
+    // Không động vào deposit_paid_amount
+    delete updateBookingDto.deposit_paid_amount;
+
+    console.log('About to update booking with:', updateBookingDto);
+
+    // 5. Update booking
     const updated = await this.bookingRepo.updateById(
       id,
       updateBookingDto,
       user._id,
     );
+
+    console.log('Updated booking result:', updated);
     if (!updated)
       throw new NotFoundException(
         'Không tìm thấy booking hoặc không thể cập nhật.',
       );
-    return updated;
+
+    // 6. Trả về booking + outstanding_amount
+    const result = this.transformBookingToResponse(updated);
+    result.outstanding_amount =
+      (result.final_amount || 0) - (updated.deposit_paid_amount || 0);
+    return result;
   }
 
   /**
@@ -566,7 +689,11 @@ export class BookingService {
 
     // Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
+    if ((booking.deposit_paid_amount || 0) > 0) {
+      booking.payment_status = PaymentStatus.REFUNDING;
+    } else {
+      booking.payment_status = PaymentStatus.UNPAID;
+    }
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Admin/staff cancelled';
 
@@ -861,7 +988,11 @@ export class BookingService {
 
     // 2. Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
-    booking.payment_status = PaymentStatus.PENDING; // Chờ hoàn tiền
+    if ((booking.deposit_paid_amount || 0) > 0) {
+      booking.payment_status = PaymentStatus.REFUNDING;
+    } else {
+      booking.payment_status = PaymentStatus.UNPAID;
+    }
     booking.cancelled_at = new Date();
     booking.cancellation_reason = 'Public user cancelled';
 
@@ -2258,20 +2389,35 @@ export class BookingService {
     }
 
     // ✅ Kiểm tra trạng thái thanh toán hiện tại
+    // Cho phép thanh toán phần còn lại khi:
+    // 1. Đã đặt cọc và chưa thanh toán đủ (UNPAID)
+    // 2. Đã thanh toán đủ nhưng có thêm dịch vụ (PAID với outstandingAmount > 0)
+    const depositPaidAmount =
+      booking.deposit_paid_amount || booking.deposit_amount || 0;
+    const outstandingAmount = booking.final_amount - depositPaidAmount;
+
     if (
       !booking.deposit_paid ||
-      booking.payment_status !== PaymentStatus.PARTIALLY_PAID
+      (booking.payment_status !== PaymentStatus.UNPAID &&
+        booking.payment_status !== PaymentStatus.PAID &&
+        booking.payment_status !== PaymentStatus.PARTIALLY_PAID)
     ) {
       throw new BadRequestException(
-        'Chỉ cho phép thanh toán phần còn lại khi đã đặt cọc và chưa thanh toán đủ',
+        'Chỉ cho phép thanh toán phần còn lại khi đã đặt cọc hoặc có thêm dịch vụ',
       );
     }
 
-    const depositPaidAmount =
-      booking.deposit_paid_amount || booking.deposit_amount || 0;
-    const remainingAmount = booking.final_amount - depositPaidAmount;
+    // Nếu đã PAID hoặc PARTIALLY_PAID, chỉ cho phép thanh toán nếu có outstandingAmount > 0
+    if (
+      (booking.payment_status === PaymentStatus.PAID ||
+        booking.payment_status === PaymentStatus.PARTIALLY_PAID) &&
+      outstandingAmount <= 0
+    ) {
+      throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+    }
 
-    if (remainingAmount <= 0) {
+    // Sử dụng outstandingAmount đã tính ở trên
+    if (outstandingAmount <= 0) {
       throw new BadRequestException('Không còn số tiền nào cần thanh toán');
     }
 
@@ -2282,7 +2428,7 @@ export class BookingService {
     const paymentRequest = {
       ...createPaymentDto,
       bookingId,
-      amount: remainingAmount,
+      amount: outstandingAmount,
       paymentType: 'remaining',
       description: `Thanh toán phần còn lại cho booking ${bookingId}`,
     };
