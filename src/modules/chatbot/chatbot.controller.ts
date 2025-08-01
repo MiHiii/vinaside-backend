@@ -129,7 +129,7 @@ export class ChatbotController {
         queryParams.page = Number(page);
       }
 
-      const result = await this.chatbotService.getChatHistory(
+      const result = await this.chatbotService.getConversation(
         req.user._id,
         queryParams,
       );

@@ -128,7 +128,7 @@ export class BookingController {
     @Query() queryDto: QueryBookingDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.findMyBookingsAsStaff(req.user, queryDto);
+    return this.bookingService.findMyBookingsAsStaff(req.user, queryDto, req);
   }
 
   @Get('guest/:guestId')
