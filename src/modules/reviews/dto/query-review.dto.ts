@@ -31,15 +31,15 @@ export class QueryReviewDto {
   sortOrder?: string = 'desc';
 
   @IsOptional()
-  @IsMongoId()
+  @IsMongoId({ message: 'user_id phải là ObjectId hợp lệ' })
   user_id?: string;
 
   @IsOptional()
-  @IsMongoId()
+  @IsMongoId({ message: 'property_id phải là ObjectId hợp lệ' })
   property_id?: string;
 
   @IsOptional()
-  @IsMongoId()
+  @IsMongoId({ message: 'room_id phải là ObjectId hợp lệ' })
   room_id?: string;
 
   @IsOptional()

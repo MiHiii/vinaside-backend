@@ -14,6 +14,7 @@ import {
 import { WishlistService } from './wishlist.service';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
+import { SearchWishlistDto } from './dto/search-wishlist.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
@@ -111,6 +112,25 @@ export class WishlistController {
   ) {
     return this.wishlistService.checkFavorite(roomId, req.user);
   }
+
+  /**
+   * [GET] /wishlists/search - Tìm kiếm wishlist với nhiều tiêu chí
+   * Chức năng: Tìm kiếm trong danh sách yêu thích của user với nhiều tiêu chí
+   * Query params: keyword, roomTitle, propertyName, address, userName, minPrice, maxPrice, minGuests, maxGuests, minRating, maxRating, etc.
+   * Response: Danh sách wishlist đã được filter theo tiêu chí tìm kiếm
+   * Note: Mặc định chỉ trả về dữ liệu chưa bị xóa mềm (isDelete=false)
+   */
+  @Get('search')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Tìm kiếm wishlist với nhiều tiêu chí' })
+  @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm wishlist' })
+  @ResponseMessage('Tìm kiếm wishlist thành công')
+  searchWishlists(
+    @Query() searchDto: SearchWishlistDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.wishlistService.searchWishlists(req.user, searchDto);
+  }
 }
 
 // =========================== ADMIN CONTROLLER ===========================
@@ -135,6 +155,23 @@ export class AdminWishlistController {
   @ResponseMessage('Lấy tất cả wishlist thành công')
   getAllWishlists(@Query() queryDto: AdminQueryWishlistDto) {
     return this.wishlistService.getAllForAdmin(queryDto);
+  }
+
+  /**
+   * [GET] /admin/wishlists/search - Tìm kiếm wishlist với nhiều tiêu chí (Admin only)
+   * Chức năng: Admin tìm kiếm trong tất cả wishlist với nhiều tiêu chí
+   * Query params: keyword, roomTitle, propertyName, address, userName, userEmail, minPrice, maxPrice, minGuests, maxGuests, minRating, maxRating, etc.
+   * Response: Danh sách wishlist đã được filter theo tiêu chí tìm kiếm
+   * Note: userName - Tìm theo tên người yêu thích (user)
+   * Note: Mặc định chỉ trả về dữ liệu chưa bị xóa mềm (isDelete=false)
+   */
+  @Get('search')
+  @RequirePermission('user.view')
+  @ApiOperation({ summary: 'Tìm kiếm wishlist với nhiều tiêu chí (Admin)' })
+  @ApiResponse({ status: 200, description: 'Kết quả tìm kiếm wishlist' })
+  @ResponseMessage('Tìm kiếm wishlist thành công')
+  searchWishlists(@Query() searchDto: SearchWishlistDto) {
+    return this.wishlistService.searchWishlistsForAdmin(searchDto);
   }
 
   /**

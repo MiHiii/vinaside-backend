@@ -12,6 +12,7 @@ import { Wishlist } from './schemas/wishlist.schema';
 import { Listing } from '../listing/schemas/listing.schema';
 import { QueryWishlistDto } from './dto/query-wishlist.dto';
 import { AdminQueryWishlistDto } from './dto/admin-query-wishlist.dto';
+import { SearchWishlistDto } from './dto/search-wishlist.dto';
 
 @Injectable()
 export class WishlistRepo {
@@ -110,7 +111,7 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
-      .populate({ path: 'property_id', select: 'name address' })
+      .populate({ path: 'property_id', select: 'name location' })
       .populate({
         path: 'room_id',
         select:
@@ -184,7 +185,7 @@ export class WishlistRepo {
       .skip(skip)
       .limit(limit)
       .populate({ path: 'user_id', select: 'name email avatar' })
-      .populate({ path: 'property_id', select: 'name address' })
+      .populate({ path: 'property_id', select: 'name location' })
       .populate({
         path: 'room_id',
         select:
@@ -233,6 +234,7 @@ export class WishlistRepo {
     return await this.wishlistModel
       .findByIdAndUpdate(id, { isDelete: false }, { new: true })
       .populate({ path: 'user_id', select: 'name email avatar' })
+      .populate({ path: 'property_id', select: 'name location' })
       .populate({
         path: 'room_id',
         select:
@@ -305,7 +307,7 @@ export class WishlistRepo {
           { isDelete: newIsDelete },
           { new: true },
         )
-        .populate({ path: 'property_id', select: 'name address' })
+        .populate({ path: 'property_id', select: 'name location' })
         .populate({
           path: 'room_id',
           select:
@@ -337,7 +339,7 @@ export class WishlistRepo {
       const savedWishlist = await newWishlist.save();
       const populatedWishlist = await this.wishlistModel
         .findById(savedWishlist._id)
-        .populate({ path: 'property_id', select: 'name address' })
+        .populate({ path: 'property_id', select: 'name location' })
         .populate({
           path: 'room_id',
           select:
@@ -349,6 +351,272 @@ export class WishlistRepo {
         data: populatedWishlist as Wishlist,
       };
     }
+  }
+
+  /**
+   * Tìm kiếm wishlist với nhiều tiêu chí
+   */
+  async searchWishlists(
+    searchDto: SearchWishlistDto,
+    userId?: string,
+  ): Promise<{ data: Wishlist[]; total: number; page: number; limit: number }> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      keyword,
+      roomTitle,
+      propertyName,
+      address,
+      userName,
+      userEmail,
+      minPrice,
+      maxPrice,
+      minGuests,
+      maxGuests,
+      minRating,
+      maxRating,
+      user_id,
+      property_id,
+      room_id,
+      from_date,
+      to_date,
+      isDelete,
+      includeDeleted = false,
+    } = searchDto;
+
+    // Tạo filter cơ bản
+    const filter: FilterQuery<Wishlist> = {};
+
+    // Nếu có userId từ auth, ưu tiên userId đó
+    if (userId) {
+      filter.user_id = new Types.ObjectId(userId);
+    } else if (user_id) {
+      filter.user_id = new Types.ObjectId(user_id);
+    }
+
+    if (property_id) {
+      filter.property_id = new Types.ObjectId(property_id);
+    }
+
+    if (room_id) {
+      filter.room_id = new Types.ObjectId(room_id);
+    }
+
+    // Mặc định chỉ lấy dữ liệu chưa bị xóa mềm
+    if (isDelete !== undefined) {
+      filter.isDelete = isDelete;
+    } else if (!includeDeleted) {
+      filter.isDelete = false;
+    }
+
+    // Lọc theo ngày
+    if (from_date || to_date) {
+      const dateFilter: { $gte?: Date; $lte?: Date } = {};
+      if (from_date) {
+        dateFilter.$gte = new Date(from_date);
+      }
+      if (to_date) {
+        dateFilter.$lte = new Date(to_date);
+      }
+      filter.created_at = dateFilter;
+    }
+
+    const skip = (page - 1) * limit;
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'asc' ? 1 : -1,
+    };
+
+    // Tạo pipeline aggregation để search
+    const pipeline: PipelineStage[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'property_id',
+          foreignField: '_id',
+          as: 'property',
+        },
+      },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'room_id',
+          foreignField: '_id',
+          as: 'room',
+        },
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$property', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$room', preserveNullAndEmptyArrays: true } },
+    ];
+
+    // Thêm điều kiện search
+    const searchConditions: any[] = [];
+
+    // Search theo keyword (tìm trong tên phòng, tên property, địa chỉ, tên user)
+    if (keyword) {
+      searchConditions.push({
+        $or: [
+          { 'room.title': { $regex: keyword, $options: 'i' } },
+          { 'property.name': { $regex: keyword, $options: 'i' } },
+          { 'property.location.address': { $regex: keyword, $options: 'i' } },
+          { 'user.name': { $regex: keyword, $options: 'i' } },
+        ],
+      });
+    }
+
+    // Search theo tên phòng
+    if (roomTitle) {
+      searchConditions.push({
+        'room.title': { $regex: roomTitle, $options: 'i' },
+      });
+    }
+
+    // Search theo tên property
+    if (propertyName) {
+      searchConditions.push({
+        'property.name': { $regex: propertyName, $options: 'i' },
+      });
+    }
+
+    // Search theo địa chỉ
+    if (address) {
+      searchConditions.push({
+        'property.location.address': { $regex: address, $options: 'i' },
+      });
+    }
+
+    // Search theo tên user
+    if (userName) {
+      searchConditions.push({
+        'user.name': { $regex: userName, $options: 'i' },
+      });
+    }
+
+    // Search theo email user
+    if (userEmail) {
+      searchConditions.push({
+        'user.email': { $regex: userEmail, $options: 'i' },
+      });
+    }
+
+    // Lọc theo khoảng giá
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      const priceFilter: Record<string, number> = {};
+      if (minPrice !== undefined) priceFilter.$gte = minPrice;
+      if (maxPrice !== undefined) priceFilter.$lte = maxPrice;
+      searchConditions.push({ 'room.price_per_night': priceFilter });
+    }
+
+    // Lọc theo số khách
+    if (minGuests !== undefined || maxGuests !== undefined) {
+      const guestsFilter: Record<string, number> = {};
+      if (minGuests !== undefined) guestsFilter.$gte = minGuests;
+      if (maxGuests !== undefined) guestsFilter.$lte = maxGuests;
+      searchConditions.push({ 'room.max_guests': guestsFilter });
+    }
+
+    // Lọc theo rating
+    if (minRating !== undefined || maxRating !== undefined) {
+      const ratingFilter: Record<string, number> = {};
+      if (minRating !== undefined) ratingFilter.$gte = minRating;
+      if (maxRating !== undefined) ratingFilter.$lte = maxRating;
+      searchConditions.push({ 'room.average_rating': ratingFilter });
+    }
+
+    // Thêm điều kiện search vào pipeline
+    if (searchConditions.length > 0) {
+      pipeline.push({ $match: { $and: searchConditions } });
+    }
+
+    // Thêm sort và pagination
+    pipeline.push(
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 1,
+          user_id: 1,
+          property_id: 1,
+          room_id: 1,
+          isDelete: 1,
+          created_at: 1,
+          updated_at: 1,
+          'user.name': 1,
+          'user.email': 1,
+          'user.avatar': 1,
+          'property.name': 1,
+          'property.location': 1,
+          'room.title': 1,
+          'room.images': 1,
+          'room.price_per_night': 1,
+          'room.guests': 1,
+          'room.max_guests': 1,
+          'room.average_rating': 1,
+          'room.reviews_count': 1,
+          'room.location': 1,
+        },
+      },
+    );
+
+    // Pipeline để đếm tổng số
+    const countPipeline: PipelineStage[] = [
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'property_id',
+          foreignField: '_id',
+          as: 'property',
+        },
+      },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'room_id',
+          foreignField: '_id',
+          as: 'room',
+        },
+      },
+      { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$property', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$room', preserveNullAndEmptyArrays: true } },
+    ];
+
+    if (searchConditions.length > 0) {
+      countPipeline.push({ $match: { $and: searchConditions } });
+    }
+
+    countPipeline.push({ $count: 'total' });
+
+    const [data, totalResult] = await Promise.all([
+      this.wishlistModel.aggregate(pipeline),
+      this.wishlistModel.aggregate(countPipeline),
+    ]);
+
+    const total =
+      totalResult.length > 0 ? (totalResult[0] as { total: number }).total : 0;
+
+    return { data: data as Wishlist[], total, page, limit };
   }
 
   /**

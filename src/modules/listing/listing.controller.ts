@@ -181,6 +181,32 @@ export class ListingController {
   }
 
   @Public()
+  @Get('top/rated')
+  @ApiOperation({ summary: 'Lấy top listings theo rating' })
+  @ApiResponse({
+    status: 200,
+    description: 'Top listings theo rating được trả về thành công.',
+  })
+  @ResponseMessage('Top rated listings fetched successfully')
+  getTopRatedListings(@Query('limit') limit?: string) {
+    const limitNumber = limit ? parseInt(limit, 10) : 10;
+    return this.listingService.getTopRatedListings(limitNumber);
+  }
+
+  @Public()
+  @Get('top/wishlist')
+  @ApiOperation({ summary: 'Lấy top listings theo số lượt yêu thích' })
+  @ApiResponse({
+    status: 200,
+    description: 'Top listings theo wishlist count được trả về thành công.',
+  })
+  @ResponseMessage('Top wishlist listings fetched successfully')
+  getTopWishlistListings(@Query('limit') limit?: string) {
+    const limitNumber = limit ? parseInt(limit, 10) : 10;
+    return this.listingService.getTopWishlistListings(limitNumber);
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Tìm listing theo ID' })
   @ResponseMessage('Listing fetched successfully')

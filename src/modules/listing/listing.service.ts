@@ -492,8 +492,6 @@ export class ListingService {
     const result = await this.listingRepo.findAll(
       {
         isDeleted: false,
-        status: ListingStatus.ACTIVE,
-        reviews_count: { $gte: 1 }, // Chỉ lấy những listing có ít nhất 1 review
       },
       {
         sort: { average_rating: -1, reviews_count: -1 },
@@ -512,8 +510,6 @@ export class ListingService {
     const result = await this.listingRepo.findAll(
       {
         isDeleted: false,
-        status: ListingStatus.ACTIVE,
-        viewCount: { $gte: 1 }, // Chỉ lấy những listing có ít nhất 1 lượt xem
       },
       {
         sort: { viewCount: -1 },
@@ -523,6 +519,84 @@ export class ListingService {
     );
 
     return result.data;
+  }
+
+  /**
+   * Lấy top listings theo số lượt yêu thích (wishlist count)
+   */
+  async getTopWishlistListings(limit: number = 10): Promise<any[]> {
+    try {
+      // Sử dụng aggregation để đếm số wishlist cho mỗi room
+      const wishlistCounts = await this.wishlistModel.aggregate([
+        {
+          $match: {
+            isDelete: false,
+          },
+        },
+        {
+          $group: {
+            _id: '$room_id',
+            wishlistCount: { $sum: 1 },
+          },
+        },
+        {
+          $sort: { wishlistCount: -1 },
+        },
+        {
+          $limit: limit,
+        },
+      ]);
+
+      if (wishlistCounts.length === 0) {
+        // Nếu không có wishlist nào, trả về top listings theo rating thay thế
+        this.logger.log(
+          'No wishlists found, returning top rated listings instead',
+        );
+        return this.getTopRatedListings(limit);
+      }
+
+      // Lấy danh sách room_id theo thứ tự wishlist count
+      const roomIds = wishlistCounts.map((item) => item._id);
+
+      // Lấy thông tin listings
+      const listings = await this.listingRepo.findAll(
+        {
+          _id: { $in: roomIds },
+          isDeleted: false,
+        },
+        {
+          populate: { path: 'propertyId', select: 'name type location' },
+        },
+      );
+
+      // Sắp xếp lại theo thứ tự wishlist count và thêm wishlistCount vào mỗi listing
+      const sortedListings = roomIds
+        .map((roomId) => {
+          const listing = listings.data.find(
+            (l) =>
+              (l._id as Types.ObjectId).toString() ===
+              (roomId as Types.ObjectId).toString(),
+          );
+          const wishlistData = wishlistCounts.find(
+            (w) =>
+              (w._id as Types.ObjectId).toString() ===
+              (roomId as Types.ObjectId).toString(),
+          );
+          return listing
+            ? {
+                ...listing.toObject(),
+                wishlistCount: wishlistData?.wishlistCount || 0,
+              }
+            : null;
+        })
+        .filter(Boolean);
+
+      return sortedListings;
+    } catch (error) {
+      this.logger.error('Error getting top wishlist listings:', error);
+      // Fallback to top rated listings if there's an error
+      return this.getTopRatedListings(limit);
+    }
   }
 
   /**

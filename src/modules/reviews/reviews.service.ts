@@ -187,25 +187,52 @@ export class ReviewsService {
     roomId: string,
   ): Promise<void> {
     try {
-      // Tìm booking của user cho phòng này với status COMPLETED
+      // Tìm booking của user cho phòng này với status CONFIRMED hoặc COMPLETED
       const bookings = await this.bookingService.findAll({
         guestId: userId,
         listingId: roomId,
-        status: BookingStatus.COMPLETED,
+        status: BookingStatus.CONFIRMED, // Cho phép đánh giá khi status CONFIRMED
         page: 1,
         limit: 1,
       });
 
       if (bookings.data.length === 0) {
-        throw new BadRequestException(
-          'Bạn chỉ có thể đánh giá phòng sau khi đã đặt phòng và checkout hoàn thành. Vui lòng đợi đến khi chuyến đi kết thúc.',
-        );
+        // Thử tìm với status COMPLETED nếu không tìm thấy CONFIRMED
+        const completedBookings = await this.bookingService.findAll({
+          guestId: userId,
+          listingId: roomId,
+          status: BookingStatus.COMPLETED,
+          page: 1,
+          limit: 1,
+        });
+
+        if (completedBookings.data.length === 0) {
+          throw new BadRequestException(
+            'Bạn chỉ có thể đánh giá phòng sau khi đã đặt phòng và được xác nhận. Vui lòng đợi đến khi booking được xác nhận.',
+          );
+        }
       }
 
-      // Kiểm tra xem booking đã hoàn thành chưa (checkout date đã qua)
-      const booking = bookings.data[0];
+      // Lấy booking (CONFIRMED hoặc COMPLETED)
+      const booking =
+        bookings.data[0] ||
+        (
+          await this.bookingService.findAll({
+            guestId: userId,
+            listingId: roomId,
+            status: BookingStatus.COMPLETED,
+            page: 1,
+            limit: 1,
+          })
+        ).data[0];
+
+      // Kiểm tra xem booking đã checkout chưa (checkout date đã qua)
       const checkoutDate = new Date(booking.check_out_date);
       const currentDate = new Date();
+
+      // Reset time để chỉ so sánh ngày
+      checkoutDate.setHours(0, 0, 0, 0);
+      currentDate.setHours(0, 0, 0, 0);
 
       if (checkoutDate > currentDate) {
         throw new BadRequestException(
@@ -235,7 +262,20 @@ export class ReviewsService {
     user: JwtPayload,
   ): Promise<Review> {
     try {
-      const review = await this.reviewsRepo.create(createReviewDto, user._id);
+      // Lấy property_id từ room_id
+      const listing = await this.listingModel
+        .findById(createReviewDto.room_id)
+        .select('propertyId');
+      if (!listing) {
+        throw new BadRequestException('Phòng không tồn tại');
+      }
+
+      const reviewData = {
+        ...createReviewDto,
+        property_id: listing.propertyId.toString(),
+      };
+
+      const review = await this.reviewsRepo.create(reviewData, user._id);
 
       // Populate thông tin sau khi tạo
       const populatedReview = await this.reviewsRepo.findById(
