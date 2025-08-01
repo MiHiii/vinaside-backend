@@ -175,7 +175,9 @@ export class ChatbotGateway {
     } catch (error: unknown) {
       this.logger.error(
         'Error handling message:',
-        error instanceof Error ? error.message : String(error),
+        error instanceof Error
+          ? error.stack || error.message
+          : JSON.stringify(error),
       );
       client.emit('receive_message', {
         message: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau nhé!',
