@@ -155,7 +155,7 @@ export class ChatbotGateway {
       let response: string;
 
       if (STATIC_RESPONSES[intent] && intent !== 'ask_cheapest_room') {
-        response = STATIC_RESPONSES[intent];
+        response = STATIC_RESPONSES[intent] as string;
       } else {
         response = await this.handleDynamicIntent(
           intent,
