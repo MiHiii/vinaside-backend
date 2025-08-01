@@ -141,7 +141,7 @@ export class ChatbotGateway {
   async handleSendMessage(
     @MessageBody() data: { userId: string; message: string },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<void> {
     try {
       await this.chatbotMessageModel.create({
         content: data.message,
@@ -149,16 +149,12 @@ export class ChatbotGateway {
       });
 
       const intent = detectIntent(data.message);
+      const internalData = await this.fetchInternalData();
       let response: string;
 
-      // Always fetch internal data for better context
-      const internalData = await this.fetchInternalData();
-
-      // Handle static responses first
       if (STATIC_RESPONSES[intent] && intent !== 'ask_cheapest_room') {
         response = STATIC_RESPONSES[intent];
       } else {
-        // Handle dynamic intents or unknown intents with AI
         response = await this.handleDynamicIntent(
           intent,
           data.message,
@@ -227,7 +223,7 @@ export class ChatbotGateway {
     const { listings, bookings, vouchers, services, reviews } = data;
     const now = new Date('2025-08-01T12:05:00+07:00');
 
-    const availableRooms = listings.filter((room) => {
+    const availableRooms: Listing[] = listings.filter((room) => {
       const roomBookings = bookings.filter(
         (b) =>
           b.listingId === room._id &&
@@ -242,7 +238,7 @@ export class ChatbotGateway {
     });
 
     switch (intent) {
-      case 'ask_price':
+      case 'ask_price': {
         if (!availableRooms.length)
           return 'Không có phòng trống để kiểm tra giá.';
         const prices = availableRooms.map((room) => {
@@ -255,8 +251,9 @@ export class ChatbotGateway {
           return `💸 ${room.title}: ${priceInfo}`;
         });
         return `📋 Giá các phòng trống:\n${prices.join('\n')}\n📌 Đặt ngay để tận hưởng kỳ nghỉ tại Đà Nẵng!`;
+      }
 
-      case 'check_availability':
+      case 'check_availability': {
         if (!availableRooms.length)
           return 'Hiện không có phòng trống. Hãy theo dõi Fanpage để nhận thông báo khi có phòng mới nhé!';
         return `✅ Hiện có ${availableRooms.length} phòng trống: ${availableRooms
@@ -264,38 +261,49 @@ export class ChatbotGateway {
           .join(
             ', ',
           )}\n👉 Đặt ngay để không bỏ lỡ cơ hội nghỉ dưỡng giá tốt tại Vinaside!`;
+      }
 
-      case 'ask_rooms_by_location':
+      case 'ask_rooms_by_location': {
         return this.handleRoomsByLocation(message, availableRooms, vouchers);
+      }
 
-      case 'ask_room_location':
+      case 'ask_room_location': {
         return this.handleRoomLocation(message, availableRooms, vouchers);
+      }
 
-      case 'ask_specific_room':
+      case 'ask_specific_room': {
         return this.handleSpecificRoom(message, listings, vouchers, reviews);
+      }
 
-      case 'ask_property_info':
+      case 'ask_property_info': {
         return this.handlePropertyInfo(message, availableRooms, vouchers);
+      }
 
-      case 'ask_room_amenities':
+      case 'ask_room_amenities': {
         return this.handleRoomAmenities(message, availableRooms, services);
+      }
 
-      case 'ask_booking_process':
+      case 'ask_booking_process': {
         return `📋 Quy trình đặt phòng tại Vinaside:\n\n1️⃣ Chọn phòng phù hợp với nhu cầu\n2️⃣ Kiểm tra lịch trống và đặt ngày\n3️⃣ Điền thông tin cá nhân\n4️⃣ Chọn phương thức thanh toán (Momo, VNPay, tiền mặt)\n5️⃣ Xác nhận đặt phòng\n6️⃣ Nhận email xác nhận\n\n⏰ Check-in: 14:00 | Check-out: 12:00\n📞 Liên hệ: 0909.123.456 để được hỗ trợ!`;
+      }
 
-      case 'ask_booking_steps':
+      case 'ask_booking_steps': {
         return `🚀 Các bước đặt phòng chi tiết:\n\n**Bước 1: Tìm kiếm** 🔍\n- Chọn địa điểm và ngày check-in/check-out\n- Lọc theo giá, tiện nghi, đánh giá\n\n**Bước 2: Chọn phòng** 🏠\n- Xem chi tiết phòng và hình ảnh\n- Kiểm tra chính sách hủy phòng\n\n**Bước 3: Đặt phòng** 📝\n- Điền thông tin cá nhân\n- Chọn phương thức thanh toán\n\n**Bước 4: Xác nhận** ✅\n- Nhận email xác nhận\n- Lưu mã đặt phòng\n\n**Bước 5: Check-in** 🎉\n- Đến đúng giờ nhận phòng\n- Xuất trình giấy tờ tùy thân\n\n📞 Cần hỗ trợ? Gọi ngay 0909.123.456!`;
+      }
 
-      case 'ask_vinaside_info':
+      case 'ask_vinaside_info': {
         return `🏖️ Vinaside - Nơi nghỉ dưỡng lý tưởng của bạn!\n\n**🎯 Chúng tôi cung cấp:**\n• Phòng nghỉ chất lượng cao với giá tốt nhất\n• Đa dạng loại phòng: Standard, Deluxe, Suite, Villa\n• Vị trí đắc địa gần biển, trung tâm thành phố\n• Tiện nghi hiện đại: WiFi, điều hòa, TV, bếp\n• Dịch vụ 24/7 và hỗ trợ tận tâm\n\n**📍 Địa điểm nổi bật:**\n• Đà Nẵng: Biển Mỹ Khê, Bán đảo Sơn Trà\n• Hội An: Phố cổ, Biển An Bàng\n• Ngũ Hành Sơn: Núi đá, Biển Non Nước\n\n**💎 Ưu đãi đặc biệt:**\n• Voucher giảm giá thường xuyên\n• Ưu đãi dài ngày\n• Gói combo du lịch\n\n**📞 Liên hệ:** 0909.123.456\n**🌐 Website:** www.vinaside.com\n\nHãy để Vinaside mang đến cho bạn kỳ nghỉ hoàn hảo! ✨`;
+      }
 
-      case 'ask_payment_methods':
+      case 'ask_payment_methods': {
         return `💳 Các phương thức thanh toán:\n\n• 💰 Tiền mặt khi nhận phòng\n• 📱 Momo (QR Code)\n• 🏦 VNPay (Chuyển khoản)\n• 💳 Thẻ tín dụng/ghi nợ\n• 🏧 ATM (Chuyển khoản)\n\n✅ Tất cả đều an toàn và được bảo mật!\n📞 Liên hệ để được hướng dẫn chi tiết!`;
+      }
 
-      case 'ask_checkin_checkout':
+      case 'ask_checkin_checkout': {
         return `⏰ Thời gian nhận và trả phòng:\n\n🕐 Check-in: 14:00 (2:00 PM)\n🕛 Check-out: 12:00 (12:00 PM)\n\n💡 Lưu ý:\n• Có thể check-in sớm nếu phòng trống\n• Có thể check-out muộn (tính phí)\n• Gửi hành lý miễn phí\n• Dịch vụ đưa đón sân bay (tính phí)\n\n📞 Liên hệ trước để sắp xếp!`;
+      }
 
-      case 'ask_room_capacity':
+      case 'ask_room_capacity': {
         if (!availableRooms.length) return 'Không có phòng trống để kiểm tra.';
         const capacityInfo = availableRooms.map((room) => {
           const maxGuests = room.max_guests || 2;
@@ -304,8 +312,9 @@ export class ChatbotGateway {
           return `🏠 ${room.title}: ${guestInfo}${room.allow_infants ? ` + ${room.max_infants || 0} trẻ em` : ''}`;
         });
         return `👥 Sức chứa các phòng trống:\n${capacityInfo.join('\n')}\n📞 Liên hệ để được tư vấn phòng phù hợp!`;
+      }
 
-      case 'ask_room_photos':
+      case 'ask_room_photos': {
         if (!availableRooms.length) return 'Không có phòng trống để xem ảnh.';
         const photoInfo = availableRooms.map((room) => {
           const imageCount = room.images?.length || 0;
@@ -313,11 +322,13 @@ export class ChatbotGateway {
           return `📸 ${room.title}: ${imageCount} ảnh\n🔗 [Xem ảnh](${mainImage})`;
         });
         return `📸 Ảnh các phòng trống:\n${photoInfo.join('\n\n')}\n👉 Đặt phòng ngay để trải nghiệm thực tế!`;
+      }
 
-      case 'ask_room_availability_calendar':
+      case 'ask_room_availability_calendar': {
         return `📅 Lịch trống phòng:\n\nHiện tại chúng tôi đang cập nhật hệ thống lịch trống trực tuyến.\n\n📞 Vui lòng liên hệ 0909.123.456 để:\n• Kiểm tra lịch trống cụ thể\n• Đặt phòng theo ngày mong muốn\n• Nhận thông báo khi có phòng trống\n\n⏰ Phục vụ 24/7!`;
+      }
 
-      case 'ask_room_details':
+      case 'ask_room_details': {
         const roomMatch = listings.find((item) =>
           message.toLowerCase().includes(item.title.toLowerCase()),
         );
@@ -332,10 +343,11 @@ export class ChatbotGateway {
           : 'Chưa có';
         const imageUrl = roomMatch.images?.[0] || 'Không có hình ảnh';
         return `🏠 **${roomMatch.title}**\n💰 Giá: ${roomMatch.price_per_night.toLocaleString('vi-VN')}đ/đêm\n📸 [Xem ảnh](${imageUrl})\n📝 Mô tả: ${roomMatch.description}\n⭐ Đánh giá: ${avgRating} sao (${roomReviews.length} đánh giá)\n👉 [Xem chi tiết](${`/room-detail/${roomMatch._id}`})`;
+      }
 
-      case 'ask_service':
+      case 'ask_service': {
         if (!services.length) return 'Không có dữ liệu dịch vụ.';
-        const uniqueServices = new Map();
+        const uniqueServices = new Map<string, Service>();
         availableRooms.forEach((room) => {
           room.service_ids?.forEach((serviceId) => {
             const service = services.find((s) => s._id === serviceId);
@@ -352,8 +364,9 @@ export class ChatbotGateway {
           .join(
             '\n',
           )}\n👉 Tận hưởng dịch vụ đẳng cấp và đặt phòng ngay hôm nay!`;
+      }
 
-      case 'ask_reviews':
+      case 'ask_reviews': {
         const roomForReview = listings.find((item) =>
           message.toLowerCase().includes(item.title.toLowerCase()),
         );
@@ -373,8 +386,9 @@ export class ChatbotGateway {
         ).toFixed(
           1,
         )} sao (${reviewsForRoom.length} đánh giá)\n👉 Đặt phòng ngay để tự mình khám phá!`;
+      }
 
-      case 'ask_family_room':
+      case 'ask_family_room': {
         const familyRooms = availableRooms.filter((r) => r.family_friendly);
         if (!familyRooms.length)
           return 'Hiện không có phòng phù hợp cho gia đình. Hãy thử các phòng khác hoặc liên hệ để được tư vấn!';
@@ -388,8 +402,9 @@ export class ChatbotGateway {
           .join(
             '\n',
           )}\n📸 [Xem ảnh](https://example.com/family-room.jpg)\n👉 Đặt ngay để có kỳ nghỉ vui vẻ cùng gia đình!`;
+      }
 
-      case 'ask_view_room':
+      case 'ask_view_room': {
         const seaViewRooms = availableRooms.filter(
           (r) => r.view_type === 'sea',
         );
@@ -405,8 +420,9 @@ export class ChatbotGateway {
               })`,
           )
           .join('\n')}\n👉 Đặt ngay để ngắm biển Đà Nẵng mỗi ngày!`;
+      }
 
-      case 'ask_pet_policy':
+      case 'ask_pet_policy': {
         const petFriendlyRooms = availableRooms.filter((r) => r.allow_pets);
         if (!petFriendlyRooms.length)
           return 'Hiện không có phòng cho phép mang thú cưng. Hãy liên hệ để được tư vấn thêm!';
@@ -420,8 +436,9 @@ export class ChatbotGateway {
           .join(
             '\n',
           )}\n📌 Vui lòng báo trước để chúng tôi chuẩn bị tốt nhất!\n👉 Đặt ngay!`;
+      }
 
-      case 'ask_long_stay_discount':
+      case 'ask_long_stay_discount': {
         const longStayVouchers = vouchers.filter(
           (v) => v.min_nights && v.is_active,
         );
@@ -439,8 +456,9 @@ export class ChatbotGateway {
               )})`,
           )
           .join('\n')}\n👉 Đặt ngay để tiết kiệm hơn!`;
+      }
 
-      case 'ask_event_discount':
+      case 'ask_event_discount': {
         const eventVouchers = vouchers.filter(
           (v) => v.event_name && v.is_active,
         );
@@ -456,8 +474,9 @@ export class ChatbotGateway {
               )}`,
           )
           .join('\n')}\n👉 Đặt ngay để tận hưởng kỳ nghỉ lễ tuyệt vời!`;
+      }
 
-      case 'ask_cancellation_policy':
+      case 'ask_cancellation_policy': {
         const roomForPolicy = listings.find((item) =>
           message.toLowerCase().includes(item.title.toLowerCase()),
         );
@@ -471,37 +490,35 @@ export class ChatbotGateway {
           roomForPolicy.cancellation_policy ||
           'Hủy trước 7 ngày: Hoàn 100%; trước 3 ngày: Hoàn 50%; sau 3 ngày: Không hoàn tiền.'
         }\n📌 Liên hệ để được hỗ trợ chi tiết!`;
+      }
 
-      default:
-        // Try to find room by name even if intent is unknown
+      default: {
         const roomByName = this.findRoomByName(message, listings);
         if (roomByName) {
           return this.generateRoomInfo(roomByName, vouchers, reviews);
         }
 
-        // Try to extract location from message
         const locationInfo = this.extractLocationInfo(message, availableRooms);
         if (locationInfo) {
           return locationInfo;
         }
 
-        // Use AI as fallback
         const prompt = this.chatbotService.buildPrompt(
           message,
           JSON.stringify({ listings, bookings, vouchers, services, reviews }),
         );
         return this.chatbotService.generateResponse(prompt);
+      }
     }
   }
 
-  private async handleRoomsByLocation(
+  private handleRoomsByLocation(
     message: string,
-    availableRooms: any[],
-    vouchers: any[],
-  ): Promise<string> {
+    availableRooms: Listing[],
+    vouchers: Voucher[],
+  ): string {
     const msg = message.toLowerCase();
 
-    // Extract location keywords
     const locationKeywords = [
       'đà nẵng',
       'hội an',
@@ -535,7 +552,6 @@ export class ChatbotGateway {
       return 'Vui lòng cho biết cụ thể địa điểm bạn muốn tìm phòng (ví dụ: Đà Nẵng, Hội An, Sơn Trà, v.v.)';
     }
 
-    // Filter rooms by location (using property information)
     const roomsInLocation = availableRooms.filter((room) => {
       if (!room.propertyId || typeof room.propertyId === 'string') {
         return false;
@@ -569,21 +585,20 @@ export class ChatbotGateway {
           priceInfo += ` (Giảm ${voucher.discount_percent}% với voucher ${voucher.code})`;
         }
 
-        return `🏠 **${room.title}**\n📍 ${property.location?.address || 'Địa chỉ đang cập nhật'}\n💰 ${priceInfo}\n📝 ${room.description || 'Mô tả đang cập nhật'}`;
+        return `🏠 **${room.title}**\n📍 ${property?.location?.address || 'Địa chỉ đang cập nhật'}\n💰 ${priceInfo}\n📝 ${room.description || 'Mô tả đang cập nhật'}`;
       })
       .join('\n\n');
 
     return `🏖️ Phòng trống tại ${matchedLocation}:\n\n${roomList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
   }
 
-  private async handlePropertyInfo(
+  private handlePropertyInfo(
     message: string,
-    availableRooms: any[],
-    vouchers: any[],
-  ): Promise<string> {
+    availableRooms: Listing[],
+    vouchers: Voucher[],
+  ): string {
     const msg = message.toLowerCase();
 
-    // Extract property type keywords
     const propertyTypes = [
       'khách sạn',
       'hotel',
@@ -599,8 +614,10 @@ export class ChatbotGateway {
       return 'Vui lòng cho biết loại chỗ nghỉ bạn quan tâm (khách sạn, resort, villa, apartment)';
     }
 
-    // Get unique properties from available rooms
-    const properties = new Map();
+    const properties = new Map<
+      string,
+      { property: Listing['propertyId']; rooms: Listing[] }
+    >();
     availableRooms.forEach((room) => {
       if (room.propertyId && typeof room.propertyId === 'object') {
         const property = room.propertyId;
@@ -610,7 +627,10 @@ export class ChatbotGateway {
             rooms: [],
           });
         }
-        properties.get(property._id).rooms.push(room);
+        const propertyData = properties.get(property._id);
+        if (propertyData) {
+          propertyData.rooms.push(room);
+        }
       }
     });
 
@@ -620,6 +640,8 @@ export class ChatbotGateway {
 
     const propertyList = Array.from(properties.values())
       .map(({ property, rooms }) => {
+        if (!property) return '';
+
         const avgPrice =
           rooms.reduce((sum, room) => sum + room.price_per_night, 0) /
           rooms.length;
@@ -636,19 +658,19 @@ export class ChatbotGateway {
 
         return `🏨 **${property.name}**\n📍 ${property.location?.address || 'Địa chỉ đang cập nhật'}\n💰 ${priceInfo}\n🏠 ${rooms.length} phòng trống\n📝 ${property.description || 'Mô tả đang cập nhật'}`;
       })
+      .filter(Boolean)
       .join('\n\n');
 
     return `🏖️ ${matchedType.charAt(0).toUpperCase() + matchedType.slice(1)} có sẵn:\n\n${propertyList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
   }
 
-  private async handleRoomAmenities(
+  private handleRoomAmenities(
     message: string,
-    availableRooms: any[],
-    services: any[],
-  ): Promise<string> {
+    availableRooms: Listing[],
+    services: Service[],
+  ): string {
     const msg = message.toLowerCase();
 
-    // Extract amenity keywords
     const amenityKeywords = [
       'wifi',
       'tủ lạnh',
@@ -678,12 +700,10 @@ export class ChatbotGateway {
       return 'Vui lòng cho biết tiện nghi cụ thể bạn quan tâm (WiFi, điều hòa, bếp, hồ bơi, v.v.)';
     }
 
-    // Find rooms with the specified amenity
     const roomsWithAmenity = availableRooms.filter((room) => {
-      // Check if room has the amenity through services
       if (room.service_ids && room.service_ids.length > 0) {
         const roomServices = services.filter((service) =>
-          room.service_ids.includes(service._id),
+          room.service_ids!.includes(service._id),
         );
         return roomServices.some(
           (service) =>
@@ -718,12 +738,12 @@ export class ChatbotGateway {
     return `🔧 Phòng có tiện nghi ${matchedAmenity}:\n\n${roomList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
   }
 
-  private async handleSpecificRoom(
+  private handleSpecificRoom(
     message: string,
-    listings: any[],
-    vouchers: any[],
-    reviews: any[],
-  ): Promise<string> {
+    listings: Listing[],
+    vouchers: Voucher[],
+    reviews: Review[],
+  ): string {
     const room = this.findRoomByName(message, listings);
     if (!room) {
       return 'Không tìm thấy phòng bạn yêu cầu. Vui lòng kiểm tra lại tên phòng hoặc liên hệ để được tư vấn!';
@@ -732,14 +752,13 @@ export class ChatbotGateway {
     return this.generateRoomInfo(room, vouchers, reviews);
   }
 
-  private async handleRoomLocation(
+  private handleRoomLocation(
     message: string,
-    availableRooms: any[],
-    vouchers: any[],
-  ): Promise<string> {
+    availableRooms: Listing[],
+    vouchers: Voucher[],
+  ): string {
     const msg = message.toLowerCase();
 
-    // Extract room name from message
     const roomNameMatch = msg.match(/(phòng|room)\s+([^ở\s]+(?:\s+[^ở\s]+)*)/i);
     if (!roomNameMatch) {
       return 'Vui lòng cho biết tên phòng cụ thể bạn muốn tìm (ví dụ: "Phòng Hoa Mộc Lan ở chỗ nào")';
@@ -747,7 +766,6 @@ export class ChatbotGateway {
 
     const roomName = roomNameMatch[2].trim();
 
-    // Find the specific room
     const targetRoom = availableRooms.find(
       (room) =>
         room.title.toLowerCase().includes(roomName.toLowerCase()) ||
@@ -758,7 +776,6 @@ export class ChatbotGateway {
       return `Không tìm thấy phòng "${roomName}" trong danh sách phòng trống. Vui lòng kiểm tra lại tên phòng hoặc liên hệ để được tư vấn!`;
     }
 
-    // Get property information
     const property = targetRoom.propertyId;
     if (!property || typeof property === 'string') {
       return `Phòng ${targetRoom.title} hiện không có thông tin địa chỉ. Vui lòng liên hệ để được tư vấn chi tiết!`;
@@ -776,10 +793,9 @@ export class ChatbotGateway {
     return `🏠 **${targetRoom.title}**\n\n📍 **Địa chỉ:** ${property.location?.address || 'Đang cập nhật'}\n🏨 **Property:** ${property.name}\n💰 **Giá:** ${priceInfo}\n📝 **Mô tả:** ${targetRoom.description || 'Đang cập nhật'}\n\n📞 **Liên hệ:** 0909.123.456 để đặt phòng ngay!`;
   }
 
-  private findRoomByName(message: string, listings: any[]): any | null {
+  private findRoomByName(message: string, listings: Listing[]): Listing | null {
     const msg = message.toLowerCase();
 
-    // Common room name patterns
     const roomPatterns = [
       /phòng\s+([^ở\s]+(?:\s+[^ở\s]+)*)/i,
       /room\s+([^ở\s]+(?:\s+[^ở\s]+)*)/i,
@@ -801,7 +817,6 @@ export class ChatbotGateway {
       }
     }
 
-    // Direct room name search
     for (const room of listings) {
       if (msg.includes(room.title.toLowerCase())) {
         return room;
@@ -811,7 +826,11 @@ export class ChatbotGateway {
     return null;
   }
 
-  private generateRoomInfo(room: any, vouchers: any[], reviews: any[]): string {
+  private generateRoomInfo(
+    room: Listing,
+    vouchers: Voucher[],
+    reviews: Review[],
+  ): string {
     const voucher = vouchers.find(
       (v) => room.voucher_ids?.includes(v._id) && v.is_active,
     );
@@ -839,11 +858,10 @@ export class ChatbotGateway {
 
   private extractLocationInfo(
     message: string,
-    availableRooms: any[],
+    availableRooms: Listing[],
   ): string | null {
     const msg = message.toLowerCase();
 
-    // Location keywords
     const locationKeywords = [
       'đà nẵng',
       'hội an',
@@ -874,7 +892,6 @@ export class ChatbotGateway {
     );
     if (!matchedLocation) return null;
 
-    // Filter rooms by location
     const roomsInLocation = availableRooms.filter((room) => {
       if (!room.propertyId || typeof room.propertyId === 'string') return false;
 
@@ -897,7 +914,7 @@ export class ChatbotGateway {
     const roomList = roomsInLocation
       .map((room) => {
         const property = room.propertyId;
-        return `🏠 **${room.title}**\n📍 ${property.location?.address || 'Địa chỉ đang cập nhật'}\n💰 ${room.price_per_night.toLocaleString('vi-VN')}đ/đêm`;
+        return `🏠 **${room.title}**\n📍 ${property?.location?.address || 'Địa chỉ đang cập nhật'}\n💰 ${room.price_per_night.toLocaleString('vi-VN')}đ/đêm`;
       })
       .join('\n\n');
 
