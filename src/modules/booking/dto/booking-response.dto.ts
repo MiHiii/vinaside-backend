@@ -8,7 +8,18 @@ export class BookingServiceResponseDto {
 
 export class BookingResponseDto {
   _id: string;
-  propertyId: string;
+  propertyId:
+    | string
+    | {
+        _id: string;
+        name: string;
+        location?: {
+          address?: string;
+          ward?: string;
+          district?: string;
+          city?: string;
+        };
+      };
   listingId: string;
   guestId: string;
   checkInDate: Date;
