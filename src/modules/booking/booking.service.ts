@@ -116,7 +116,11 @@ export class BookingService {
       _id: booking._id ? booking._id.toString() : null,
       propertyId:
         booking.propertyId && typeof booking.propertyId === 'object'
-          ? booking.propertyId._id?.toString?.() || ''
+          ? {
+              _id: booking.propertyId._id?.toString?.() || '',
+              name: booking.propertyId.name || '',
+              location: booking.propertyId.location || undefined,
+            }
           : booking.propertyId
             ? booking.propertyId.toString()
             : '',
@@ -516,7 +520,7 @@ export class BookingService {
   async findOne(id: string): Promise<BookingResponseDto> {
     const booking = await this.bookingRepo.findById(id, {
       populate: [
-        { path: 'propertyId', select: 'name address location' },
+        { path: 'propertyId', select: '_id name address location' },
         {
           path: 'listingId',
           select: 'title address images price_per_night cancel_policy',
@@ -778,7 +782,7 @@ export class BookingService {
       skip,
       limit,
       populate: [
-        { path: 'propertyId', select: 'name' },
+        { path: 'propertyId', select: '_id name location' },
         {
           path: 'listingId',
           select: 'title address images price_per_night cancel_policy',
@@ -952,7 +956,7 @@ export class BookingService {
           select: 'title address images price_per_night cancel_policy',
         },
         { path: 'guestId', select: 'name avatar email phone' },
-        { path: 'propertyId', select: 'name address' },
+        { path: 'propertyId', select: '_id name location' },
       ],
     });
 
