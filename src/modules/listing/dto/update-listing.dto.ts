@@ -1,20 +1,18 @@
 import {
+  IsString,
+  IsOptional,
+  IsNumber,
   IsArray,
   IsBoolean,
   IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsMongoId,
   Min,
-  ArrayMinSize,
-  IsNotEmpty,
+  Max,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CancelPolicy, ListingStatus } from '../schemas/listing.schema';
 
 export class UpdateListingDto {
   @IsString()
-  @IsNotEmpty()
   @IsOptional()
   title?: string;
 
@@ -24,23 +22,19 @@ export class UpdateListingDto {
 
   @IsArray()
   @IsString({ each: true })
-  @ArrayMinSize(1)
   @IsOptional()
   images?: string[];
 
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   price_per_night?: number;
 
   @IsNumber()
   @Min(1)
   @IsOptional()
-  guests?: number;
-
-  @IsNumber()
-  @Min(1)
-  @IsOptional()
+  @Type(() => Number)
   max_guests?: number;
 
   @IsBoolean()
@@ -50,56 +44,76 @@ export class UpdateListingDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
+  @Type(() => Number)
   max_infants?: number;
 
   @IsNumber()
   @Min(1)
   @IsOptional()
+  @Type(() => Number)
   beds?: number;
 
   @IsNumber()
-  @Min(0)
+  @Min(1)
   @IsOptional()
+  @Type(() => Number)
   bathrooms?: number;
 
   @IsArray()
-  @IsMongoId({ each: true })
+  @IsString({ each: true })
   @IsOptional()
   amenities?: string[];
 
   @IsArray()
-  @IsMongoId({ each: true })
+  @IsString({ each: true })
+  @IsOptional()
+  house_rules_selected?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   safety_features?: string[];
 
   @IsArray()
-  @IsMongoId({ each: true })
+  @IsString({ each: true })
   @IsOptional()
   service_ids?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  voucher_ids?: string[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  other_rules?: string[];
 
   @IsEnum(CancelPolicy)
   @IsOptional()
   cancel_policy?: CancelPolicy;
 
-  @IsEnum(ListingStatus)
+  @IsBoolean()
   @IsOptional()
-  status?: ListingStatus;
+  allow_pets?: boolean;
 
   @IsBoolean()
   @IsOptional()
   is_verified?: boolean;
 
-  @IsMongoId()
+  @IsEnum(ListingStatus)
   @IsOptional()
-  propertyId?: string;
+  status?: ListingStatus;
 
-  @IsArray()
-  @IsMongoId({ each: true })
+  // Weekend surcharge fields
+  @IsBoolean()
   @IsOptional()
-  house_rules_selected?: string[];
+  has_weekend_surcharge?: boolean;
 
-  @IsArray()
-  @IsMongoId({ each: true })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
   @IsOptional()
-  voucher_ids?: string[];
+  @Type(() => Number)
+  weekend_surcharge_percent?: number;
 }

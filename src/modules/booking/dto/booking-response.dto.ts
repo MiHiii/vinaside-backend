@@ -59,4 +59,21 @@ export class BookingResponseDto {
   vnpay_pay_date?: Date;
   outstanding_amount?: number;
   deposit_paid_amount?: number; // Thêm trường này
+
+  // Note and additional cost fields
+  note?: string;
+  additionalCost?: number;
+  additionalCostReason?: string;
+
+  // Cancellation details
+  cancellationDetails?: {
+    accountName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    cancellationReason?: string;
+    refundMethod?: string;
+    refundNote?: string;
+  };
+  cancellationDetailsUpdatedAt?: Date;
+  cancellationDetailsUpdatedBy?: string;
 }

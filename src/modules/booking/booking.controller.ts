@@ -17,6 +17,7 @@ import { PaymentFactory } from './services/payment.factory';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
+import { BookingResponseDto } from './dto/booking-response.dto';
 import {
   CreatePaymentDto,
   PaymentResponseDto,
@@ -47,6 +48,8 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { UpdateCancellationDetailsDto } from './dto/update-booking.dto';
+import { StaffCreateBookingDto } from './dto/staff-create-booking.dto';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -347,6 +350,32 @@ export class BookingController {
     return result;
   }
 
+  @Post(':propertyId/:id/payment/remaining/staff')
+  @RequirePermission('booking.update')
+  @ApiOperation({
+    summary: 'Nhân viên thanh toán số tiền còn lại cho guest',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thanh toán số tiền còn lại thành công',
+    type: PaymentResponseDto,
+  })
+  @ResponseMessage('Thanh toán số tiền còn lại thành công')
+  async createStaffRemainingPayment(
+    @Param('propertyId') propertyId: string,
+    @Param('id') bookingId: string,
+    @Body() createPaymentDto: CreatePaymentDto,
+    @Request() req: RequestWithUser,
+  ): Promise<PaymentResponseDto> {
+    createPaymentDto.bookingId = bookingId;
+    return await this.bookingService.createStaffRemainingPayment(
+      propertyId,
+      bookingId,
+      createPaymentDto,
+      req.user as any as JwtPayload,
+    );
+  }
+
   @Get('payment/supported-methods')
   @Public()
   @ApiOperation({ summary: 'Lấy danh sách phương thức thanh toán được hỗ trợ' })
@@ -371,48 +400,7 @@ export class BookingController {
   async getPaymentStatus(
     @Param('id') bookingId: string,
   ): Promise<PaymentStatusDto> {
-    // Get booking info first to determine payment method
-    const booking = await this.bookingService.findOne(bookingId);
-    const paymentMethod = booking.payment_method as PaymentMethod;
-
-    if (
-      !paymentMethod ||
-      !this.paymentFactory.isPaymentMethodSupported(paymentMethod)
-    ) {
-      return {
-        bookingId,
-        paymentStatus: booking.payment_status || 'pending',
-        amount: booking.final_amount || 0,
-      };
-    }
-
-    // Get detailed status from payment gateway
-    const paymentService = this.paymentFactory.getPaymentService(paymentMethod);
-    const orderId =
-      paymentMethod === PaymentMethod.VNPAY
-        ? booking.vnpay_order_id || `${bookingId}_unknown`
-        : booking.momo_order_id || `${bookingId}_unknown`;
-
-    try {
-      const result = await paymentService.getPaymentStatus(orderId);
-      return {
-        bookingId: result.bookingId,
-        paymentMethod: result.paymentMethod,
-        paymentStatus: booking.payment_status || 'pending',
-        amount: result.amount,
-        gatewayTransactionId: result.gatewayTransactionId,
-        paidAt: result.paidAt,
-        gatewayDetails: result.metadata,
-      };
-    } catch {
-      // Fallback to booking info if gateway fails
-      return {
-        bookingId,
-        paymentMethod,
-        paymentStatus: booking.payment_status || 'pending',
-        amount: booking.final_amount || 0,
-      };
-    }
+    return await this.bookingService.getPaymentStatus(bookingId);
   }
 
   // =================== STATISTICS ENDPOINTS ===================
@@ -506,5 +494,100 @@ export class BookingController {
       bookingId: result.bookingId,
       amount: result.amount,
     };
+  }
+
+  // =================== NOTE & ADDITIONAL COST ENDPOINTS ===================
+
+  @Patch(':propertyId/:id/note')
+  @RequirePermission('booking.update')
+  @ApiOperation({ summary: 'Cập nhật ghi chú cho booking' })
+  @ApiResponse({ status: 200, description: 'Ghi chú được cập nhật thành công' })
+  @ResponseMessage('Cập nhật ghi chú thành công')
+  async updateNote(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Body() body: { note: string },
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.updateNote(propertyId, id, body.note, req.user);
+  }
+
+  @Patch(':propertyId/:id/additional-cost')
+  @RequirePermission('booking.update')
+  @ApiOperation({ summary: 'Cập nhật chi phí phát sinh cho booking' })
+  @ApiResponse({
+    status: 200,
+    description: 'Chi phí phát sinh được cập nhật thành công',
+  })
+  @ResponseMessage('Cập nhật chi phí phát sinh thành công')
+  async updateAdditionalCost(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Body() body: { additionalCost: number; additionalCostReason?: string },
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.updateAdditionalCost(
+      propertyId,
+      id,
+      body.additionalCost,
+      body.additionalCostReason,
+      req.user,
+    );
+  }
+
+  // =================== CANCELLATION DETAILS ENDPOINTS ===================
+
+  @Patch(':propertyId/:id/cancellation-details')
+  @RequirePermission('booking.update')
+  @ApiOperation({ summary: 'Cập nhật thông tin chi tiết hủy phòng' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin hủy phòng được cập nhật thành công',
+  })
+  @ResponseMessage('Cập nhật thông tin hủy phòng thành công')
+  async updateCancellationDetails(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Body() cancellationDetails: UpdateCancellationDetailsDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.updateCancellationDetails(
+      propertyId,
+      id,
+      cancellationDetails,
+      req.user,
+    );
+  }
+
+  @Get(':propertyId/:id/cancellation-details')
+  @RequirePermission('booking.view')
+  @ApiOperation({ summary: 'Lấy thông tin chi tiết hủy phòng' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin hủy phòng được trả về thành công',
+  })
+  @ResponseMessage('Lấy thông tin hủy phòng thành công')
+  async getCancellationDetails(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+  ): Promise<any> {
+    return this.bookingService.getCancellationDetails(propertyId, id);
+  }
+
+  // =================== STAFF BOOKING ENDPOINTS ===================
+
+  @Post('staff/create')
+  @RequirePermission('booking.create')
+  @ApiOperation({ summary: 'Tạo booking cho nhân viên' })
+  @ApiResponse({ status: 201, description: 'Booking được tạo thành công' })
+  @ResponseMessage('Tạo booking thành công')
+  async createStaffBooking(
+    @Body() createBookingDto: StaffCreateBookingDto,
+    @Request() req: RequestWithUser,
+  ): Promise<BookingResponseDto> {
+    return await this.bookingService.createStaffBooking(
+      createBookingDto,
+      req.user,
+    );
   }
 }

@@ -1,0 +1,89 @@
+### Test Staff Remaining Payment
+
+### 1. Nhân viên thanh toán phần còn lại cho guest
+POST {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/payment/remaining/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return",
+  "cancelUrl": "https://example.com/payment/cancel"
+}
+
+### 2. Admin thanh toán phần còn lại cho guest
+POST {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/payment/remaining/staff
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "momo",
+  "returnUrl": "https://example.com/payment/return",
+  "cancelUrl": "https://example.com/payment/cancel"
+}
+
+### 3. Test validation - Không có quyền (guest)
+POST {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/payment/remaining/staff
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return"
+}
+
+### 4. Test validation - Staff không được assign cho property
+POST {{baseUrl}}/bookings/{{otherPropertyId}}/{{bookingId}}/payment/remaining/staff
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return"
+}
+
+### 5. Test validation - Booking không tồn tại
+POST {{baseUrl}}/bookings/{{propertyId}}/507f1f77bcf86cd799439011/payment/remaining/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return"
+}
+
+### 6. Test validation - Không còn tiền cần thanh toán
+POST {{baseUrl}}/bookings/{{propertyId}}/{{paidBookingId}}/payment/remaining/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return"
+}
+
+### 7. Test validation - Booking không ở trạng thái cho phép thanh toán
+POST {{baseUrl}}/bookings/{{propertyId}}/{{cancelledBookingId}}/payment/remaining/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "returnUrl": "https://example.com/payment/return"
+}
+
+### 8. Lấy thông tin booking để kiểm tra
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_staff_jwt_token_here
+# @adminToken = your_admin_jwt_token_here
+# @staffToken = your_staff_jwt_token_here
+# @guestToken = your_guest_jwt_token_here
+# @propertyId = your_property_id_here
+# @otherPropertyId = another_property_id_here
+# @bookingId = your_booking_id_here
+# @paidBookingId = fully_paid_booking_id_here
+# @cancelledBookingId = cancelled_booking_id_here 
