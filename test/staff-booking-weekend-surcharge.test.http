@@ -1,0 +1,129 @@
+### Test Staff Booking và Weekend Surcharge Features
+
+### 1. Tạo booking cho nhân viên (weekend surcharge tự động tính từ listing)
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{listingId}}",
+  "guestId": "{{guestId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0,
+  "guest_name": "Nguyễn Văn A",
+  "guest_email": "guest@example.com",
+  "guest_phone": "0123456789",
+  "specialRequests": "Yêu cầu dọn phòng sớm",
+  "note": "Khách hàng VIP",
+  "additionalCost": 50000,
+  "additionalCostReason": "Phí dọn dẹp thêm",
+  "status": "confirmed",
+  "payment_status": "unpaid",
+  "skip_availability_check": false,
+  "services": [
+    {
+      "serviceId": "{{serviceId}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### 2. Tạo booking với voucher (weekend surcharge tự động từ listing)
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{listingId}}",
+  "checkInDate": "2024-02-20",
+  "checkOutDate": "2024-02-22",
+  "guests": 3,
+  "infants": 1,
+  "guest_name": "Trần Thị B",
+  "guest_email": "guest2@example.com",
+  "guest_phone": "0987654321",
+  "voucherCode": "SUMMER2024",
+  "status": "pending",
+  "payment_status": "unpaid"
+}
+
+### 3. Cập nhật weekend surcharge cho listing
+PATCH {{baseUrl}}/listings/{{listingId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "has_weekend_surcharge": true,
+  "weekend_surcharge_percent": 20
+}
+
+### 4. Tạo booking với giá tùy chỉnh
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{listingId}}",
+  "checkInDate": "2024-02-25",
+  "checkOutDate": "2024-02-27",
+  "guests": 2,
+  "guest_name": "Lê Văn C",
+  "guest_email": "guest3@example.com",
+  "guest_phone": "0123456789",
+  "price_per_night": 800000,
+  "final_amount": 2000000,
+  "status": "confirmed",
+  "payment_status": "paid",
+  "skip_availability_check": true
+}
+
+### 5. Test validation - Không có quyền
+POST {{baseUrl}}/bookings/staff/create
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{listingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "guest_name": "Test User",
+  "guest_email": "test@example.com"
+}
+
+### 6. Test validation - Property không tồn tại
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "507f1f77bcf86cd799439011",
+  "listingId": "{{listingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "guest_name": "Test User",
+  "guest_email": "test@example.com"
+}
+
+### 7. Lấy booking với thông tin weekend surcharge (tự động tính)
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+
+### 8. Lấy listing với thông tin weekend surcharge
+GET {{baseUrl}}/listings/{{listingId}}
+Authorization: Bearer {{authToken}}
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_jwt_token_here
+# @propertyId = your_property_id_here
+# @listingId = your_listing_id_here
+# @bookingId = your_booking_id_here
+# @guestId = your_guest_id_here
+# @serviceId = your_service_id_here 

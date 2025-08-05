@@ -104,6 +104,23 @@ export class ListingService {
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${id} not found.`);
     }
+
+    // Chỉ cho phép khách hàng xem listing có trạng thái active
+    if (listing.status !== ListingStatus.ACTIVE) {
+      throw new NotFoundException(`Listing with ID ${id} not found.`);
+    }
+
+    return listing;
+  }
+
+  async findOneForStaff(id: string): Promise<Listing> {
+    const listing = await this.listingRepo.findById(id, {
+      path: 'propertyId',
+      select: 'name type location',
+    });
+    if (!listing) {
+      throw new NotFoundException(`Listing with ID ${id} not found.`);
+    }
     return listing;
   }
 
@@ -160,6 +177,16 @@ export class ListingService {
     } = {
       isDeleted: filters.isDeleted ?? false,
     };
+
+    // Chỉ cho phép khách hàng xem listing có trạng thái active
+    // Staff có thể xem tất cả trạng thái thông qua staff filter
+    if (
+      !request ||
+      !request.user ||
+      (request.user.role !== 'admin' && request.user.role !== 'staff')
+    ) {
+      query.status = ListingStatus.ACTIVE;
+    }
 
     // Apply staff filtering using utility function
     const filteredQuery = applyStaffFilter(query, request, 'propertyId');
@@ -492,6 +519,7 @@ export class ListingService {
     const result = await this.listingRepo.findAll(
       {
         isDeleted: false,
+        status: ListingStatus.ACTIVE, // Chỉ trả về listing active
       },
       {
         sort: { average_rating: -1, reviews_count: -1 },
@@ -510,6 +538,7 @@ export class ListingService {
     const result = await this.listingRepo.findAll(
       {
         isDeleted: false,
+        status: ListingStatus.ACTIVE, // Chỉ trả về listing active
       },
       {
         sort: { viewCount: -1 },
@@ -563,6 +592,7 @@ export class ListingService {
         {
           _id: { $in: roomIds },
           isDeleted: false,
+          status: ListingStatus.ACTIVE, // Chỉ trả về listing active
         },
         {
           populate: { path: 'propertyId', select: 'name type location' },

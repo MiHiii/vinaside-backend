@@ -1,0 +1,75 @@
+### Test Booking Note và Additional Cost Features
+
+### 1. Cập nhật ghi chú cho booking
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/note
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "note": "Khách hàng rất hài lòng với dịch vụ, yêu cầu dọn phòng sớm"
+}
+
+### 2. Cập nhật chi phí phát sinh
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/additional-cost
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "additionalCost": 75000,
+  "additionalCostReason": "Phí dọn dẹp thêm và sửa chữa nhỏ"
+}
+
+### 3. Cập nhật thông tin hủy phòng
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/cancellation-details
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "accountName": "Nguyễn Văn A",
+  "bankName": "Vietcombank",
+  "accountNumber": "1234567890",
+  "cancellationReason": "Khách hủy do lý do cá nhân",
+  "refundMethod": "Chuyển khoản",
+  "refundNote": "Đã hoàn tiền 100% theo chính sách hủy"
+}
+
+### 4. Lấy thông tin hủy phòng
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 5. Lấy booking với thông tin mới
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+
+### 6. Test validation - Note quá dài
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/note
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "note": "A".repeat(1000)
+}
+
+### 7. Test validation - Additional cost âm
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/additional-cost
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "additionalCost": -1000,
+  "additionalCostReason": "Test validation"
+}
+
+### 8. Test permission - Không có quyền
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/note
+Content-Type: application/json
+
+{
+  "note": "Test without permission"
+}
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_jwt_token_here
+# @propertyId = your_property_id_here
+# @bookingId = your_booking_id_here 
