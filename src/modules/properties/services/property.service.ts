@@ -575,9 +575,7 @@ export class PropertyService {
     // 1. Tổng quan phòng (listings)
     const totalRooms = allListings.length;
     const activeRooms = allListings.filter(
-      (l) =>
-        l.status === ListingStatus.ACTIVE ||
-        l.status === ListingStatus.VERIFIED,
+      (l) => l.status === ListingStatus.ACTIVE,
     ).length;
 
     // Rooms with at least 1 booking

@@ -285,6 +285,42 @@ export class Booking extends Document {
 
   @Prop({ type: Number, default: 0, min: 0 })
   refund_amount?: number;
+
+  // Note fields for staff to record information
+  @Prop({ type: String })
+  note?: string;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  additionalCost?: number;
+
+  @Prop({ type: String })
+  additionalCostReason?: string;
+
+  // Cancellation details for refund information
+  @Prop({
+    type: {
+      accountName: String,
+      bankName: String,
+      accountNumber: String,
+      cancellationReason: String,
+      refundMethod: String,
+      refundNote: String,
+    },
+  })
+  cancellationDetails?: {
+    accountName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    cancellationReason?: string;
+    refundMethod?: string;
+    refundNote?: string;
+  };
+
+  @Prop({ type: Date })
+  cancellationDetailsUpdatedAt?: Date;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  cancellationDetailsUpdatedBy?: Types.ObjectId;
 }
 
 export const BookingSchema = SchemaFactory.createForClass(Booking);

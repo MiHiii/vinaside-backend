@@ -1,0 +1,91 @@
+### Test Booking với Listing Status Check
+
+### 1. Guest tạo booking cho listing active (thành công)
+POST {{baseUrl}}/api/v1/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{activeListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0,
+  "specialRequests": "Yêu cầu dọn phòng sớm"
+}
+
+### 2. Guest tạo booking cho listing inactive (thất bại)
+POST {{baseUrl}}/api/v1/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{inactiveListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0
+}
+
+### 3. Guest tạo booking cho listing draft (thất bại)
+POST {{baseUrl}}/api/v1/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{draftListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0
+}
+
+### 4. Guest check availability cho listing active
+GET {{baseUrl}}/api/v1/bookings/availability/{{activeListingId}}?checkIn=2024-02-15&checkOut=2024-02-17
+
+### 5. Guest check availability cho listing inactive (thất bại)
+GET {{baseUrl}}/api/v1/bookings/availability/{{inactiveListingId}}?checkIn=2024-02-15&checkOut=2024-02-17
+
+### 6. Guest hủy booking (thành công ngay cả khi listing inactive)
+DELETE {{baseUrl}}/api/v1/bookings/{{bookingId}}
+Authorization: Bearer {{guestToken}}
+
+### 7. Staff tạo booking cho listing inactive (thành công)
+POST {{baseUrl}}/api/v1/bookings/staff/create
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{inactiveListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "guest_name": "Nguyễn Văn A",
+  "guest_email": "guest@example.com"
+}
+
+### 8. Staff tạo booking cho listing draft (thành công)
+POST {{baseUrl}}/api/v1/bookings/staff/create
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{draftListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "guest_name": "Trần Thị B",
+  "guest_email": "guest2@example.com"
+}
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @guestToken = your_guest_jwt_token_here
+# @staffToken = your_staff_jwt_token_here
+# @activeListingId = your_active_listing_id_here
+# @inactiveListingId = your_inactive_listing_id_here
+# @draftListingId = your_draft_listing_id_here
+# @propertyId = your_property_id_here
+# @bookingId = your_booking_id_here 

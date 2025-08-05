@@ -1,0 +1,97 @@
+### Test Listing Status Check
+
+### 1. Guest tạo booking cho listing active (thành công)
+POST {{baseUrl}}/api/v1/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{activeListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0,
+  "specialRequests": "Yêu cầu dọn phòng sớm"
+}
+
+### 2. Guest tạo booking cho listing inactive (thất bại)
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{inactiveListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0
+}
+
+### 3. Guest tạo booking cho listing draft (thất bại)
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{draftListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "infants": 0
+}
+
+### 4. Staff tạo booking cho listing inactive (thành công)
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "{{propertyId}}",
+  "listingId": "{{inactiveListingId}}",
+  "checkInDate": "2024-02-15",
+  "checkOutDate": "2024-02-17",
+  "guests": 2,
+  "guest_name": "Nguyễn Văn A",
+  "guest_email": "guest@example.com"
+}
+
+### 5. Guest check availability cho listing active
+GET {{baseUrl}}/bookings/availability/{{activeListingId}}?checkIn=2024-02-15&checkOut=2024-02-17
+
+### 6. Guest check availability cho listing inactive
+GET {{baseUrl}}/bookings/availability/{{inactiveListingId}}?checkIn=2024-02-15&checkOut=2024-02-17
+
+### 7. Guest lấy thông tin listing active
+GET {{baseUrl}}/listings/{{activeListingId}}
+
+### 8. Guest lấy thông tin listing inactive (thất bại)
+GET {{baseUrl}}/listings/{{inactiveListingId}}
+
+### 9. Staff lấy thông tin listing inactive (thành công)
+GET {{baseUrl}}/listings/{{inactiveListingId}}
+Authorization: Bearer {{staffToken}}
+
+### 10. Guest lấy danh sách listings (chỉ active)
+GET {{baseUrl}}/listings
+
+### 11. Staff lấy danh sách listings (tất cả trạng thái)
+GET {{baseUrl}}/listings
+Authorization: Bearer {{staffToken}}
+
+### 12. Guest lấy top rated listings (chỉ active)
+GET {{baseUrl}}/listings/top-rated
+
+### 13. Guest lấy top viewed listings (chỉ active)
+GET {{baseUrl}}/listings/top-viewed
+
+### 14. Guest lấy top wishlist listings (chỉ active)
+GET {{baseUrl}}/listings/top-wishlist
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @guestToken = your_guest_jwt_token_here
+# @staffToken = your_staff_jwt_token_here
+# @activeListingId = your_active_listing_id_here
+# @inactiveListingId = your_inactive_listing_id_here
+# @draftListingId = your_draft_listing_id_here
+# @propertyId = your_property_id_here 

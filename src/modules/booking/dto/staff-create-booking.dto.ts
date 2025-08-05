@@ -9,10 +9,12 @@ import {
   IsArray,
   ValidateNested,
   IsNumber,
+  IsEmail,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class BookingServiceDto {
+export class StaffBookingServiceDto {
   @IsMongoId()
   @IsNotEmpty()
   serviceId: string;
@@ -23,7 +25,7 @@ export class BookingServiceDto {
   quantity: number = 1;
 }
 
-export class CreateBookingDto {
+export class StaffCreateBookingDto {
   @IsMongoId()
   @IsNotEmpty()
   propertyId: string;
@@ -31,6 +33,10 @@ export class CreateBookingDto {
   @IsMongoId()
   @IsNotEmpty()
   listingId: string;
+
+  @IsMongoId()
+  @IsOptional()
+  guestId?: string; // Optional - staff có thể tạo booking cho guest
 
   @IsDateString()
   @IsNotEmpty()
@@ -52,6 +58,18 @@ export class CreateBookingDto {
   infants?: number = 0;
 
   @IsString()
+  @IsNotEmpty()
+  guest_name: string;
+
+  @IsEmail()
+  @IsNotEmpty()
+  guest_email: string;
+
+  @IsString()
+  @IsOptional()
+  guest_phone?: string;
+
+  @IsString()
   @IsOptional()
   specialRequests?: string;
 
@@ -61,9 +79,9 @@ export class CreateBookingDto {
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => BookingServiceDto)
+  @Type(() => StaffBookingServiceDto)
   @IsOptional()
-  services?: BookingServiceDto[];
+  services?: StaffBookingServiceDto[];
 
   @IsString()
   @IsOptional()
@@ -78,4 +96,28 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   additionalCostReason?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string = 'pending';
+
+  @IsString()
+  @IsOptional()
+  payment_status?: string = 'unpaid';
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  price_per_night?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  final_amount?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  skip_availability_check?: boolean = false;
 }
