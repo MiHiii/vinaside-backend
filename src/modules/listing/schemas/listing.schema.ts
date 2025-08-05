@@ -95,7 +95,7 @@ export class Listing extends Document {
   @Prop({
     type: String,
     enum: ListingStatus,
-    default: ListingStatus.DRAFT,
+    default: ListingStatus.ACTIVE,
   })
   status: ListingStatus;
 
