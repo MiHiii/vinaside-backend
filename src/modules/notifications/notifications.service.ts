@@ -117,10 +117,12 @@ export class NotificationsService {
           if (userInfo) {
             const userPayload: JwtPayload = {
               _id: createNotificationDto.user_id,
-              email: userInfo.email || '',
+              email: (userInfo.email as string) || '',
               role: userInfo.role as 'guest' | 'staff' | 'admin',
               customRoles: Array.isArray(userInfo.customRoles)
-                ? userInfo.customRoles.filter((r: any) => typeof r === 'string')
+                ? userInfo.customRoles.filter(
+                    (r: unknown) => typeof r === 'string',
+                  )
                 : [],
             };
             const unreadCount = await this.getUnreadCount(userPayload);

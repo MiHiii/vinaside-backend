@@ -1875,9 +1875,10 @@ export class DashboardService {
 
     // Create a map of existing revenue data
     const revenueMap = new Map<string, number>();
-    result.forEach((item) => {
+    result.forEach((item: any) => {
       // item._id: { year: number, month: number, day: number }, item.totalRevenue: number
-      const id = item._id || {};
+      const id =
+        (item._id as { year: number; month: number; day: number }) || {};
       const year = typeof id.year === 'number' ? id.year : 0;
       const month = typeof id.month === 'number' ? id.month : 0;
       const day = typeof id.day === 'number' ? id.day : 0;
