@@ -1878,13 +1878,16 @@ export class DashboardService {
     result.forEach((item: any) => {
       // item._id: { year: number, month: number, day: number }, item.totalRevenue: number
       const id =
-        (item._id as { year: number; month: number; day: number }) || {};
+        ((item as any)._id as { year: number; month: number; day: number }) ||
+        {};
       const year = typeof id.year === 'number' ? id.year : 0;
       const month = typeof id.month === 'number' ? id.month : 0;
       const day = typeof id.day === 'number' ? id.day : 0;
       const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const totalRevenue =
-        typeof item.totalRevenue === 'number' ? item.totalRevenue : 0;
+        typeof (item as any).totalRevenue === 'number'
+          ? (item as any).totalRevenue
+          : 0;
       revenueMap.set(date, totalRevenue);
     });
 
