@@ -75,6 +75,9 @@ export interface PaginatedBookings {
 export class BookingService {
   private readonly logger = new Logger(BookingService.name);
 
+  // Cache để tránh gửi duplicate admin notifications trong cùng 1 request
+  private adminNotificationCache = new Map<string, Set<string>>();
+
   constructor(
     private readonly bookingRepo: BookingRepo,
     private readonly listingService: ListingService,
@@ -201,11 +204,6 @@ export class BookingService {
     createBookingDto: CreateBookingDto,
     user: JwtPayload,
   ): Promise<BookingResponseDto> {
-    // Thêm log để kiểm tra body nhận được
-    console.log(
-      '[BE] Body nhận được khi tạo booking:',
-      JSON.stringify(createBookingDto),
-    );
     const {
       listingId,
       checkInDate,
@@ -272,8 +270,19 @@ export class BookingService {
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 3600 * 24),
     );
 
-    // Tính toán giá phòng cơ bản
-    const totalPrice = populatedListing.price_per_night * nights; // Giá phòng cơ bản
+    // ✅ THÊM VÀO ĐÂY: Tính weekend surcharge
+    let weekendSurcharge = 0;
+    if (listing.has_weekend_surcharge) {
+      const weekendDays = this.calculateWeekendDays(checkIn, checkOut);
+      const surchargePercent = listing.weekend_surcharge_percent || 0;
+      weekendSurcharge =
+        (populatedListing.price_per_night * weekendDays * surchargePercent) /
+        100;
+    }
+
+    // Tính toán giá phòng cơ bản + weekend surcharge
+    const totalPrice =
+      populatedListing.price_per_night * nights + weekendSurcharge;
 
     // Xử lý services
     let servicesTotalAmount = 0;
@@ -416,9 +425,6 @@ export class BookingService {
           voucherDiscountAmount,
           subtotalAmount,
         );
-        this.logger.log(
-          `Voucher ${voucherCodeValue} used for booking ${(createdBooking._id as Types.ObjectId).toString()}`,
-        );
       } catch (error) {
         this.logger.error(
           `Failed to use voucher ${voucherCodeValue} for booking ${(createdBooking._id as Types.ObjectId).toString()}:`,
@@ -457,17 +463,32 @@ export class BookingService {
         populatedListing.images.length > 0
           ? populatedListing.images[0]
           : '';
+      const roomName =
+        populatedListing.title || populatedListing.propertyId.name || 'Căn hộ';
+      const bookingCode = (createdBooking._id as Types.ObjectId)
+        .toString()
+        .slice(-8);
+
       await this.notificationsService.create({
         user_id: user._id,
         recipient_type: RecipientType.GUEST,
-        title: 'Đặt phòng thành công',
-        message: `Bạn đã đặt phòng thành công tại ${populatedListing.propertyId.name || populatedListing.title}. Tổng tiền: ${finalAmount.toLocaleString('vi-VN')} VNĐ. Mã đặt phòng: ${(createdBooking._id as Types.ObjectId).toString().slice(-8)}`,
+        title: '🎉 Đặt phòng thành công',
+        message: `Chúc mừng! Bạn đã đặt phòng thành công tại ${roomName}. Tổng thanh toán: ${finalAmount.toLocaleString('vi-VN')} VNĐ. Mã đặt phòng: ${bookingCode.toUpperCase()}`,
         type: NotificationType.BOOKING,
         status: NotificationStatus.SENT,
         sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
         avatar_url, // truyền avatar_url
+        metadata: {
+          bookingId: (createdBooking._id as Types.ObjectId).toString(),
+          propertyId: propertyId.toString(),
+          listingId: listing._id?.toString(),
+          amount: finalAmount,
+          bookingStatus: BookingStatus.PENDING,
+          roomName: roomName,
+          propertyName: populatedListing.propertyId.name,
+          listingTitle: populatedListing.title,
+        },
       });
-      this.logger.log(`Created booking notification for guest ${user._id}`);
     } catch (error) {
       this.logger.error(
         `Failed to create guest notification for booking ${(createdBooking._id as Types.ObjectId).toString()}:`,
@@ -493,10 +514,6 @@ export class BookingService {
           reservationData: staffReservationData,
         });
 
-        this.logger.log(
-          `Sent staff notification emails to ${staffEmails.length} staff members for booking ${(createdBooking._id as Types.ObjectId).toString()}`,
-        );
-
         // Tạo thông báo cho staff
         await this.createStaffNotifications(
           propertyId.toString(),
@@ -512,6 +529,21 @@ export class BookingService {
     } catch (error) {
       this.logger.error(
         `Failed to send staff notifications for booking ${(createdBooking._id as Types.ObjectId).toString()}:`,
+        error,
+      );
+      // Không throw error để không ảnh hưởng đến việc tạo booking
+    }
+
+    // Tạo thông báo cho admin (luôn tạo, không phụ thuộc vào staff)
+    try {
+      await this.createAdminNewBookingNotification(
+        createdBooking,
+        populatedListing,
+        finalAmount,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send admin notifications for booking ${(createdBooking._id as Types.ObjectId).toString()}:`,
         error,
       );
       // Không throw error để không ảnh hưởng đến việc tạo booking
@@ -555,6 +587,9 @@ export class BookingService {
     const booking = await this.bookingRepo.findById(id);
     if (!booking) throw new NotFoundException('Không tìm thấy booking.');
 
+    // Store original status to detect changes
+    const originalStatus = booking.status;
+
     // 2. Check quyền
     const isGuest = user.role === 'guest';
     if (isGuest) {
@@ -588,8 +623,6 @@ export class BookingService {
           );
         }
 
-        console.log('Found service:', service);
-
         const totalPrice = service.default_price * serviceDto.quantity;
         totalServicesAmount += totalPrice;
 
@@ -601,9 +634,6 @@ export class BookingService {
           total_price: totalPrice,
         });
       }
-
-      console.log('Processed services:', processedServices);
-      console.log('Total services amount:', totalServicesAmount);
 
       // a. Kiểm tra và validate dịch vụ cũ (nếu có)
       const oldServices = booking.selected_services || [];
@@ -656,18 +686,11 @@ export class BookingService {
       // e. Cập nhật payment_status nếu có thêm dịch vụ và booking đã PAID
       if (diff > 0 && booking.payment_status === PaymentStatus.PAID) {
         updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
-        console.log(
-          'Chuyển payment_status từ PAID sang PARTIALLY_PAID do thêm dịch vụ',
-        );
       }
-
-      console.log('Final updateBookingDto:', updateBookingDto);
     }
 
     // Không động vào deposit_paid_amount
     delete updateBookingDto.deposit_paid_amount;
-
-    console.log('About to update booking with:', updateBookingDto);
 
     // 5. Update booking
     const updated = await this.bookingRepo.updateById(
@@ -676,11 +699,24 @@ export class BookingService {
       user._id,
     );
 
-    console.log('Updated booking result:', updated);
     if (!updated)
       throw new NotFoundException(
         'Không tìm thấy booking hoặc không thể cập nhật.',
       );
+
+    // Check if status changed and create notifications
+    const newStatus = updated.status;
+    if (originalStatus !== newStatus) {
+      try {
+        await this.createStatusChangeNotification(updated, newStatus);
+      } catch (error) {
+        this.logger.error(
+          `[UPDATE] Failed to create status change notifications for booking ${id}:`,
+          error,
+        );
+        // Don't throw - continue with response
+      }
+    }
 
     // 6. Trả về booking + outstanding_amount
     const result = this.transformBookingToResponse(updated);
@@ -708,6 +744,16 @@ export class BookingService {
     booking.cancellation_reason = 'Admin/staff cancelled';
 
     await booking.save();
+
+    // Create status change notifications for guest, staff, and admin
+    try {
+      await this.createStatusChangeNotification(
+        booking,
+        BookingStatus.CANCELLED,
+      );
+    } catch (error) {
+      this.logger.error('Failed to create status change notifications:', error);
+    }
 
     return { success: true };
   }
@@ -1076,6 +1122,10 @@ export class BookingService {
     );
     (booking as any).refund_amount = refund_amount;
     await booking.save();
+
+    // Create status change notifications
+    await this.createStatusChangeNotification(booking, BookingStatus.CANCELLED);
+
     return {
       success: true,
       message: `Hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
@@ -1281,6 +1331,87 @@ export class BookingService {
   }
 
   /**
+   * Helper method to create admin notification and avoid duplicates
+   */
+  private async createAdminNotificationSafely(
+    bookingId: string,
+    adminId: string,
+    notificationData: any,
+    notificationType: 'new_booking' | 'status_change' | 'summary',
+  ): Promise<void> {
+    const cacheKey = `${bookingId}-${notificationType}`;
+
+    if (!this.adminNotificationCache.has(cacheKey)) {
+      this.adminNotificationCache.set(cacheKey, new Set());
+    }
+
+    const processedAdmins = this.adminNotificationCache.get(cacheKey)!;
+
+    if (processedAdmins.has(adminId)) {
+      this.logger.warn(
+        `[DUPLICATE PREVENTION] Skipping duplicate ${notificationType} notification for admin ${adminId} on booking ${bookingId}`,
+      );
+      return;
+    }
+
+    processedAdmins.add(adminId);
+    await this.notificationsService.create(notificationData);
+
+    // Clean up cache after 5 minutes to prevent memory leak
+    setTimeout(
+      () => {
+        this.adminNotificationCache.delete(cacheKey);
+      },
+      5 * 60 * 1000,
+    );
+  }
+
+  /**
+   * Clear admin notification cache (for debugging)
+   */
+  clearAdminNotificationCache(): void {
+    const cacheSize = this.adminNotificationCache.size;
+    this.adminNotificationCache.clear();
+    this.logger.log(
+      `[CACHE CLEAR] Cleared admin notification cache (${cacheSize} entries)`,
+    );
+  }
+
+  /**
+   * Get admin notification cache status (for debugging)
+   */
+  getAdminNotificationCacheStatus(): any {
+    const cacheEntries = Array.from(this.adminNotificationCache.entries()).map(
+      ([key, value]) => ({
+        key,
+        processedAdmins: Array.from(value),
+      }),
+    );
+
+    return {
+      totalEntries: this.adminNotificationCache.size,
+      entries: cacheEntries,
+    };
+  }
+
+  /**
+   * Helper method to check if user is actual staff (not admin)
+   */
+  private async isActualStaff(userId: Types.ObjectId): Promise<boolean> {
+    try {
+      const userInfo = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .findOne({ _id: userId });
+
+      return !!(userInfo && userInfo.role === 'staff');
+    } catch (error) {
+      this.logger.error('Error checking user role:', error);
+      return false;
+    }
+  }
+
+  /**
    * Tạo thông báo cho staff khi có booking mới
    */
   private async createStaffNotifications(
@@ -1301,35 +1432,72 @@ export class BookingService {
         return;
       }
 
-      // Tạo thông báo cho từng staff
+      // Get guest information for detailed notification
+      const guestInfo = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .findOne({ _id: booking.guestId });
+
+      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
+        'vi-VN',
+      );
+      const checkOutDate = new Date(booking.check_out_date).toLocaleDateString(
+        'vi-VN',
+      );
+      const bookingCode = booking._id.toString().slice(-8).toUpperCase();
+      const guestName = guestInfo?.name || 'Khách hàng';
+      const guestPhone = guestInfo?.phone || '';
+      const propertyName = listing.propertyId?.name || listing.title;
+
+      // Find first actual staff member to create ONE representative staff notification
+      let representativeStaff: any = null;
+      const allStaffEmails: string[] = [];
+
       for (const assignment of staffAssignments) {
         if (
           assignment.status === AssignmentStatus.ACTIVE &&
           assignment.staffId
         ) {
-          const createNotificationDto = {
-            user_id: assignment.staffId._id.toString(),
-            recipient_type: RecipientType.STAFF,
-            title: `Booking mới cho property ${listing.title}`,
-            message: `Có booking mới với giá trị ${finalAmount.toLocaleString(
-              'vi-VN',
-            )} VND cho property ${listing.title}. Mã booking: ${booking._id}`,
-            type: NotificationType.BOOKING,
-            metadata: {
-              bookingId: booking._id,
-              propertyId: propertyId,
-              listingId: listing._id,
-              amount: finalAmount,
-            },
-          };
+          // Check if this is actual staff, not admin
+          if (await this.isActualStaff(assignment.staffId._id)) {
+            const staffUser = assignment.staffId as any;
+            allStaffEmails.push(staffUser.email || staffUser._id.toString());
 
-          await this.notificationsService.create(createNotificationDto);
+            // Use first actual staff as representative
+            if (!representativeStaff) {
+              representativeStaff = staffUser;
+            }
+          }
         }
       }
 
-      this.logger.log(
-        `Created notifications for ${staffAssignments.length} staff members for property ${propertyId}`,
-      );
+      // Create ONE staff notification if we found any staff
+      if (representativeStaff) {
+        const createNotificationDto = {
+          user_id: representativeStaff._id.toString(),
+          recipient_type: RecipientType.STAFF,
+          title: `🏨 Đặt phòng mới - ${propertyName}`,
+          message: `Khách hàng ${guestName}${guestPhone ? ` (${guestPhone})` : ''} đã đặt phòng từ ${checkInDate} đến ${checkOutDate}. Số khách: ${booking.guests} người. Tổng tiền: ${finalAmount.toLocaleString('vi-VN')}đ. Mã booking: #${bookingCode}`,
+          type: NotificationType.BOOKING,
+          status: NotificationStatus.SENT,
+          sent_method: [SentMethod.IN_APP],
+          metadata: {
+            bookingId: booking._id,
+            propertyId: propertyId,
+            listingId: listing._id,
+            amount: finalAmount,
+            guestName,
+            guestPhone,
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.check_out_date,
+            guests: booking.guests,
+            bookingCode,
+            allStaffEmails: allStaffEmails.join(', '), // Store all staff emails for reference
+          },
+        };
+
+        await this.notificationsService.create(createNotificationDto);
+      }
     } catch (error) {
       this.logger.error('Error creating staff notifications:', error);
     }
@@ -1347,31 +1515,117 @@ export class BookingService {
       const bookingCode = bookingId.slice(-8);
       const guestId = (booking.guestId as Types.ObjectId).toString();
 
-      // Tạo thông báo cho khách hàng
-      const statusMessages = {
-        [BookingStatus.CONFIRMED]: 'Đặt phòng của bạn đã được xác nhận',
-        [BookingStatus.CANCELLED]: 'Đặt phòng của bạn đã bị hủy',
-        [BookingStatus.COMPLETED]: 'Đặt phòng của bạn đã hoàn thành',
-        [BookingStatus.REJECTED]: 'Đặt phòng của bạn đã bị từ chối',
+      // Validate guest ID
+      if (!guestId || guestId === 'null' || guestId === 'undefined') {
+        this.logger.error(
+          `[STATUS CHANGE] Invalid guest ID for booking ${bookingId}: ${guestId}`,
+        );
+        throw new Error('Invalid guest ID');
+      }
+
+      // Get property and listing information for room name
+      let propertyName = 'Căn hộ';
+      let listingTitle = '';
+
+      try {
+        if (booking.propertyId) {
+          const property = await this.propertyService.findOne(
+            booking.propertyId.toString(),
+          );
+          if (property) {
+            propertyName = property.name || 'Căn hộ';
+          }
+        }
+
+        if (booking.listingId) {
+          const listing = await this.listingService.findOne(
+            booking.listingId.toString(),
+          );
+          if (listing) {
+            listingTitle = listing.title || '';
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          'Could not fetch property/listing details for notification:',
+          error,
+        );
+      }
+
+      const roomName = listingTitle || propertyName;
+
+      // Tạo thông báo cho khách hàng với tiêu đề và nội dung chuyên nghiệp
+      const statusData = {
+        [BookingStatus.CONFIRMED]: {
+          title: '✅ Đặt phòng được xác nhận',
+          message: `Chúc mừng! Đặt phòng tại ${roomName} đã được xác nhận thành công. Chúng tôi rất mong được phục vụ bạn.`,
+        },
+        [BookingStatus.CANCELLED]: {
+          title: '❌ Đặt phòng đã bị hủy',
+          message: `Đặt phòng tại ${roomName} đã được hủy. Nếu có thắc mắc, vui lòng liên hệ với chúng tôi.`,
+        },
+        [BookingStatus.COMPLETED]: {
+          title: '🎉 Đặt phòng hoàn thành',
+          message: `Cảm ơn bạn đã lưu trú tại ${roomName}! Hy vọng bạn đã có trải nghiệm tuyệt vời.`,
+        },
+        [BookingStatus.REJECTED]: {
+          title: '⚠️ Đặt phòng bị từ chối',
+          message: `Rất tiếc, đặt phòng tại ${roomName} không thể được chấp nhận. Vui lòng liên hệ để được hỗ trợ.`,
+        },
       };
 
-      const message =
-        statusMessages[newStatus] ||
-        `Trạng thái đặt phòng đã thay đổi thành ${newStatus}`;
+      const notificationData = statusData[newStatus] || {
+        title: '📋 Cập nhật đặt phòng',
+        message: `Trạng thái đặt phòng tại ${roomName} đã được cập nhật thành ${newStatus}.`,
+      };
 
-      await this.notificationsService.create({
-        user_id: guestId,
-        recipient_type: RecipientType.GUEST,
-        title: `Cập nhật đặt phòng - ${newStatus}`,
-        message: `${message}. Mã đặt phòng: ${bookingCode}`,
-        type: NotificationType.BOOKING,
-        status: NotificationStatus.SENT,
-        sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
-      });
+      try {
+        await this.notificationsService.create({
+          user_id: guestId,
+          recipient_type: RecipientType.GUEST,
+          title: notificationData.title,
+          message: `${notificationData.message} Mã đặt phòng: ${bookingCode.toUpperCase()}`,
+          type: NotificationType.BOOKING,
+          status: NotificationStatus.SENT,
+          sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
+          metadata: {
+            bookingId: bookingId,
+            propertyId: booking.propertyId?.toString(),
+            listingId: booking.listingId?.toString(),
+            bookingStatus: newStatus,
+            previousStatus: booking.status,
+            roomName: roomName,
+            propertyName: propertyName,
+            listingTitle: listingTitle,
+          },
+        });
+      } catch (guestNotificationError) {
+        this.logger.error(
+          `[GUEST NOTIFICATION] Failed to create status change notification for guest ${guestId}, booking ${bookingId}:`,
+          guestNotificationError,
+        );
+        // Don't throw - continue with staff/admin notifications
+      }
 
-      this.logger.log(
-        `Created status change notification for booking ${bookingId}`,
-      );
+      // Create notification for staff managing this property
+      try {
+        await this.createStaffStatusChangeNotification(booking, newStatus);
+      } catch (staffNotificationError) {
+        this.logger.error(
+          `[STAFF NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
+          staffNotificationError,
+        );
+      }
+
+      // Create notification for admin
+      try {
+        await this.createAdminStatusChangeNotification(booking, newStatus);
+      } catch (adminNotificationError) {
+        this.logger.error(
+          `[ADMIN NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
+          adminNotificationError,
+        );
+      }
 
       // Nếu status = COMPLETED, tạo thông báo đánh giá phòng
       if (newStatus === BookingStatus.COMPLETED) {
@@ -1382,6 +1636,279 @@ export class BookingService {
       }
     } catch (error) {
       this.logger.error('Error creating status change notification:', error);
+    }
+  }
+
+  /**
+   * Tạo thông báo cho staff khi trạng thái booking thay đổi
+   */
+  private async createStaffStatusChangeNotification(
+    booking: any,
+    newStatus: BookingStatus,
+  ): Promise<void> {
+    try {
+      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingCode = bookingId.slice(-8);
+      const propertyId = booking.propertyId?.toString();
+
+      if (!propertyId) return;
+
+      // Get staff assigned to this property
+      const staffAssignments =
+        await this.propertyStaffAssignmentService.getStaffByProperty(
+          new Types.ObjectId(propertyId),
+        );
+
+      // Get guest and property information for detailed notification
+      const guestInfo = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .findOne({ _id: booking.guestId });
+
+      const propertyInfo = await this.bookingRepo
+        .getModel()
+        .db.collection('properties')
+        .findOne({ _id: booking.propertyId });
+
+      const guestName = guestInfo?.name || 'Khách hàng';
+      const propertyName = propertyInfo?.name || 'Property';
+      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
+        'vi-VN',
+      );
+
+      const statusMessages = {
+        [BookingStatus.CONFIRMED]: '✅ Đã xác nhận',
+        [BookingStatus.CANCELLED]: '❌ Đã hủy',
+        [BookingStatus.COMPLETED]: '✅ Hoàn thành',
+        [BookingStatus.REJECTED]: '⚠️ Từ chối',
+      };
+
+      const statusIcon = statusMessages[newStatus] || `🔄 ${newStatus}`;
+
+      // Find first actual staff member to create ONE representative staff notification
+      let representativeStaff: any = null;
+      const allStaffEmails: string[] = [];
+
+      for (const assignment of staffAssignments) {
+        if (
+          assignment.status === AssignmentStatus.ACTIVE &&
+          assignment.staffId
+        ) {
+          // Check if this is actual staff, not admin
+          if (await this.isActualStaff(assignment.staffId._id)) {
+            const staffUser = assignment.staffId as any;
+            allStaffEmails.push(staffUser.email || staffUser._id.toString());
+
+            // Use first actual staff as representative
+            if (!representativeStaff) {
+              representativeStaff = staffUser;
+            }
+          }
+        }
+      }
+
+      // Create ONE staff status change notification if we found any staff
+      if (representativeStaff) {
+        await this.notificationsService.create({
+          user_id: representativeStaff._id.toString(),
+          recipient_type: RecipientType.STAFF,
+          title: `${statusIcon} Booking #${bookingCode}`,
+          message: `Booking của khách ${guestName} tại ${propertyName} (${checkInDate}) đã chuyển từ "${booking.status}" sang "${newStatus}". Cần xử lý ngay!`,
+          type: NotificationType.BOOKING,
+          status: NotificationStatus.SENT,
+          sent_method: [SentMethod.IN_APP],
+          metadata: {
+            bookingId: bookingId,
+            propertyId: propertyId,
+            listingId: booking.listingId?.toString(),
+            bookingStatus: newStatus,
+            previousStatus: booking.status,
+            guestName,
+            propertyName,
+            checkInDate: booking.checkInDate,
+            bookingCode,
+            allStaffEmails: allStaffEmails.join(', '), // Store all staff emails for reference
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        'Error creating staff status change notification:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Tạo thông báo cho admin khi có booking mới
+   */
+  private async createAdminNewBookingNotification(
+    booking: any,
+    listing: any,
+    finalAmount: number,
+  ): Promise<void> {
+    try {
+      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingCode = bookingId.slice(-8).toUpperCase();
+
+      // Get guest information for detailed notification
+      const guestInfo = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .findOne({ _id: booking.guestId });
+
+      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
+        'vi-VN',
+      );
+      const checkOutDate = new Date(booking.check_out_date).toLocaleDateString(
+        'vi-VN',
+      );
+      const guestName = guestInfo?.name || 'Khách hàng';
+      const guestEmail = guestInfo?.email || '';
+      const guestPhone = guestInfo?.phone || '';
+      const propertyName = listing.propertyId?.name || listing.title;
+
+      // Get all admin users
+      const adminUsers = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .find({ role: 'admin' })
+        .toArray();
+
+      // Create ONE notification for admin (pick first admin as representative)
+      if (adminUsers.length > 0) {
+        const representativeAdmin = adminUsers[0]; // Use first admin as representative
+        const adminId = representativeAdmin._id.toString();
+
+        const notificationData = {
+          user_id: adminId,
+          recipient_type: RecipientType.ADMIN,
+          title: `📊 Booking mới hệ thống - ${propertyName}`,
+          message: `Khách hàng ${guestName}${guestEmail ? ` (${guestEmail})` : ''}${guestPhone ? ` - ${guestPhone}` : ''} đã đặt phòng từ ${checkInDate} đến ${checkOutDate}. Số khách: ${booking.guests} người. Doanh thu: ${finalAmount.toLocaleString('vi-VN')}đ. Mã: #${bookingCode}`,
+          type: NotificationType.BOOKING,
+          status: NotificationStatus.SENT,
+          sent_method: [SentMethod.IN_APP],
+          metadata: {
+            bookingId: bookingId,
+            propertyId: booking.propertyId?.toString(),
+            listingId: listing._id?.toString(),
+            amount: finalAmount,
+            bookingStatus: BookingStatus.PENDING,
+            guestName,
+            guestEmail,
+            guestPhone,
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.check_out_date,
+            guests: booking.guests,
+            bookingCode,
+            nights: booking.nights,
+            allAdminEmails: adminUsers.map((admin) => admin.email).join(', '), // Store all admin emails for reference
+          },
+        };
+
+        await this.createAdminNotificationSafely(
+          bookingId,
+          adminId,
+          notificationData,
+          'new_booking',
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Error creating admin new booking notification:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Tạo thông báo cho admin khi trạng thái booking thay đổi
+   */
+  private async createAdminStatusChangeNotification(
+    booking: any,
+    newStatus: BookingStatus,
+  ): Promise<void> {
+    try {
+      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingCode = bookingId.slice(-8).toUpperCase();
+
+      // Get guest, property, and booking amount information
+      const [guestInfo, propertyInfo] = await Promise.all([
+        this.bookingRepo
+          .getModel()
+          .db.collection('users')
+          .findOne({ _id: booking.guestId }),
+        this.bookingRepo
+          .getModel()
+          .db.collection('properties')
+          .findOne({ _id: booking.propertyId }),
+      ]);
+
+      const guestName = guestInfo?.name || 'Khách hàng';
+      const guestEmail = guestInfo?.email || '';
+      const propertyName = propertyInfo?.name || 'Property';
+      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
+        'vi-VN',
+      );
+      const amount = booking.final_amount || booking.total_price || 0;
+
+      const statusMessages = {
+        [BookingStatus.CONFIRMED]: '✅ Xác nhận',
+        [BookingStatus.CANCELLED]: '❌ Hủy bỏ',
+        [BookingStatus.COMPLETED]: '✅ Hoàn thành',
+        [BookingStatus.REJECTED]: '⚠️ Từ chối',
+      };
+
+      const statusIcon = statusMessages[newStatus] || `🔄 ${newStatus}`;
+
+      // Get all admin users
+      const adminUsers = await this.bookingRepo
+        .getModel()
+        .db.collection('users')
+        .find({ role: 'admin' })
+        .toArray();
+
+      // Create ONE notification for admin (pick first admin as representative)
+      if (adminUsers.length > 0) {
+        const representativeAdmin = adminUsers[0]; // Use first admin as representative
+        const adminId = representativeAdmin._id.toString();
+
+        const notificationData = {
+          user_id: adminId,
+          recipient_type: RecipientType.ADMIN,
+          title: `${statusIcon} Booking #${bookingCode} - ${propertyName}`,
+          message: `Booking của ${guestName}${guestEmail ? ` (${guestEmail})` : ''} tại ${propertyName} (${checkInDate}) đã chuyển từ "${booking.status}" → "${newStatus}". Giá trị: ${amount.toLocaleString('vi-VN')}đ`,
+          type: NotificationType.BOOKING,
+          status: NotificationStatus.SENT,
+          sent_method: [SentMethod.IN_APP],
+          metadata: {
+            bookingId: bookingId,
+            propertyId: booking.propertyId?.toString(),
+            listingId: booking.listingId?.toString(),
+            bookingStatus: newStatus,
+            previousStatus: booking.status,
+            guestName,
+            guestEmail,
+            propertyName,
+            checkInDate: booking.checkInDate,
+            bookingCode,
+            amount,
+            allAdminEmails: adminUsers.map((admin) => admin.email).join(', '), // Store all admin emails for reference
+          },
+        };
+
+        await this.createAdminNotificationSafely(
+          bookingId,
+          adminId,
+          notificationData,
+          'status_change',
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Error creating admin status change notification:',
+        error,
+      );
     }
   }
 
@@ -2577,6 +3104,13 @@ export class BookingService {
       message: `Nhân viên đã tạo thanh toán phần còn lại ${outstandingAmount.toLocaleString('vi-VN')}đ cho booking của bạn`,
       sent_method: [SentMethod.IN_APP],
       status: NotificationStatus.SENT,
+      metadata: {
+        bookingId: bookingId,
+        propertyId: booking.propertyId?.toString(),
+        listingId: booking.listingId?.toString(),
+        amount: outstandingAmount,
+        paymentType: 'remaining',
+      },
     });
 
     return {
@@ -2974,6 +3508,77 @@ export class BookingService {
         paymentStatus: booking.payment_status || 'pending',
         amount: booking.final_amount || 0,
       };
+    }
+  }
+
+  /**
+   * Tạo thông báo tóm tắt booking cho admin (có thể gọi định kỳ)
+   */
+  async createAdminBookingSummaryNotification(): Promise<void> {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+      // Đếm số booking mới trong ngày
+      const todayBookings = await this.bookingRepo.getModel().countDocuments({
+        created_at: { $gte: startOfDay, $lte: endOfDay },
+      });
+
+      // Tính tổng doanh thu trong ngày
+      const revenueResult = await this.bookingRepo.getModel().aggregate([
+        {
+          $match: {
+            created_at: { $gte: startOfDay, $lte: endOfDay },
+            status: { $ne: BookingStatus.CANCELLED },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$final_amount' },
+          },
+        },
+      ]);
+
+      const totalRevenue = revenueResult[0]?.totalRevenue || 0;
+
+      if (todayBookings > 0) {
+        // Get all admin users
+        const adminUsers = await this.bookingRepo
+          .getModel()
+          .db.collection('users')
+          .find({ role: 'admin' })
+          .toArray();
+
+        // Create summary notification for each admin
+        for (const admin of adminUsers) {
+          await this.notificationsService.create({
+            user_id: admin._id.toString(),
+            recipient_type: RecipientType.ADMIN,
+            title: `📈 Tóm tắt booking hôm nay`,
+            message: `Hôm nay có ${todayBookings} booking mới với tổng doanh thu ${totalRevenue.toLocaleString('vi-VN')}đ. Kiểm tra chi tiết để theo dõi hiệu suất.`,
+            type: NotificationType.SYSTEM,
+            status: NotificationStatus.SENT,
+            sent_method: [SentMethod.IN_APP],
+            metadata: {
+              summaryType: 'daily_booking',
+              date: startOfDay,
+              totalBookings: todayBookings,
+              totalRevenue,
+            },
+          });
+        }
+
+        this.logger.log(
+          `Created daily booking summary notification: ${todayBookings} bookings, ${totalRevenue}đ revenue`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        'Error creating admin booking summary notification:',
+        error,
+      );
     }
   }
 }

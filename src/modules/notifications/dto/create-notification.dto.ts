@@ -5,6 +5,7 @@ import {
   IsMongoId,
   IsArray,
   IsBoolean,
+  IsObject,
 } from 'class-validator';
 import {
   NotificationType,
@@ -57,4 +58,8 @@ export class CreateNotificationDto {
   @IsOptional()
   @IsString()
   sender_user_id?: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
 }
