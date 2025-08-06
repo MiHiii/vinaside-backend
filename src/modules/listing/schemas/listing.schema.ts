@@ -11,9 +11,6 @@ export enum ListingStatus {
   ACTIVE = 'active', // Phòng đang hoạt động và hiển thị
   INACTIVE = 'inactive', // Tạm ngưng hiển thị
   DRAFT = 'draft', // Đang tạo nhưng chưa public
-  PENDING_APPROVAL = 'pending_approval', // Chờ admin duyệt
-  VERIFIED = 'verified', // Đã kiểm duyệt
-  DELETED = 'deleted', // Đã xóa (soft delete)
 }
 
 @Schema({ timestamps: true })
@@ -123,6 +120,13 @@ export class Listing extends Document {
 
   @Prop({ type: Date })
   deletedAt?: Date;
+
+  // Weekend surcharge fields
+  @Prop({ type: Boolean, default: false })
+  has_weekend_surcharge?: boolean;
+
+  @Prop({ type: Number, default: 0, min: 0, max: 100 })
+  weekend_surcharge_percent?: number;
 }
 
 export const ListingSchema = SchemaFactory.createForClass(Listing);

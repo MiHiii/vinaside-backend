@@ -16,9 +16,11 @@ import {
   BookingStatus,
   PaymentStatus,
 } from './schemas/booking.schema';
+import { PaymentMethod } from '../transactions/schemas/transaction.schema';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
+import { StaffCreateBookingDto } from './dto/staff-create-booking.dto';
 import { parseSortString } from '../../utils/common.util';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { BookingRepo } from './booking.repo';
@@ -57,9 +59,10 @@ import {
 } from '../../utils/date.util';
 import { CancelPolicy } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
-import { PaymentResponseDto } from './dto/payment.dto';
+import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
 import { applyStaffFilter } from '../../utils/staff-filter.util';
+import { PaymentStatusDto } from './dto/payment.dto';
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -228,9 +231,12 @@ export class BookingService {
       throw new BadRequestException('Ngày trả phòng phải sau ngày nhận phòng');
     }
 
+    // Lấy thông tin listing (đã tự động check trạng thái active)
     const listing = await this.listingService.findOne(listingId);
     if (!listing) {
-      throw new NotFoundException(`Không tìm thấy listing với ID ${listingId}`);
+      throw new NotFoundException(
+        `Không tìm thấy listing với ID ${listingId} hoặc listing không active`,
+      );
     }
 
     const isAvailable = await this.checkAvailability(
@@ -851,6 +857,22 @@ export class BookingService {
     checkInDate: string,
     checkOutDate: string,
   ): Promise<{ available: boolean; message: string }> {
+    // Kiểm tra listing có tồn tại và active không
+    try {
+      const listing = await this.listingService.findOne(listingId);
+      if (!listing) {
+        return {
+          available: false,
+          message: 'Listing không tồn tại hoặc không active.',
+        };
+      }
+    } catch {
+      return {
+        available: false,
+        message: 'Listing không tồn tại hoặc không active.',
+      };
+    }
+
     const isConflict = await this.bookingRepo.checkBookingConflict(
       listingId,
       new Date(checkInDate),
@@ -1026,8 +1048,8 @@ export class BookingService {
     booking.cancellation_reason = 'Public user cancelled';
 
     // 3. Tính toán hoàn tiền theo chính sách
-    // Lấy thông tin listing để lấy cancel_policy
-    const listing = await this.listingService.findOne(
+    // Lấy thông tin listing để lấy cancel_policy (cho phép lấy listing ở bất kỳ trạng thái nào vì booking đã được tạo)
+    const listing = await this.listingService.findOneForStaff(
       booking.listingId.toString(),
     );
     const cancel_policy = listing?.cancel_policy || CancelPolicy.FLEXIBLE;
@@ -2474,5 +2496,484 @@ export class BookingService {
       expiresAt: result.expiresAt,
       createdAt: result.createdAt,
     };
+  }
+
+  async createStaffRemainingPayment(
+    propertyId: string,
+    bookingId: string,
+    createPaymentDto: CreatePaymentDto,
+    user: JwtPayload,
+  ): Promise<PaymentResponseDto> {
+    // Kiểm tra quyền staff
+    if (user.role !== 'admin' && user.role !== 'staff') {
+      throw new ForbiddenException(
+        'Chỉ admin và staff mới có thể thanh toán cho guest',
+      );
+    }
+
+    // Kiểm tra staff có được assign cho property này không
+    if (user.role === 'staff') {
+      const isAssigned =
+        await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+          new Types.ObjectId(user._id),
+          new Types.ObjectId(propertyId),
+        );
+      if (!isAssigned) {
+        throw new ForbiddenException(
+          'Bạn không có quyền thanh toán cho property này',
+        );
+      }
+    }
+
+    const booking = await this.bookingRepo.findOne({
+      _id: bookingId,
+      propertyId: new Types.ObjectId(propertyId),
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    // Tính số tiền còn lại cần thanh toán
+    const depositPaidAmount =
+      booking.deposit_paid_amount || booking.deposit_amount || 0;
+    const outstandingAmount = booking.final_amount - depositPaidAmount;
+
+    if (outstandingAmount <= 0) {
+      throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+    }
+
+    // Kiểm tra trạng thái thanh toán
+    if (
+      booking.payment_status !== PaymentStatus.UNPAID &&
+      booking.payment_status !== PaymentStatus.PAID &&
+      booking.payment_status !== PaymentStatus.PARTIALLY_PAID
+    ) {
+      throw new BadRequestException(
+        'Booking không ở trạng thái cho phép thanh toán',
+      );
+    }
+
+    const paymentService = this.paymentFactory.getPaymentService(
+      createPaymentDto.paymentMethod,
+    );
+
+    const paymentRequest = {
+      ...createPaymentDto,
+      bookingId,
+      amount: outstandingAmount,
+      paymentType: 'remaining' as const,
+      description: `Nhân viên thanh toán phần còn lại cho booking ${bookingId}`,
+    };
+
+    const result = await paymentService.createPaymentUrl(paymentRequest);
+
+    // Tạo notification cho guest
+    await this.notificationsService.create({
+      user_id: booking.guestId.toString(),
+      recipient_type: RecipientType.GUEST,
+      type: NotificationType.PAYMENT,
+      title: 'Thanh toán phần còn lại',
+      message: `Nhân viên đã tạo thanh toán phần còn lại ${outstandingAmount.toLocaleString('vi-VN')}đ cho booking của bạn`,
+      sent_method: [SentMethod.IN_APP],
+      status: NotificationStatus.SENT,
+    });
+
+    return {
+      success: result.success,
+      paymentMethod: result.paymentMethod,
+      paymentUrl: result.paymentUrl,
+      orderId: result.orderId,
+      amount: result.amount,
+      message: result.message,
+      expiresAt: result.expiresAt,
+      createdAt: result.createdAt,
+    };
+  }
+
+  // =================== NOTE & ADDITIONAL COST METHODS ===================
+
+  async updateNote(
+    propertyId: string,
+    bookingId: string,
+    note: string,
+    user: JwtPayload,
+  ): Promise<BookingResponseDto> {
+    const booking = await this.bookingRepo.findOne({
+      _id: bookingId,
+      propertyId: new Types.ObjectId(propertyId),
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    // Cập nhật note
+    const updatedBooking = await this.bookingRepo.updateById(
+      bookingId,
+      {
+        note,
+      },
+      user._id,
+    );
+
+    return this.transformBookingToResponse(updatedBooking);
+  }
+
+  async updateAdditionalCost(
+    propertyId: string,
+    bookingId: string,
+    additionalCost: number,
+    additionalCostReason?: string,
+    user?: JwtPayload,
+  ): Promise<BookingResponseDto> {
+    const booking = await this.bookingRepo.findOne({
+      _id: bookingId,
+      propertyId: new Types.ObjectId(propertyId),
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    // Tính lại final_amount nếu có additionalCost
+    let finalAmount = booking.final_amount;
+    if (additionalCost !== booking.additionalCost) {
+      finalAmount =
+        booking.final_amount - (booking.additionalCost || 0) + additionalCost;
+    }
+
+    // Cập nhật additionalCost và final_amount
+    const updateData: any = {
+      additionalCost,
+      final_amount: finalAmount,
+    };
+
+    if (additionalCostReason !== undefined) {
+      updateData.additionalCostReason = additionalCostReason;
+    }
+
+    const updatedBooking = await this.bookingRepo.updateById(
+      bookingId,
+      updateData,
+      user?._id,
+    );
+
+    return this.transformBookingToResponse(updatedBooking);
+  }
+
+  // =================== CANCELLATION DETAILS METHODS ===================
+
+  async updateCancellationDetails(
+    propertyId: string,
+    bookingId: string,
+    cancellationDetails: any,
+    user: JwtPayload,
+  ): Promise<BookingResponseDto> {
+    const booking = await this.bookingRepo.findOne({
+      _id: bookingId,
+      propertyId: new Types.ObjectId(propertyId),
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    // Cập nhật cancellationDetails
+    const updatedBooking = await this.bookingRepo.updateById(
+      bookingId,
+      {
+        cancellationDetails,
+        cancellationDetailsUpdatedAt: new Date(),
+        cancellationDetailsUpdatedBy: new Types.ObjectId(user._id),
+      },
+      user._id,
+    );
+
+    return this.transformBookingToResponse(updatedBooking);
+  }
+
+  async getCancellationDetails(
+    propertyId: string,
+    bookingId: string,
+  ): Promise<any> {
+    const booking = await this.bookingRepo.findOne({
+      _id: bookingId,
+      propertyId: new Types.ObjectId(propertyId),
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+
+    return {
+      cancellationDetails: booking.cancellationDetails,
+      cancellationDetailsUpdatedAt: booking.cancellationDetailsUpdatedAt,
+      cancellationDetailsUpdatedBy: booking.cancellationDetailsUpdatedBy,
+    };
+  }
+
+  // =================== STAFF BOOKING METHODS ===================
+
+  async createStaffBooking(
+    createBookingDto: StaffCreateBookingDto,
+    user: JwtPayload,
+  ): Promise<BookingResponseDto> {
+    try {
+      // Kiểm tra quyền staff
+      if (user.role !== 'admin' && user.role !== 'staff') {
+        throw new ForbiddenException(
+          'Chỉ admin và staff mới có thể tạo booking',
+        );
+      }
+
+      // Kiểm tra staff có được assign cho property này không
+      if (user.role === 'staff') {
+        const isAssigned =
+          await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            new Types.ObjectId(createBookingDto.propertyId),
+          );
+        if (!isAssigned) {
+          throw new ForbiddenException(
+            'Bạn không có quyền tạo booking cho property này',
+          );
+        }
+      }
+
+      // Lấy thông tin listing (staff có thể tạo booking cho listing ở bất kỳ trạng thái nào)
+      const listing = await this.listingService.findOneForStaff(
+        createBookingDto.listingId,
+      );
+      if (!listing) {
+        throw new NotFoundException('Không tìm thấy listing');
+      }
+
+      // Kiểm tra availability nếu không skip
+      if (!createBookingDto.skip_availability_check) {
+        const availability = await this.checkAvailability(
+          createBookingDto.listingId,
+          createBookingDto.checkInDate,
+          createBookingDto.checkOutDate,
+        );
+        if (!availability.available) {
+          throw new BadRequestException(availability.message);
+        }
+      }
+
+      // Tính toán các giá trị
+      const checkInDate = new Date(createBookingDto.checkInDate);
+      const checkOutDate = new Date(createBookingDto.checkOutDate);
+      const nights = Math.ceil(
+        (checkOutDate.getTime() - checkInDate.getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+
+      // Tính giá cơ bản
+      const pricePerNight =
+        createBookingDto.price_per_night || listing.price_per_night;
+      const totalPrice = pricePerNight * nights;
+
+      // Tính weekend surcharge từ listing
+      let weekendSurcharge = 0;
+
+      if (listing.has_weekend_surcharge) {
+        const weekendDays = this.calculateWeekendDays(
+          checkInDate,
+          checkOutDate,
+        );
+
+        // Tính theo phần trăm
+        const surchargePercent = listing.weekend_surcharge_percent || 0;
+        weekendSurcharge =
+          (pricePerNight * weekendDays * surchargePercent) / 100;
+      }
+
+      // Tính services
+      let servicesTotalAmount = 0;
+      const selectedServices: Array<{
+        service_id: Types.ObjectId;
+        service_name: string;
+        service_price: number;
+        quantity: number;
+        total_price: number;
+      }> = [];
+      if (createBookingDto.services && createBookingDto.services.length > 0) {
+        for (const serviceDto of createBookingDto.services) {
+          const service = await this.servicesService.findOne(
+            serviceDto.serviceId,
+          );
+          if (service) {
+            const serviceTotal = service.default_price * serviceDto.quantity;
+            servicesTotalAmount += serviceTotal;
+            selectedServices.push({
+              service_id: new Types.ObjectId(serviceDto.serviceId),
+              service_name: service.name,
+              service_price: service.default_price,
+              quantity: serviceDto.quantity,
+              total_price: serviceTotal,
+            });
+          }
+        }
+      }
+
+      // Tính voucher discount
+      let voucherDiscountAmount = 0;
+      let voucherDiscountPercent = 0;
+      let voucherId: any = null;
+      let voucherCode: any = null;
+
+      if (createBookingDto.voucherCode) {
+        const voucher = await this.voucherService.findByCode(
+          createBookingDto.voucherCode,
+        );
+        if (voucher) {
+          voucherId = voucher._id;
+          voucherCode = voucher.code;
+          voucherDiscountPercent = voucher.discount_percent || 0;
+          voucherDiscountAmount = 0; // Sẽ tính dựa trên discount_percent
+        }
+      }
+
+      // Tính subtotal và discount
+      const subtotalAmount =
+        totalPrice + servicesTotalAmount + weekendSurcharge;
+      const discountAmount =
+        voucherDiscountAmount + (subtotalAmount * voucherDiscountPercent) / 100;
+      const amountAfterDiscount = subtotalAmount - discountAmount;
+
+      // Tính service fee và tax
+      const serviceFee = amountAfterDiscount * 0.1; // 10%
+      const taxAmount = amountAfterDiscount * 0.08; // 8%
+
+      // Tính final amount
+      const additionalCost = createBookingDto.additionalCost || 0;
+      const finalAmount =
+        amountAfterDiscount + serviceFee + taxAmount + additionalCost;
+
+      // Tính commission và payout
+      const commissionRate = 0.1; // 10%
+      const finalPayoutAmount = finalAmount * (1 - commissionRate);
+
+      // Tạo booking data
+      const bookingData = {
+        propertyId: new Types.ObjectId(createBookingDto.propertyId),
+        listingId: new Types.ObjectId(createBookingDto.listingId),
+        guestId: createBookingDto.guestId
+          ? new Types.ObjectId(createBookingDto.guestId)
+          : null,
+        checkInDate,
+        check_out_date: checkOutDate,
+        guests: createBookingDto.guests,
+        infants: createBookingDto.infants || 0,
+        nights,
+        price_per_night: pricePerNight,
+        total_price: totalPrice,
+        service_fee: serviceFee,
+        tax_amount: taxAmount,
+        final_amount: finalAmount,
+        commissionRate,
+        finalPayoutAmount,
+        status: createBookingDto.status || BookingStatus.PENDING,
+        payment_status: createBookingDto.payment_status || PaymentStatus.UNPAID,
+        guest_name: createBookingDto.guest_name,
+        guest_email: createBookingDto.guest_email,
+        guest_phone: createBookingDto.guest_phone,
+        special_requests: createBookingDto.specialRequests,
+        voucher_id: voucherId || null,
+        voucher_code: voucherCode || null,
+        voucher_discount_amount: voucherDiscountAmount,
+        voucher_discount_percent: voucherDiscountPercent,
+        selected_services: selectedServices,
+        services_total_amount: servicesTotalAmount,
+        subtotal_amount: subtotalAmount,
+        discount_amount: discountAmount,
+        amount_after_discount: amountAfterDiscount,
+        note: createBookingDto.note,
+        additionalCost: additionalCost,
+        additionalCostReason: createBookingDto.additionalCostReason,
+        createdBy: new Types.ObjectId(user._id),
+        updatedBy: new Types.ObjectId(user._id),
+      };
+
+      // Tạo booking
+      const booking = await this.bookingRepo.create(bookingData, user._id);
+
+      // Tạo notifications
+      await this.createStaffNotifications(
+        createBookingDto.propertyId,
+        booking,
+        listing,
+        finalAmount,
+      );
+
+      return this.transformBookingToResponse(booking);
+    } catch (error) {
+      this.handleError(error, 'createStaffBooking');
+    }
+  }
+
+  // Helper method để tính số ngày cuối tuần
+  private calculateWeekendDays(checkInDate: Date, checkOutDate: Date): number {
+    let weekendDays = 0;
+    const currentDate = new Date(checkInDate);
+
+    while (currentDate < checkOutDate) {
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        // 0 = Sunday, 6 = Saturday
+        weekendDays++;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return weekendDays;
+  }
+
+  // =================== PAYMENT STATUS METHODS ===================
+
+  async getPaymentStatus(bookingId: string): Promise<PaymentStatusDto> {
+    // Get booking info first to determine payment method
+    const booking = await this.findOne(bookingId);
+    const paymentMethod = booking.payment_method as PaymentMethod;
+
+    if (
+      !paymentMethod ||
+      !this.paymentFactory.isPaymentMethodSupported(paymentMethod)
+    ) {
+      return {
+        bookingId,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
+      };
+    }
+
+    // Get detailed status from payment gateway
+    const paymentService = this.paymentFactory.getPaymentService(paymentMethod);
+    const orderId =
+      paymentMethod === PaymentMethod.VNPAY
+        ? booking.vnpay_order_id || `${bookingId}_unknown`
+        : booking.momo_order_id || `${bookingId}_unknown`;
+
+    try {
+      const result = await paymentService.getPaymentStatus(orderId);
+      return {
+        bookingId: result.bookingId,
+        paymentMethod: result.paymentMethod,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: result.amount,
+        gatewayTransactionId: result.gatewayTransactionId,
+        paidAt: result.paidAt,
+        gatewayDetails: result.metadata,
+      };
+    } catch {
+      // Fallback to booking info if gateway fails
+      return {
+        bookingId,
+        paymentMethod,
+        paymentStatus: booking.payment_status || 'pending',
+        amount: booking.final_amount || 0,
+      };
+    }
   }
 }

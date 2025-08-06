@@ -5,6 +5,8 @@ import {
   ValidateNested,
   IsNumber,
   IsString,
+  IsObject,
+  ValidateNested as ValidateNestedObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { BookingStatus, PaymentStatus } from '../schemas/booking.schema';
@@ -15,6 +17,32 @@ export class BookingServiceDto {
 
   @IsNumber()
   quantity: number;
+}
+
+export class CancellationDetailsDto {
+  @IsString()
+  @IsOptional()
+  accountName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankName?: string;
+
+  @IsString()
+  @IsOptional()
+  accountNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  cancellationReason?: string;
+
+  @IsString()
+  @IsOptional()
+  refundMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  refundNote?: string;
 }
 
 export class UpdateBookingDto {
@@ -39,4 +67,48 @@ export class UpdateBookingDto {
   @IsNumber()
   @IsOptional()
   final_amount?: number;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+
+  @IsNumber()
+  @IsOptional()
+  additionalCost?: number;
+
+  @IsString()
+  @IsOptional()
+  additionalCostReason?: string;
+
+  @IsObject()
+  @ValidateNestedObject()
+  @Type(() => CancellationDetailsDto)
+  @IsOptional()
+  cancellationDetails?: CancellationDetailsDto;
+}
+
+export class UpdateCancellationDetailsDto {
+  @IsString()
+  @IsOptional()
+  accountName?: string;
+
+  @IsString()
+  @IsOptional()
+  bankName?: string;
+
+  @IsString()
+  @IsOptional()
+  accountNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  cancellationReason?: string;
+
+  @IsString()
+  @IsOptional()
+  refundMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  refundNote?: string;
 }
