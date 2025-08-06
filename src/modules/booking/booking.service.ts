@@ -270,8 +270,19 @@ export class BookingService {
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 3600 * 24),
     );
 
-    // Tính toán giá phòng cơ bản
-    const totalPrice = populatedListing.price_per_night * nights; // Giá phòng cơ bản
+    // ✅ THÊM VÀO ĐÂY: Tính weekend surcharge
+    let weekendSurcharge = 0;
+    if (listing.has_weekend_surcharge) {
+      const weekendDays = this.calculateWeekendDays(checkIn, checkOut);
+      const surchargePercent = listing.weekend_surcharge_percent || 0;
+      weekendSurcharge =
+        (populatedListing.price_per_night * weekendDays * surchargePercent) /
+        100;
+    }
+
+    // Tính toán giá phòng cơ bản + weekend surcharge
+    const totalPrice =
+      populatedListing.price_per_night * nights + weekendSurcharge;
 
     // Xử lý services
     let servicesTotalAmount = 0;
@@ -1763,9 +1774,6 @@ export class BookingService {
         .db.collection('users')
         .find({ role: 'admin' })
         .toArray();
-
-      // Use Set to avoid duplicate admin notifications
-      const processedAdmins = new Set<string>();
 
       // Create ONE notification for admin (pick first admin as representative)
       if (adminUsers.length > 0) {

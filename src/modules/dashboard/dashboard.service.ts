@@ -1876,8 +1876,8 @@ export class DashboardService {
     // Create a map of existing revenue data
     const revenueMap = new Map<string, number>();
     result.forEach((item: any) => {
-      const date = `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`;
-      revenueMap.set(date, item.totalRevenue);
+      const date = `${item._id?.year || 0}-${String(item._id?.month || 0).padStart(2, '0')}-${String(item._id?.day || 0).padStart(2, '0')}`;
+      revenueMap.set(date, Number(item.totalRevenue) || 0);
     });
 
     // Generate complete date range

@@ -27,7 +27,6 @@ import {
   createRealtimeNotification,
   validatePaginationParams,
   buildSortObject,
-  buildNotificationFilter,
 } from './utils/notification.util';
 import {
   NotificationResponse,
@@ -35,7 +34,6 @@ import {
   PopulatedNotification,
 } from './interfaces/notification.interface';
 import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
-import { AssignmentStatus } from '../property-staff-assignment/schemas/property-staff-assignment.schema';
 
 @Injectable()
 export class NotificationsService {
@@ -120,8 +118,8 @@ export class NotificationsService {
             const userPayload: JwtPayload = {
               _id: createNotificationDto.user_id,
               email: userInfo.email || '',
-              role: userInfo.role,
-              customRoles: userInfo.customRoles || [],
+              role: userInfo.role as 'guest' | 'staff' | 'admin',
+              customRoles: (userInfo.customRoles as string[]) || [],
             };
             const unreadCount = await this.getUnreadCount(userPayload);
             this.notificationsGateway.emitUnreadCountUpdate(
@@ -394,7 +392,7 @@ export class NotificationsService {
 
     if (isUserObject) {
       // New implementation with role-based filtering
-      const user = userOrId as JwtPayload;
+      const user = userOrId;
 
       // Build role-based filter for unread count
       const baseFilter = await this.buildRoleBasedNotificationFilter({
@@ -444,7 +442,7 @@ export class NotificationsService {
       };
     } else {
       // Original implementation for backward compatibility
-      const userId = userOrId as string;
+      const userId = userOrId;
 
       if (!isValidObjectId(userId)) {
         throw new BadRequestException('ID người dùng không hợp lệ');
