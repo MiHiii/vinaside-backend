@@ -1,21 +1,10 @@
-import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-  Request,
-  BadRequestException,
-} from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { RequirePermission } from '../../decorators/require-permission.decorator';
 import { DashboardService } from './dashboard.service';
-import {
-  QueryDashboardDto,
-  RevenueChartDto,
-  DateRangeType,
-} from './dto/query-dashboard.dto';
+import { QueryDashboardDto, RevenueChartDto } from './dto/query-dashboard.dto';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 
 @ApiTags('Dashboard')

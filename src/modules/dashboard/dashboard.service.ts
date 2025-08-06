@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, FilterQuery } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User } from '../users/schemas/user.schema';
 import { Property } from '../properties/schemas/property.schema';
 import { Listing } from '../listing/schemas/listing.schema';
@@ -21,7 +21,6 @@ import {
   DashboardRealTimeStatistics,
   RevenueChartResponse,
 } from './dto/dashboard-statistics';
-import { getDefaultDateRange } from '../../utils/date.util';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { RevenueChartDto, DateRangeType } from './dto/query-dashboard.dto';
 import { QueryDashboardDto } from './dto/query-dashboard.dto';
@@ -237,7 +236,7 @@ export class DashboardService {
 
     try {
       return propertyId.split(',').map((id) => new Types.ObjectId(id.trim()));
-    } catch (error) {
+    } catch {
       this.logger.error(`Invalid property ID format: ${propertyId}`);
       throw new Error('Invalid property ID format');
     }
@@ -323,9 +322,9 @@ export class DashboardService {
   /**
    * Create property match filter for MongoDB queries
    */
-  private createPropertyMatch(
-    propertyFilter: Types.ObjectId[] | undefined,
-  ): any {
+  private createPropertyMatch(propertyFilter: Types.ObjectId[] | undefined): {
+    propertyId?: { $in: Types.ObjectId[] };
+  } {
     return propertyFilter && propertyFilter.length > 0
       ? { propertyId: { $in: propertyFilter } }
       : {};
@@ -448,7 +447,7 @@ export class DashboardService {
       },
     ]);
 
-    const usersByRole = {
+    const usersByRole: { guest: number; staff: number; admin: number } = {
       guest: 0,
       staff: 0,
       admin: 0,
@@ -480,7 +479,11 @@ export class DashboardService {
         },
       ]);
 
-    const propertiesByStatus = {
+    const propertiesByStatus: {
+      active: number;
+      inactive: number;
+      pending: number;
+    } = {
       active: 0,
       inactive: 0,
       pending: 0,
@@ -511,7 +514,11 @@ export class DashboardService {
         },
       ]);
 
-    const listingsByStatus = {
+    const listingsByStatus: {
+      active: number;
+      inactive: number;
+      draft: number;
+    } = {
       active: 0,
       inactive: 0,
       draft: 0,
@@ -541,7 +548,13 @@ export class DashboardService {
         },
       ]);
 
-    const bookingsByStatus = {
+    const bookingsByStatus: {
+      pending: number;
+      confirmed: number;
+      cancelled: number;
+      completed: number;
+      rejected: number;
+    } = {
       pending: 0,
       confirmed: 0,
       cancelled: 0,
@@ -1766,7 +1779,7 @@ export class DashboardService {
           endDate: todayEnd,
         };
 
-      case DateRangeType.LAST_7_DAYS:
+      case DateRangeType.LAST_7_DAYS: {
         const sevenDaysAgo = new Date(
           today.getTime() - 7 * 24 * 60 * 60 * 1000,
         );
@@ -1774,8 +1787,9 @@ export class DashboardService {
           startDate: sevenDaysAgo,
           endDate: todayEnd,
         };
+      }
 
-      case DateRangeType.LAST_15_DAYS:
+      case DateRangeType.LAST_15_DAYS: {
         const fifteenDaysAgo = new Date(
           today.getTime() - 15 * 24 * 60 * 60 * 1000,
         );
@@ -1783,8 +1797,9 @@ export class DashboardService {
           startDate: fifteenDaysAgo,
           endDate: todayEnd,
         };
+      }
 
-      case DateRangeType.LAST_30_DAYS:
+      case DateRangeType.LAST_30_DAYS: {
         const thirtyDaysAgo = new Date(
           today.getTime() - 30 * 24 * 60 * 60 * 1000,
         );
@@ -1792,8 +1807,9 @@ export class DashboardService {
           startDate: thirtyDaysAgo,
           endDate: todayEnd,
         };
+      }
 
-      case DateRangeType.CUSTOM:
+      case DateRangeType.CUSTOM: {
         if (!queryDto.startDate || !queryDto.endDate) {
           throw new Error(
             'Start date and end date are required for custom date range',
@@ -1805,8 +1821,9 @@ export class DashboardService {
           startDate: customStart,
           endDate: customEnd,
         };
+      }
 
-      default:
+      default: {
         // Default to last 30 days
         const defaultStart = new Date(
           today.getTime() - 30 * 24 * 60 * 60 * 1000,
@@ -1815,6 +1832,7 @@ export class DashboardService {
           startDate: defaultStart,
           endDate: todayEnd,
         };
+      }
     }
   }
 
@@ -1857,7 +1875,7 @@ export class DashboardService {
 
     // Create a map of existing revenue data
     const revenueMap = new Map<string, number>();
-    result.forEach((item) => {
+    result.forEach((item: any) => {
       const date = `${item._id.year}-${String(item._id.month).padStart(2, '0')}-${String(item._id.day).padStart(2, '0')}`;
       revenueMap.set(date, item.totalRevenue);
     });
