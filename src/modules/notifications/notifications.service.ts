@@ -119,7 +119,7 @@ export class NotificationsService {
               _id: createNotificationDto.user_id,
               email: userInfo.email || '',
               role: userInfo.role as 'guest' | 'staff' | 'admin',
-              customRoles: (userInfo.customRoles as string[]) || [],
+              customRoles: (userInfo.customRoles as unknown as string[]) || [],
             };
             const unreadCount = await this.getUnreadCount(userPayload);
             this.notificationsGateway.emitUnreadCountUpdate(
