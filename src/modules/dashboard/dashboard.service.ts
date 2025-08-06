@@ -1873,22 +1873,38 @@ export class DashboardService {
       },
     ]);
 
+    // Khai báo interface rõ ràng cho item
+    interface RevenueItem {
+      _id: {
+        year: number;
+        month: number;
+        day: number;
+      };
+      totalRevenue: number;
+    }
+
     // Create a map of existing revenue data
     const revenueMap = new Map<string, number>();
-    result.forEach((item: any) => {
-      // item._id: { year: number, month: number, day: number }, item.totalRevenue: number
-      const id =
-        ((item as any)._id as { year: number; month: number; day: number }) ||
-        {};
-      const year = typeof id.year === 'number' ? id.year : 0;
-      const month = typeof id.month === 'number' ? id.month : 0;
-      const day = typeof id.day === 'number' ? id.day : 0;
-      const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const totalRevenue =
-        typeof (item as any).totalRevenue === 'number'
-          ? (item as any).totalRevenue
-          : 0;
-      revenueMap.set(date, totalRevenue);
+
+    result.forEach((item: unknown) => {
+      // Kiểm tra kiểu an toàn trước khi thao tác
+      if (
+        typeof item === 'object' &&
+        item !== null &&
+        '_id' in item &&
+        'totalRevenue' in item
+      ) {
+        const revenueItem = item as RevenueItem;
+
+        const { year, month, day } = revenueItem._id;
+        const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const totalRevenue =
+          typeof revenueItem.totalRevenue === 'number'
+            ? revenueItem.totalRevenue
+            : 0;
+
+        revenueMap.set(date, totalRevenue);
+      }
     });
 
     // Generate complete date range
