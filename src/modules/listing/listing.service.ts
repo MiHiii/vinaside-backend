@@ -134,13 +134,13 @@ export class ListingService {
   }> {
     const {
       page = 1,
-      limit = 14,
+      limit = undefined,
       sortBy = 'created_at',
       sortOrder = 'desc',
       ...filters
     } = queryDto;
 
-    const skip = (page - 1) * limit;
+    const skip = limit ? (page - 1) * limit : 0;
 
     // First, handle location-based filtering by finding matching properties
     let propertyIds: Types.ObjectId[] | undefined;
@@ -165,7 +165,7 @@ export class ListingService {
           meta: {
             total: 0,
             page,
-            limit,
+            limit: limit ?? 0,
             totalPages: 0,
           },
         };
@@ -298,7 +298,7 @@ export class ListingService {
       meta: {
         total: result.total,
         page,
-        limit,
+        limit: limit ?? 0,
         totalPages: Math.ceil(result.total / (limit || 1)),
       },
     };

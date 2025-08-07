@@ -27,7 +27,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     // Kiểm tra xem staff đã được assign cho property này chưa (với status active)
     const existingAssignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Không convert to string nữa
+      staffId: payload.staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -37,7 +37,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
 
     const assignment = new this.propertyStaffAssignmentModel({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Lưu dưới dạng ObjectId
+      staffId: payload.staffId.toString(), // Lưu dưới dạng string để nhất quán
       assignedBy: payload.assignedBy,
       status: AssignmentStatus.ACTIVE,
       assignedAt: new Date(),
@@ -52,7 +52,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
   ): Promise<PropertyStaffAssignmentDocument | null> {
     const assignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Không convert to string nữa
+      staffId: payload.staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -85,7 +85,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     staffId: Types.ObjectId,
   ): Promise<PropertyStaffAssignmentDocument[]> {
     const query = {
-      staffId: staffId, // Không convert to string nữa
+      staffId: staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     };
 
@@ -121,7 +121,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     propertyId: Types.ObjectId,
   ): Promise<boolean> {
     const query = {
-      staffId: staffId, // Không convert to string nữa
+      staffId: staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       propertyId,
       status: AssignmentStatus.ACTIVE,
     };

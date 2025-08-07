@@ -194,6 +194,14 @@ export class BookingService {
       deposit_paid_amount: booking.deposit_paid_amount,
       outstanding_amount:
         (booking.final_amount || 0) - (booking.deposit_paid_amount || 0),
+      note: booking.note,
+      additionalCost: booking.additionalCost,
+      additionalCostReason: booking.additionalCostReason,
+      cancellationDetails: booking.cancellationDetails,
+      cancellationDetailsUpdatedAt: booking.cancellationDetailsUpdatedAt,
+      cancellationDetailsUpdatedBy: booking.cancellationDetailsUpdatedBy
+        ? booking.cancellationDetailsUpdatedBy.toString()
+        : undefined,
     };
   }
 
