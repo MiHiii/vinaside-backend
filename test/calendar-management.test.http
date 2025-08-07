@@ -1,0 +1,41 @@
+### Calendar Management Test
+
+### 1. Lấy dữ liệu calendar theo tháng (Admin)
+GET {{baseUrl}}/bookings/calendar?viewType=monthly&startDate=2024-02-01&endDate=2024-02-29
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2ODdjNjYyYmY5MzVkNDY3YThhNGI2Y2IiLCJlbWFpbCI6ImFkbWluQHZpbmFzaWRlLmNvbSIsIm5hbWUiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiIsImN1c3RvbVJvbGVzIjpbXSwiaXNzIjoiYXBpIiwiaWF0IjoxNzU0NTczNDA4LCJleHAiOjE3NTUxNzgyMDh9.zq1lGjGdTSdgb2M862u4K_WuIjL0yivIZj1cZPpqkp4
+Content-Type: application/json
+
+### 2. Lấy dữ liệu calendar theo tuần (Staff)
+GET {{baseUrl}}/bookings/calendar?viewType=weekly&startDate=2024-02-12&endDate=2024-02-18&propertyId={{propertyId}}
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+### 3. Lấy dữ liệu calendar theo ngày (Staff)
+GET {{baseUrl}}/bookings/calendar?viewType=daily&startDate=2024-02-15&endDate=2024-02-15&listingId={{listingId}}
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+### 4. Lấy thông tin booking chi tiết cho một ngày cụ thể
+GET {{baseUrl}}/bookings/calendar/day/2024-02-15?propertyId={{propertyId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 5. Lấy thông tin booking cho một listing cụ thể trong ngày
+GET {{baseUrl}}/bookings/calendar/day/2024-02-15?listingId={{listingId}}
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+### 6. Filter theo status
+GET {{baseUrl}}/bookings/calendar?viewType=monthly&status=confirmed&payment_status=paid
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 7. Calendar cho admin quản lý nhiều homestay
+GET {{baseUrl}}/bookings/calendar?viewType=monthly&startDate=2024-02-01&endDate=2024-02-29
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 8. Calendar cho staff quản lý property được assign
+GET {{baseUrl}}/bookings/calendar?viewType=weekly&propertyId={{propertyId}}
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json 
