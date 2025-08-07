@@ -5,7 +5,6 @@ import {
   IsMongoId,
   IsEnum,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 export enum CalendarViewType {
   DAILY = 'daily',
