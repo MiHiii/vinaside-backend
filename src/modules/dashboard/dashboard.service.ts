@@ -259,18 +259,16 @@ export class DashboardService {
   /**
    * Get properties that a staff user is assigned to manage
    */
-  private async getStaffManagedProperties(
-    staffId: string,
-  ): Promise<Types.ObjectId[]> {
+  private async getStaffManagedProperties(staffId: string): Promise<string[]> {
     const assignments = await this.propertyStaffAssignmentModel
       .find({
-        staffId: new Types.ObjectId(staffId),
+        staffId: staffId, // Convert to string vì DB lưu dưới dạng string
         status: 'active',
       })
       .select('propertyId')
       .lean();
 
-    return assignments.map((assignment) => assignment.propertyId);
+    return assignments.map((assignment) => assignment.propertyId.toString());
   }
 
   /**
@@ -299,7 +297,9 @@ export class DashboardService {
       if (requestedPropertyIds) {
         const requestedIds = this.parsePropertyIds(requestedPropertyIds);
         const allowedIds = requestedIds?.filter((id) =>
-          staffManagedProperties.some((managedId) => managedId.equals(id)),
+          staffManagedProperties.some(
+            (managedId) => managedId === id.toString(),
+          ),
         );
 
         if (!allowedIds || allowedIds.length === 0) {
@@ -311,8 +311,8 @@ export class DashboardService {
         return allowedIds;
       }
 
-      // If no specific properties requested, return all managed properties
-      return staffManagedProperties;
+      // If no specific properties requested, return all managed properties as ObjectIds
+      return staffManagedProperties.map((id) => new Types.ObjectId(id));
     }
 
     // For other roles, return undefined (no access)
