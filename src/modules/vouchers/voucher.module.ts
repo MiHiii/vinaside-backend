@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { VoucherController } from './voucher.controller';
 import { VoucherService } from './voucher.service';
@@ -8,6 +8,7 @@ import {
   VoucherUsage,
   VoucherUsageSchema,
 } from './schemas/voucher-usage.schema';
+import { BookingModule } from '../booking/booking.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import {
       { name: Voucher.name, schema: VoucherSchema },
       { name: VoucherUsage.name, schema: VoucherUsageSchema },
     ]),
+    forwardRef(() => BookingModule),
   ],
   controllers: [VoucherController],
   providers: [VoucherService, VoucherRepo],

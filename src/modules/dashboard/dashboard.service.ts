@@ -1755,21 +1755,25 @@ export class DashboardService {
     startDate: Date;
     endDate: Date;
   } {
-    // Get current date in local timezone
+    // Get current date in UTC timezone
     const now = new Date();
 
-    // Create today's date at 00:00:00 in local timezone
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Create today's date at 00:00:00 in UTC timezone
+    const today = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
 
-    // Create today's date at 23:59:59.999 in local timezone
+    // Create today's date at 23:59:59.999 in UTC timezone
     const todayEnd = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23,
-      59,
-      59,
-      999,
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
     );
 
     switch (queryDto.dateRange) {
