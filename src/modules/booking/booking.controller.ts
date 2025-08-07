@@ -50,6 +50,8 @@ import {
 } from '@nestjs/swagger';
 import { UpdateCancellationDetailsDto } from './dto/update-booking.dto';
 import { StaffCreateBookingDto } from './dto/staff-create-booking.dto';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
+import { CalendarResponseDto } from './dto/calendar-response.dto';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
@@ -588,6 +590,49 @@ export class BookingController {
     return await this.bookingService.createStaffBooking(
       createBookingDto,
       req.user,
+    );
+  }
+
+  // =================== CALENDAR ENDPOINTS ===================
+
+  @Get('calendar')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({ summary: 'Lấy dữ liệu calendar theo ngày' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dữ liệu calendar được trả về thành công',
+    type: CalendarResponseDto,
+  })
+  @ResponseMessage('Lấy dữ liệu calendar thành công')
+  async getCalendarData(
+    @Query() queryDto: CalendarQueryDto,
+    @Request() req: RequestWithUser,
+  ): Promise<CalendarResponseDto> {
+    return await this.bookingService.getCalendarData(queryDto, req.user, req);
+  }
+
+  @Get('calendar/day/:date')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({ summary: 'Lấy thông tin booking chi tiết cho một ngày' })
+  @ApiResponse({
+    status: 200,
+    description: 'Thông tin booking theo ngày được trả về thành công',
+  })
+  @ResponseMessage('Lấy thông tin booking theo ngày thành công')
+  async getDayBookings(
+    @Param('date') date: string,
+    @Request() req: RequestWithUser,
+    @Query('propertyId') propertyId?: string,
+    @Query('listingId') listingId?: string,
+  ) {
+    return await this.bookingService.getDayBookings(
+      date,
+      propertyId,
+      listingId,
+      req.user,
+      req,
     );
   }
 }
