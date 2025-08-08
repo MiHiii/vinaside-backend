@@ -237,6 +237,7 @@ export class PropertyService {
       sortOrder = 'desc',
       ...filters
     } = queryDto;
+
     const skip = (page - 1) * limit;
 
     // Build filter object with proper typing

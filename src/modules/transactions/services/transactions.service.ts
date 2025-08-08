@@ -185,6 +185,7 @@ export class TransactionsService {
     }
 
     // Apply staff filtering using utility function
+
     const filteredConditions = applyStaffFilter(
       filterConditions,
       request,

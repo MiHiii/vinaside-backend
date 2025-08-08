@@ -63,6 +63,12 @@ import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
 import { applyStaffFilter } from '../../utils/staff-filter.util';
 import { PaymentStatusDto } from './dto/payment.dto';
+import { CalendarQueryDto, CalendarViewType } from './dto/calendar-query.dto';
+import {
+  CalendarResponseDto,
+  CalendarDayDto,
+  CalendarBookingDto,
+} from './dto/calendar-response.dto';
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -3701,6 +3707,182 @@ export class BookingService {
     };
   }
 
+  // =================== CALENDAR MANAGEMENT ===================
+
+  /**
+   * Lấy dữ liệu calendar theo ngày với thông tin booking chi tiết
+   */
+  async getCalendarData(
+    queryDto: CalendarQueryDto,
+    user: JwtPayload,
+    request?: any,
+  ): Promise<CalendarResponseDto> {
+    // Xác định khoảng thời gian
+    const startDate = queryDto.startDate
+      ? new Date(queryDto.startDate)
+      : new Date();
+    const endDate = queryDto.endDate ? new Date(queryDto.endDate) : new Date();
+
+    if (queryDto.viewType === CalendarViewType.MONTHLY) {
+      // Nếu không có startDate, lấy tháng hiện tại
+      if (!queryDto.startDate) {
+        startDate.setDate(1);
+        startDate.setHours(0, 0, 0, 0);
+      }
+      // Nếu không có endDate, lấy cuối tháng
+      if (!queryDto.endDate) {
+        endDate.setMonth(endDate.getMonth() + 1);
+        endDate.setDate(0);
+        endDate.setHours(23, 59, 59, 999);
+      }
+    } else if (queryDto.viewType === CalendarViewType.WEEKLY) {
+      // Nếu không có startDate, lấy tuần hiện tại
+      if (!queryDto.startDate) {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const diff = today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        startDate.setDate(diff);
+        startDate.setHours(0, 0, 0, 0);
+      }
+      // Nếu không có endDate, lấy cuối tuần
+      if (!queryDto.endDate) {
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+      }
+    } else {
+      // DAILY view
+      if (!queryDto.startDate) {
+        startDate.setHours(0, 0, 0, 0);
+      }
+      if (!queryDto.endDate) {
+        endDate.setHours(23, 59, 59, 999);
+      }
+    }
+
+    // Tạo filter cho booking
+    const filter: any = {
+      isDeleted: false,
+      checkInDate: { $lte: endDate },
+      check_out_date: { $gte: startDate },
+    };
+
+    // Filter theo property nếu có
+    if (queryDto.propertyId) {
+      filter.propertyId = new Types.ObjectId(queryDto.propertyId);
+    }
+
+    // Filter theo listing nếu có
+    if (queryDto.listingId) {
+      filter.listingId = new Types.ObjectId(queryDto.listingId);
+    }
+
+    // Filter theo status nếu có
+    if (queryDto.status) {
+      filter.status = queryDto.status;
+    }
+
+    // Filter theo payment_status nếu có
+    if (queryDto.payment_status) {
+      filter.payment_status = queryDto.payment_status;
+    }
+
+    // Áp dụng staff filter nếu cần
+    if (user.role === 'staff') {
+      // Staff filtering sẽ được handle bởi interceptor
+      // Không cần thêm logic ở đây vì đã có @StaffFiltered decorator
+    }
+
+    // Apply staff filtering using utility function
+    const filteredQuery = applyStaffFilter(filter, request, 'propertyId');
+
+    // Lấy tất cả bookings trong khoảng thời gian
+    const { data: bookings } = await this.bookingRepo.findAll(filteredQuery, {
+      limit: 0, // Không giới hạn
+      populate: [
+        { path: 'listingId', select: 'title' },
+        { path: 'propertyId', select: 'name' },
+      ],
+    });
+
+    // Tạo calendar days
+    const days: CalendarDayDto[] = [];
+    const currentDate = new Date(startDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    while (currentDate <= endDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const dayOfWeek = currentDate.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+      });
+      const isToday = currentDate.getTime() === today.getTime();
+      const isWeekend =
+        currentDate.getDay() === 0 || currentDate.getDay() === 6;
+
+      // Tìm bookings cho ngày này
+      const dayBookings: CalendarBookingDto[] = bookings
+        .filter((booking) => {
+          const bookingStart = new Date(booking.checkInDate);
+          const bookingEnd = new Date(booking.check_out_date);
+          const currentDay = new Date(currentDate);
+          currentDay.setHours(0, 0, 0, 0);
+
+          return bookingStart <= currentDay && bookingEnd > currentDay;
+        })
+        .map((booking) => ({
+          _id: (booking._id as any).toString(),
+          guest_name: booking.guest_name,
+          guest_email: booking.guest_email,
+          checkInDate: booking.checkInDate,
+          checkOutDate: booking.check_out_date,
+          guests: booking.guests,
+          status: booking.status,
+          payment_status: booking.payment_status,
+          final_amount: booking.final_amount,
+          listing_title: (booking.listingId as any)?.title || 'N/A',
+          property_name: (booking.propertyId as any)?.name || 'N/A',
+          note: booking.note,
+          additionalCost: booking.additionalCost,
+        }));
+
+      days.push({
+        date: dateStr,
+        dayOfWeek,
+        isToday,
+        isWeekend,
+        bookings: dayBookings,
+        totalBookings: dayBookings.length,
+        totalRevenue: dayBookings.reduce(
+          (sum, booking) => sum + (booking.final_amount || 0),
+          0,
+        ),
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Tính toán tổng quan
+    const totalBookings = bookings.length;
+    const totalRevenue = bookings.reduce(
+      (sum, booking) => sum + (booking.final_amount || 0),
+      0,
+    );
+    const averageOccupancy =
+      days.length > 0
+        ? days.reduce((sum, day) => sum + day.totalBookings, 0) / days.length
+        : 0;
+
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      viewType: queryDto.viewType || CalendarViewType.MONTHLY,
+      days,
+      totalBookings,
+      totalRevenue,
+      averageOccupancy,
+    };
+  }
+
   /**
    * Lấy danh sách booking đang sử dụng service cụ thể
    */
@@ -3824,6 +4006,93 @@ export class BookingService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Lấy thông tin booking chi tiết cho một ngày cụ thể
+   */
+  async getDayBookings(
+    date: string,
+    propertyId?: string,
+    listingId?: string,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<CalendarDayDto> {
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+    const nextDate = new Date(targetDate);
+    nextDate.setDate(nextDate.getDate() + 1);
+
+    const filter: any = {
+      isDeleted: false,
+      checkInDate: { $lt: nextDate },
+      check_out_date: { $gte: targetDate },
+    };
+
+    if (propertyId) {
+      filter.propertyId = new Types.ObjectId(propertyId);
+    }
+
+    if (listingId) {
+      filter.listingId = new Types.ObjectId(listingId);
+    }
+
+    // Áp dụng staff filter nếu cần
+    if (user && user.role === 'staff') {
+      // Staff filtering sẽ được handle bởi interceptor
+      // Không cần thêm logic ở đây vì đã có @StaffFiltered decorator
+    }
+
+    // Apply staff filtering using utility function
+    const filteredQuery = applyStaffFilter(filter, request, 'propertyId');
+
+    const { data: bookings } = await this.bookingRepo.findAll(filteredQuery, {
+      limit: 0,
+      populate: [
+        { path: 'listingId', select: 'title' },
+        { path: 'propertyId', select: 'name' },
+      ],
+    });
+
+    const dayOfWeek = targetDate.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isToday = targetDate.getTime() === today.getTime();
+    const isWeekend = targetDate.getDay() === 0 || targetDate.getDay() === 6;
+
+    const dayBookings: CalendarBookingDto[] = bookings.map((booking) => ({
+      _id: (booking._id as any).toString(),
+      guest_name: booking.guest_name,
+      guest_email: booking.guest_email,
+      checkInDate: booking.checkInDate,
+      checkOutDate: booking.check_out_date,
+      guests: booking.guests,
+      status: booking.status,
+      payment_status: booking.payment_status,
+      final_amount: booking.final_amount,
+      listing_title: (booking.listingId as any)?.title,
+      property_name: (booking.propertyId as any)?.name,
+      note: booking.note,
+      additionalCost: booking.additionalCost,
+    }));
+
+    const totalBookings = dayBookings.length;
+    const totalRevenue = dayBookings.reduce(
+      (sum, booking) => sum + booking.final_amount,
+      0,
+    );
+
+    return {
+      date,
+      dayOfWeek,
+      isToday,
+      isWeekend,
+      bookings: dayBookings,
+      totalBookings,
+      totalRevenue,
     };
   }
 }
