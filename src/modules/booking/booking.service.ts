@@ -3596,6 +3596,125 @@ export class BookingService {
     }
   }
 
+  /**
+   * Lấy danh sách booking đang sử dụng voucher cụ thể
+   */
+  async getBookingsByVoucher(
+    voucherId: string,
+    queryDto: QueryBookingDto,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<PaginatedBookings> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+    } = queryDto;
+    const skip = (page - 1) * limit;
+
+    // Tạo filter cơ bản
+    const baseFilter: any = {
+      voucher_id: new Types.ObjectId(voucherId),
+    };
+
+    // Thêm staff filter nếu cần
+    if (user && user.role === 'staff' && request?.staffPropertyIds) {
+      console.log('🔍 Staff filter applied for getBookingsByVoucher:', {
+        userId: user._id,
+        staffPropertyIds: request.staffPropertyIds,
+      });
+      baseFilter.propertyId = {
+        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+      };
+    }
+
+    console.log('📋 Final baseFilter for getBookingsByVoucher:', baseFilter);
+
+    // Thêm các filter khác từ queryDto
+    if (queryDto.status) {
+      baseFilter.status = queryDto.status;
+    }
+    if (queryDto.propertyId) {
+      baseFilter.propertyId = new Types.ObjectId(queryDto.propertyId);
+    }
+    if (queryDto.listingId) {
+      baseFilter.listingId = new Types.ObjectId(queryDto.listingId);
+    }
+    if (queryDto.checkInFrom && queryDto.checkInTo) {
+      baseFilter.checkInDate = {
+        $gte: new Date(queryDto.checkInFrom),
+        $lte: new Date(queryDto.checkInTo),
+      };
+    }
+
+    // Thực hiện aggregation
+    const pipeline: any[] = [
+      { $match: baseFilter },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'property',
+        },
+      },
+      { $unwind: '$property' },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'listingId',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      { $unwind: '$listing' },
+      {
+        $project: {
+          _id: 1,
+          guest_name: 1,
+          guest_email: 1,
+          property_name: '$property.name',
+          listing_title: '$listing.title',
+          checkInDate: 1,
+          checkOutDate: 1,
+          voucher_discount_amount: 1,
+          booking_status: '$status',
+          created_at: 1,
+          propertyId: 1,
+          listingId: 1,
+          original_price: '$total_amount',
+          final_price: '$final_amount',
+          nights: 1,
+        },
+      },
+      { $sort: { [sortBy]: sortOrder === 'desc' ? -1 : 1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'count' }],
+        },
+      },
+    ];
+
+    const result = await this.bookingRepo.getModel().aggregate(pipeline);
+    const bookings = result[0]?.data || [];
+    const total = result[0]?.total[0]?.count || 0;
+
+    return {
+      data: bookings.map((booking) => ({
+        ...booking,
+        _id: booking._id.toString(),
+        propertyId: booking.propertyId.toString(),
+        listingId: booking.listingId.toString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   // =================== CALENDAR MANAGEMENT ===================
 
   /**
@@ -3728,17 +3847,11 @@ export class BookingService {
           status: booking.status,
           payment_status: booking.payment_status,
           final_amount: booking.final_amount,
-          listing_title: (booking.listingId as any)?.title,
-          property_name: (booking.propertyId as any)?.name,
+          listing_title: (booking.listingId as any)?.title || 'N/A',
+          property_name: (booking.propertyId as any)?.name || 'N/A',
           note: booking.note,
           additionalCost: booking.additionalCost,
         }));
-
-      const totalBookings = dayBookings.length;
-      const totalRevenue = dayBookings.reduce(
-        (sum, booking) => sum + booking.final_amount,
-        0,
-      );
 
       days.push({
         date: dateStr,
@@ -3746,17 +3859,26 @@ export class BookingService {
         isToday,
         isWeekend,
         bookings: dayBookings,
-        totalBookings,
-        totalRevenue,
+        totalBookings: dayBookings.length,
+        totalRevenue: dayBookings.reduce(
+          (sum, booking) => sum + (booking.final_amount || 0),
+          0,
+        ),
       });
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Tính tổng thống kê
-    const totalBookings = days.reduce((sum, day) => sum + day.totalBookings, 0);
-    const totalRevenue = days.reduce((sum, day) => sum + day.totalRevenue, 0);
-    const averageOccupancy = days.length > 0 ? totalBookings / days.length : 0;
+    // Tính toán tổng quan
+    const totalBookings = bookings.length;
+    const totalRevenue = bookings.reduce(
+      (sum, booking) => sum + (booking.final_amount || 0),
+      0,
+    );
+    const averageOccupancy =
+      days.length > 0
+        ? days.reduce((sum, day) => sum + day.totalBookings, 0) / days.length
+        : 0;
 
     return {
       startDate: startDate.toISOString().split('T')[0],
@@ -3766,6 +3888,140 @@ export class BookingService {
       totalBookings,
       totalRevenue,
       averageOccupancy,
+    };
+  }
+
+  /**
+   * Lấy danh sách booking đang sử dụng service cụ thể
+   */
+  async getBookingsByService(
+    serviceId: string,
+    queryDto: QueryBookingDto,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<PaginatedBookings> {
+    const {
+      page = 1,
+      limit = 10,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+    } = queryDto;
+    const skip = (page - 1) * limit;
+
+    // Tạo filter cơ bản
+    const baseFilter: any = {
+      'selected_services.service_id': new Types.ObjectId(serviceId),
+    };
+
+    // Thêm staff filter nếu cần
+    if (user && user.role === 'staff' && request?.staffPropertyIds) {
+      console.log('🔍 Staff filter applied for getBookingsByService:', {
+        userId: user._id,
+        staffPropertyIds: request.staffPropertyIds,
+      });
+      baseFilter.propertyId = {
+        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+      };
+    }
+
+    console.log('📋 Final baseFilter for getBookingsByService:', baseFilter);
+
+    // Thêm các filter khác từ queryDto
+    if (queryDto.status) {
+      baseFilter.status = queryDto.status;
+    }
+    if (queryDto.propertyId) {
+      baseFilter.propertyId = new Types.ObjectId(queryDto.propertyId);
+    }
+    if (queryDto.listingId) {
+      baseFilter.listingId = new Types.ObjectId(queryDto.listingId);
+    }
+    if (queryDto.checkInFrom && queryDto.checkInTo) {
+      baseFilter.checkInDate = {
+        $gte: new Date(queryDto.checkInFrom),
+        $lte: new Date(queryDto.checkInTo),
+      };
+    }
+
+    // Thực hiện aggregation
+    const pipeline: any[] = [
+      { $match: baseFilter },
+      {
+        $addFields: {
+          serviceInfo: {
+            $filter: {
+              input: '$selected_services',
+              as: 'service',
+              cond: {
+                $eq: ['$$service.service_id', new Types.ObjectId(serviceId)],
+              },
+            },
+          },
+        },
+      },
+      { $unwind: '$serviceInfo' },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'property',
+        },
+      },
+      { $unwind: '$property' },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'listingId',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      { $unwind: '$listing' },
+      {
+        $project: {
+          _id: 1,
+          guest_name: 1,
+          guest_email: 1,
+          property_name: '$property.name',
+          listing_title: '$listing.title',
+          checkInDate: 1,
+          checkOutDate: 1,
+          service_quantity: '$serviceInfo.quantity',
+          service_total_price: '$serviceInfo.total_price',
+          booking_status: '$status',
+          created_at: 1,
+          propertyId: 1,
+          listingId: 1,
+          original_price: '$total_amount',
+          final_price: '$final_amount',
+          nights: 1,
+        },
+      },
+      { $sort: { [sortBy]: sortOrder === 'desc' ? -1 : 1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'count' }],
+        },
+      },
+    ];
+
+    const result = await this.bookingRepo.getModel().aggregate(pipeline);
+    const bookings = result[0]?.data || [];
+    const total = result[0]?.total[0]?.count || 0;
+
+    return {
+      data: bookings.map((booking) => ({
+        ...booking,
+        _id: booking._id.toString(),
+        propertyId: booking.propertyId.toString(),
+        listingId: booking.listingId.toString(),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
   }
 

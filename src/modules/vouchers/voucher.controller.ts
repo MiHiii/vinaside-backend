@@ -28,9 +28,13 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { QueryBookingDto } from '../booking/dto/query-booking.dto';
+import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
+import { BookingService } from '../booking/booking.service';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 interface RequestWithOptionalUser extends Request {
@@ -46,7 +50,10 @@ interface IVoucherService {
 @UseGuards(JwtAuthGuard, PermissionGuard)
 @ApiBearerAuth()
 export class VoucherController {
-  constructor(private readonly voucherService: VoucherService) {}
+  constructor(
+    private readonly voucherService: VoucherService,
+    private readonly bookingService: BookingService,
+  ) {}
 
   @Post()
   @RequirePermission('voucher.create')
@@ -130,6 +137,49 @@ export class VoucherController {
     return this.voucherService.getStatistics();
   }
 
+  @Get('stats/detailed/:id')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết cho voucher cụ thể',
+    description:
+      'Lấy thống kê chi tiết cho một voucher cụ thể theo ID, staff chỉ xem được thống kê của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê chi tiết voucher cụ thể',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            voucher_code: { type: 'string' },
+            voucher_discount_percent: { type: 'number' },
+            total_bookings: { type: 'number' },
+            total_discount: { type: 'number' },
+            revenue_after_discount: { type: 'number' },
+            average_discount: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy thống kê chi tiết voucher thành công')
+  async getVoucherDetailedStatsById(
+    @Param('id') voucherId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const stats = await this.voucherService.getVoucherDetailedStats(
+      voucherId,
+      req.user,
+      req,
+    );
+    return stats;
+  }
+
   @Get('code/:code')
   @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy voucher theo mã' })
@@ -189,7 +239,7 @@ export class VoucherController {
   }
 
   @Get(':id')
-  @RequirePermission('voucher.view')
+  @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết voucher' })
   @ApiResponse({ status: 200, description: 'Thông tin voucher' })
   @ResponseMessage('Lấy thông tin voucher thành công')
@@ -340,5 +390,67 @@ export class VoucherController {
     @Param('bookingId') bookingId: string,
   ) {
     return this.voucherService.isVoucherUsedForBooking(id, bookingId);
+  }
+
+  @Get(':id/bookings')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy danh sách booking sử dụng voucher này',
+    description:
+      'Trả về danh sách booking sử dụng voucher, staff chỉ xem được booking của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách booking sử dụng voucher',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              _id: { type: 'string' },
+              guest_name: { type: 'string' },
+              guest_email: { type: 'string' },
+              property_name: { type: 'string' },
+              listing_title: { type: 'string' },
+              checkInDate: { type: 'string' },
+              checkOutDate: { type: 'string' },
+              voucher_discount_amount: { type: 'number' },
+              booking_status: { type: 'string' },
+              created_at: { type: 'string' },
+              original_price: { type: 'number' },
+              final_price: { type: 'number' },
+              nights: { type: 'number' },
+            },
+          },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            totalPages: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy danh sách booking sử dụng voucher thành công')
+  async getBookingsByVoucher(
+    @Param('id') voucherId: string,
+    @Query() query: QueryBookingDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.getBookingsByVoucher(
+      voucherId,
+      query,
+      req.user,
+      req,
+    );
   }
 }

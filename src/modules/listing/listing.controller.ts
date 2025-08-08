@@ -227,9 +227,8 @@ export class ListingController {
   }
 
   // =================== STATISTICS ENDPOINTS ===================
-
   @Get('statistics/:id')
-  @RequirePermission('listing.view_statistics')
+  @RequirePermission('listing.view')
   @ApiOperation({ summary: 'Lấy thống kê chi tiết cho một listing' })
   @ApiResponse({
     status: 200,

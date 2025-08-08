@@ -626,4 +626,33 @@ export class VoucherService {
   ): Promise<Voucher[]> {
     return this.voucherRepo.findByMinOrderRange(minValue, maxValue);
   }
+
+  /**
+   * Lấy thống kê chi tiết cho voucher cụ thể
+   */
+  async getVoucherDetailedStats(
+    voucherId: string,
+    user?: JwtPayload,
+    request?: { staffPropertyIds?: string[] },
+  ): Promise<{
+    _id: string;
+    voucher_code: string;
+    voucher_discount_percent: number;
+    total_bookings: number;
+    total_discount: number;
+    revenue_after_discount: number;
+    average_discount: number;
+  } | null> {
+    // Validate voucherId
+    if (!Types.ObjectId.isValid(voucherId)) {
+      throw new BadRequestException('Voucher ID không hợp lệ');
+    }
+
+    const stats = await this.voucherRepo.getVoucherDetailedStats(
+      voucherId,
+      user,
+      request,
+    );
+    return stats.length > 0 ? stats[0] : null;
+  }
 }
