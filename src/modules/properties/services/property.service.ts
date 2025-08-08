@@ -662,20 +662,24 @@ export class PropertyService {
 
     // 3. Doanh thu và giá
     const paidBookings = allBookings.filter(
-      (b) => b.payment_status === PaymentStatus.PAID,
+      (b) =>
+        b.payment_status === PaymentStatus.PAID &&
+        (b.status === BookingStatus.CONFIRMED ||
+          b.status === BookingStatus.COMPLETED),
     );
     const totalRevenue = paidBookings.reduce(
       (sum, booking) => sum + booking.final_amount,
       0,
     );
 
-    // Monthly revenue
+    // Monthly revenue - chỉ tính từ booking đã xác nhận/hoàn thành
     const monthlyRevenue =
       await this.bookingModel.aggregate<MonthlyRevenueResult>([
         {
           $match: {
             propertyId: new Types.ObjectId(propertyId),
             payment_status: 'paid',
+            status: { $in: ['confirmed', 'completed'] },
             isDeleted: false,
           },
         },
@@ -702,13 +706,14 @@ export class PropertyService {
     const averagePricePerNight =
       totalNightsBooked > 0 ? totalRevenue / totalNightsBooked : 0;
 
-    // Revenue by room
+    // Revenue by room - chỉ tính từ booking đã xác nhận/hoàn thành
     const revenueByRoom =
       await this.bookingModel.aggregate<RevenueByRoomResult>([
         {
           $match: {
             propertyId: new Types.ObjectId(propertyId),
             payment_status: 'paid',
+            status: { $in: ['confirmed', 'completed'] },
             isDeleted: false,
           },
         },

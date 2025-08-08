@@ -814,7 +814,15 @@ export class ListingService {
         $group: {
           _id: null,
           totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: '$final_amount' },
+          totalRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
           cancelledBookings: {
             $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
           },
@@ -849,7 +857,15 @@ export class ListingService {
           $group: {
             _id: null,
             totalNights: { $sum: '$nights' },
-            totalRevenue: { $sum: '$final_amount' },
+            totalRevenue: {
+              $sum: {
+                $cond: [
+                  { $in: ['$status', ['confirmed', 'completed']] },
+                  '$final_amount',
+                  0,
+                ],
+              },
+            },
           },
         },
       ]);

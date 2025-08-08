@@ -1527,9 +1527,29 @@ export class BookingService {
               $dateToString: { format: groupFormat, date: '$created_at' },
             },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          nights: { $sum: '$nights' },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          bookings: {
+            $sum: {
+              $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+            },
+          },
+          nights: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$nights',
+                0,
+              ],
+            },
+          },
         },
       },
       { $sort: { '_id.group': 1 } },
@@ -1568,18 +1588,58 @@ export class BookingService {
       };
     });
 
-    // Thống kê tổng quan
+    // Thống kê tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
     const overviewStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
           totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: '$final_amount' },
-          totalNights: { $sum: '$nights' },
-          totalGuests: { $sum: '$guests' },
-          totalInfants: { $sum: '$infants' },
-          averageBookingValue: { $avg: '$final_amount' },
+          totalRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          totalNights: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$nights',
+                0,
+              ],
+            },
+          },
+          totalGuests: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$guests',
+                0,
+              ],
+            },
+          },
+          totalInfants: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$infants',
+                0,
+              ],
+            },
+          },
+          averageBookingValue: {
+            $avg: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                null,
+              ],
+            },
+          },
         },
       },
     ]);
@@ -1756,30 +1816,58 @@ export class BookingService {
       listingId,
     );
 
-    // Thống kê tài chính tổng quan
+    // Thống kê tài chính tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
     const financialStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$final_amount' },
-          totalServiceFees: { $sum: '$service_fee' },
-          totalTaxAmount: { $sum: '$tax_amount' },
-          totalRefunds: {
+          totalRevenue: {
             $sum: {
               $cond: [
-                { $eq: ['$payment_status', 'refunded'] },
+                { $in: ['$status', ['confirmed', 'completed']] },
                 '$final_amount',
                 0,
               ],
             },
           },
-          averageBookingValue: { $avg: '$final_amount' },
+          totalServiceFees: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$service_fee',
+                0,
+              ],
+            },
+          },
+          totalTaxAmount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$tax_amount',
+                0,
+              ],
+            },
+          },
+          totalRefunds: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, '$refund_amount', 0],
+            },
+          },
+          averageBookingValue: {
+            $avg: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                null,
+              ],
+            },
+          },
         },
       },
     ]);
 
-    // Thống kê doanh thu theo tháng
+    // Thống kê doanh thu theo tháng - chỉ tính từ booking đã xác nhận/hoàn thành
     const revenueByMonth = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -1788,10 +1876,38 @@ export class BookingService {
             year: { $year: '$created_at' },
             month: { $month: '$created_at' },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          voucherDiscount: { $sum: '$voucher_discount_amount' },
-          servicesRevenue: { $sum: '$services_total_amount' },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          bookings: {
+            $sum: {
+              $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+            },
+          },
+          voucherDiscount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$voucher_discount_amount',
+                0,
+              ],
+            },
+          },
+          servicesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$services_total_amount',
+                0,
+              ],
+            },
+          },
         },
       },
       {
@@ -1807,15 +1923,39 @@ export class BookingService {
       averageBookingValue: 0,
     };
 
-    // Calculate additional financial metrics
+    // Calculate additional financial metrics - chỉ tính từ booking đã xác nhận/hoàn thành
     const voucherServicesStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
-          totalVoucherDiscount: { $sum: '$voucher_discount_amount' },
-          totalServicesRevenue: { $sum: '$services_total_amount' },
-          totalRevenueBeforeVoucher: { $sum: '$subtotal_amount' },
+          totalVoucherDiscount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$voucher_discount_amount',
+                0,
+              ],
+            },
+          },
+          totalServicesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$services_total_amount',
+                0,
+              ],
+            },
+          },
+          totalRevenueBeforeVoucher: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$subtotal_amount',
+                0,
+              ],
+            },
+          },
         },
       },
     ]);
