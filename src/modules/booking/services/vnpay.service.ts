@@ -133,8 +133,9 @@ export class VNPayService extends PaymentServiceInterface {
         // Lần 1: 50% tổng tiền (giá phòng + dịch vụ + phí + thuế - voucher)
         amountToPay = Math.round(baseTotal * 0.5);
       } else if (paymentType === 'remaining') {
-        // Lần 2: 50% còn lại
-        amountToPay = Math.round(baseTotal * 0.5);
+        // Lần 2: Số tiền còn lại thực tế (không phải 50%)
+        const depositPaidAmount = booking.deposit_paid_amount || 0;
+        amountToPay = Math.round(baseTotal - depositPaidAmount);
         if (amountToPay <= 0) {
           throw new BadRequestException('Không còn số tiền nào cần thanh toán');
         }
@@ -146,6 +147,10 @@ export class VNPayService extends PaymentServiceInterface {
     const orderId = VNPayUtil.generateOrderId(bookingId);
     const createDate = VNPayUtil.formatDate(new Date());
     const amount = VNPayUtil.formatAmount(amountToPay);
+
+    // Debug: Log amount information
+    this.logger.log(`Original amountToPay: ${amountToPay}`);
+    this.logger.log(`Formatted amount for VNPay: ${amount}`);
 
     // Tạo parameters cho VNPay (chỉ những parameters cần thiết như official code)
     const vnpParams: VNPayParams = {
@@ -198,7 +203,7 @@ export class VNPayService extends PaymentServiceInterface {
         vnpay_order_id: orderId,
         payment_method: 'vnpay',
       },
-      booking.guestId.toString(),
+      booking.guestId?.toString() || '',
     );
 
     // Tạo transaction record
@@ -207,7 +212,7 @@ export class VNPayService extends PaymentServiceInterface {
       propertyId: booking.propertyId?.toString(),
       reference_id: bookingId,
       reference_type: ReferenceType.BOOKING,
-      user_id: booking.guestId.toString(),
+      user_id: booking.guestId?.toString() || '',
       direction: TransactionDirection.IN,
       amount: amountToPay, // Use amountToPay for transaction amount
       currency: 'VND',
@@ -215,7 +220,7 @@ export class VNPayService extends PaymentServiceInterface {
       provider: PaymentProvider.VNPAY,
       provider_order_id: orderId,
       note: `VNPay payment for booking ${bookingId}`,
-      created_by: booking.guestId.toString(),
+      created_by: booking.guestId?.toString() || '',
     });
 
     this.logger.log(
