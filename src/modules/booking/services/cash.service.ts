@@ -3,6 +3,7 @@ import {
   PaymentServiceInterface,
   PaymentResponse,
   CreatePaymentRequest,
+  PaymentVerificationResult,
 } from '../interfaces/payment-service.interface';
 import {
   PaymentMethod,
@@ -26,9 +27,17 @@ export class CashService extends PaymentServiceInterface {
     return PaymentProvider.INTERNAL;
   }
 
-  handleCallback(): Promise<any> {
+  handleCallback(): Promise<PaymentVerificationResult> {
     // Không áp dụng cho tiền mặt
-    return Promise.resolve({ success: true });
+    return Promise.resolve({
+      success: true,
+      paymentMethod: PaymentMethod.CASH,
+      bookingId: '',
+      orderId: '',
+      amount: 0,
+      transactionId: '',
+      message: 'Cash payment callback not applicable',
+    });
   }
 
   handleIPN(): Promise<{ success: boolean; message: string }> {

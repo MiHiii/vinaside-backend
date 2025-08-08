@@ -29,6 +29,13 @@ import { BookingService } from '../../booking/booking.service';
 import { BookingStatus } from '../../booking/schemas/booking.schema';
 import { toSafeString } from 'src/utils';
 import { applyStaffFilter } from '../../../utils/staff-filter.util';
+import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
+
+interface RequestWithStaffFilter {
+  user?: JwtPayload;
+  staffPropertyIds?: string[];
+  staffFilterApplied?: boolean;
+}
 
 interface AmountRangeFilter {
   $gte?: number;
@@ -96,7 +103,7 @@ export class TransactionsService {
     return transaction;
   }
 
-  async getTransactions(query: QueryTransactionDto, user?: any, request?: any) {
+  async getTransactions(query: QueryTransactionDto, user?: JwtPayload, request?: RequestWithStaffFilter) {
     const {
       page = 1,
       limit = 10,

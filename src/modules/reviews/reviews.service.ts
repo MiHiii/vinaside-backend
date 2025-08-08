@@ -118,7 +118,7 @@ export class ReviewsService {
   async findAllForAdmin(
     queryDto: QueryReviewDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     const result = await this.findAllWithFilters(queryDto, user, request);
     const { page = 1, limit = 10 } = queryDto;
@@ -395,7 +395,7 @@ export class ReviewsService {
   private async findAllWithFilters(
     queryDto: QueryReviewDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     const {
       page = 1,
