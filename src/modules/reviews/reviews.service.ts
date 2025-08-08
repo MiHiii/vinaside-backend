@@ -420,7 +420,11 @@ export class ReviewsService {
     if (rating) filter.rating = rating;
 
     // Apply staff filtering using utility function
-    const filteredFilter = applyStaffFilter(filter, request, 'room_id');
+    const filteredFilter = applyStaffFilter(
+      filter,
+      request || undefined,
+      'room_id',
+    );
 
     const options = {
       sort,

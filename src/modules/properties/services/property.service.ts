@@ -173,7 +173,7 @@ export class PropertyService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages: Math.ceil(total / (limit || 1)),
       },
     };
   }
@@ -235,7 +235,6 @@ export class PropertyService {
     user?: JwtPayload,
     request?: RequestWithStaffFilter,
   ): Promise<PaginatedProperties> {
-
     try {
       this.logger.log('PropertyService.findAll called with:', {
         queryDto,
@@ -264,7 +263,6 @@ export class PropertyService {
       ) {
         return createEmptyResult(page, limit);
       }
-
 
       if (filters.keyword) {
         filterQuery.$text = { $search: filters.keyword };

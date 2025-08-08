@@ -103,7 +103,11 @@ export class TransactionsService {
     return transaction;
   }
 
-  async getTransactions(query: QueryTransactionDto, user?: JwtPayload, request?: RequestWithStaffFilter) {
+  async getTransactions(
+    query: QueryTransactionDto,
+    user?: JwtPayload,
+    request?: RequestWithStaffFilter,
+  ) {
     const {
       page = 1,
       limit = 10,
