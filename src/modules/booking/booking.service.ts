@@ -58,11 +58,18 @@ import {
   generateLabels,
 } from '../../utils/date.util';
 import { CancelPolicy } from '../listing/schemas/listing.schema';
+import { Listing } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
 import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
 import { applyStaffFilter } from '../../utils/staff-filter.util';
 import { PaymentStatusDto } from './dto/payment.dto';
+
+interface RequestWithStaffFilter {
+  user?: JwtPayload;
+  staffPropertyIds?: string[];
+  staffFilterApplied?: boolean;
+}
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -558,9 +565,11 @@ export class BookingService {
    */
   async update(
     id: string,
-    updateBookingDto: any, // mở rộng để nhận selected_services
+    updateBookingDto: Record<string, unknown> & {
+      selected_services?: Array<{ serviceId: string; quantity: number }>;
+    }, // mở rộng để nhận selected_services
     user: JwtPayload,
-  ): Promise<any> {
+  ): Promise<BookingResponseDto> {
     // 1. Lấy booking hiện tại
     const booking = await this.bookingRepo.findById(id);
     if (!booking) throw new NotFoundException('Không tìm thấy booking.');
@@ -761,7 +770,7 @@ export class BookingService {
   async findAll(
     queryDto: QueryBookingDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ): Promise<PaginatedBookings> {
     const { page = 1, limit = 10, sortBy, sortOrder, ...filters } = queryDto;
     const skip = (page - 1) * limit;
@@ -931,7 +940,7 @@ export class BookingService {
   async findMyBookingsAsStaff(
     user: JwtPayload,
     queryDto: QueryBookingDto,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     if (!user || !user._id) {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
@@ -1040,7 +1049,14 @@ export class BookingService {
   async cancelBookingPublic(
     id: string,
     guestId: string,
-    cancellationDetails?: any,
+    cancellationDetails?: {
+      accountName?: string;
+      bankName?: string;
+      accountNumber?: string;
+      cancellationReason?: string;
+      refundMethod?: string;
+      refundNote?: string;
+    },
   ) {
     // 1. Xác thực quyền
     const booking = await this.bookingRepo.findById(id);
@@ -1317,8 +1333,8 @@ export class BookingService {
    */
   private async createStaffNotifications(
     propertyId: string,
-    booking: any,
-    listing: any,
+    booking: Booking,
+    listing: { _id: Types.ObjectId; title?: string },
     finalAmount: number,
   ): Promise<void> {
     try {
@@ -1371,7 +1387,7 @@ export class BookingService {
    * Tạo thông báo khi trạng thái booking thay đổi
    */
   private async createStatusChangeNotification(
-    booking: any,
+    booking: Booking,
     newStatus: BookingStatus,
   ): Promise<void> {
     try {

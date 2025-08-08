@@ -62,8 +62,8 @@ export class CashService extends PaymentServiceInterface {
     // Cập nhật trạng thái booking sang paid
     await this.bookingRepo.updateById(
       bookingId,
-        {
-          payment_method: 'cash',
+      {
+        payment_method: 'cash',
         payment_status: 'paid',
         deposit_paid_amount: (booking.deposit_paid_amount || 0) + amount,
         paid_at: new Date(),
