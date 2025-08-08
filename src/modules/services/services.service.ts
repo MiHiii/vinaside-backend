@@ -448,4 +448,32 @@ export class ServicesService {
     this.validateIds(ids);
     return this.servicesRepo.bulkUpdateStatus(ids, isActive, user?._id);
   }
+
+  /**
+   * Lấy thống kê chi tiết cho service cụ thể
+   */
+  async getServiceDetailedStats(
+    serviceId: string,
+    user?: JwtPayload,
+    request?: any,
+  ): Promise<{
+    _id: string;
+    service_name: string;
+    service_price: number;
+    total_bookings: number;
+    total_revenue: number;
+    average_price: number;
+  } | null> {
+    // Validate serviceId
+    if (!Types.ObjectId.isValid(serviceId)) {
+      throw new BadRequestException('Service ID không hợp lệ');
+    }
+
+    const stats = await this.servicesRepo.getServiceDetailedStats(
+      serviceId,
+      user,
+      request,
+    );
+    return stats.length > 0 ? stats[0] : null;
+  }
 }

@@ -136,6 +136,49 @@ export class VoucherController {
     return this.voucherService.getStatistics();
   }
 
+  @Get('stats/detailed/:id')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết cho voucher cụ thể',
+    description:
+      'Lấy thống kê chi tiết cho một voucher cụ thể theo ID, staff chỉ xem được thống kê của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê chi tiết voucher cụ thể',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            voucher_code: { type: 'string' },
+            voucher_discount_percent: { type: 'number' },
+            total_bookings: { type: 'number' },
+            total_discount: { type: 'number' },
+            revenue_after_discount: { type: 'number' },
+            average_discount: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy thống kê chi tiết voucher thành công')
+  async getVoucherDetailedStatsById(
+    @Param('id') voucherId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const stats = await this.voucherService.getVoucherDetailedStats(
+      voucherId,
+      req.user,
+      req,
+    );
+    return stats;
+  }
+
   @Get('code/:code')
   @RequirePermission('voucher.view')
   @ApiOperation({ summary: 'Lấy voucher theo mã' })
@@ -195,7 +238,7 @@ export class VoucherController {
   }
 
   @Get(':id')
-  @RequirePermission('voucher.view')
+  @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết voucher' })
   @ApiResponse({ status: 200, description: 'Thông tin voucher' })
   @ResponseMessage('Lấy thông tin voucher thành công')

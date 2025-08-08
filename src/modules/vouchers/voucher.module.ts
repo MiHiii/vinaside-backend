@@ -9,12 +9,14 @@ import {
   VoucherUsageSchema,
 } from './schemas/voucher-usage.schema';
 import { BookingModule } from '../booking/booking.module';
+import { Booking, BookingSchema } from '../booking/schemas/booking.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Voucher.name, schema: VoucherSchema },
       { name: VoucherUsage.name, schema: VoucherUsageSchema },
+      { name: Booking.name, schema: BookingSchema },
     ]),
     forwardRef(() => BookingModule),
   ],

@@ -3620,8 +3620,16 @@ export class BookingService {
 
     // Thêm staff filter nếu cần
     if (user && user.role === 'staff' && request?.staffPropertyIds) {
-      baseFilter.propertyId = { $in: request.staffPropertyIds };
+      console.log('🔍 Staff filter applied for getBookingsByVoucher:', {
+        userId: user._id,
+        staffPropertyIds: request.staffPropertyIds,
+      });
+      baseFilter.propertyId = {
+        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+      };
     }
+
+    console.log('📋 Final baseFilter for getBookingsByVoucher:', baseFilter);
 
     // Thêm các filter khác từ queryDto
     if (queryDto.status) {
@@ -3907,8 +3915,16 @@ export class BookingService {
 
     // Thêm staff filter nếu cần
     if (user && user.role === 'staff' && request?.staffPropertyIds) {
-      baseFilter.propertyId = { $in: request.staffPropertyIds };
+      console.log('🔍 Staff filter applied for getBookingsByService:', {
+        userId: user._id,
+        staffPropertyIds: request.staffPropertyIds,
+      });
+      baseFilter.propertyId = {
+        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+      };
     }
+
+    console.log('📋 Final baseFilter for getBookingsByService:', baseFilter);
 
     // Thêm các filter khác từ queryDto
     if (queryDto.status) {

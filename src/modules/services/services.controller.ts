@@ -167,7 +167,7 @@ export class ServicesController {
   }
 
   @Get(':id')
-  @RequirePermission('service.view')
+  @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết dịch vụ' })
   @ApiResponse({ status: 200, description: 'Thông tin dịch vụ' })
   @ResponseMessage('Lấy thông tin dịch vụ thành công')
@@ -247,6 +247,48 @@ export class ServicesController {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
     return this.servicesService.toggleStatus(id, req.user);
+  }
+
+  @Get('stats/detailed/:id')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết cho dịch vụ cụ thể',
+    description:
+      'Lấy thống kê chi tiết cho một dịch vụ cụ thể theo ID, staff chỉ xem được thống kê của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê chi tiết dịch vụ cụ thể',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            service_name: { type: 'string' },
+            service_price: { type: 'number' },
+            total_bookings: { type: 'number' },
+            total_revenue: { type: 'number' },
+            average_price: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy thống kê chi tiết dịch vụ thành công')
+  async getServiceDetailedStatsById(
+    @Param('id') serviceId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const stats = await this.servicesService.getServiceDetailedStats(
+      serviceId,
+      req.user,
+      req,
+    );
+    return stats;
   }
 
   @Get(':id/bookings')
