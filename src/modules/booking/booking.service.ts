@@ -709,8 +709,14 @@ export class BookingService {
       updateBookingDto.selected_services = processedServices;
 
       // e. Cập nhật payment_status nếu có thêm dịch vụ và booking đã PAID
+      // Chỉ chuyển sang PARTIALLY_PAID nếu số tiền đã trả chưa đủ cho tổng tiền mới
       if (diff > 0 && booking.payment_status === PaymentStatus.PAID) {
-        updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
+        const newTotalAmount = booking.final_amount + diff;
+        const paidAmount = booking.deposit_paid_amount || 0;
+        if (paidAmount < newTotalAmount) {
+          updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
+        }
+        // Nếu đã trả đủ cho tổng tiền mới thì giữ nguyên PAID
       }
     }
 
@@ -1211,7 +1217,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;
@@ -1263,7 +1269,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;
@@ -1316,7 +1322,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;

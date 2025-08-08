@@ -112,25 +112,34 @@ export class VNPayCallbackDto {
   @IsString()
   vnp_SecureHash: string;
 
-  @ApiProperty({ description: 'Command', example: 'pay' })
+  @ApiProperty({ description: 'Command', example: 'pay', required: false })
+  @IsOptional()
   @IsString()
-  vnp_Command: string;
+  vnp_Command?: string;
 
-  @ApiProperty({ description: 'Version', example: '2.1.0' })
+  @ApiProperty({ description: 'Version', example: '2.1.0', required: false })
+  @IsOptional()
   @IsString()
-  vnp_Version: string;
+  vnp_Version?: string;
 
-  @ApiProperty({ description: 'Currency code', example: 'VND' })
+  @ApiProperty({
+    description: 'Currency code',
+    example: 'VND',
+    required: false,
+  })
+  @IsOptional()
   @IsString()
-  vnp_CurrCode: string;
+  vnp_CurrCode?: string;
 
-  @ApiProperty({ description: 'Locale', example: 'vn' })
+  @ApiProperty({ description: 'Locale', example: 'vn', required: false })
+  @IsOptional()
   @IsString()
-  vnp_Locale: string;
+  vnp_Locale?: string;
 
-  @ApiProperty({ description: 'Thời gian khởi tạo giao dịch' })
+  @ApiProperty({ description: 'Thời gian khởi tạo giao dịch', required: false })
+  @IsOptional()
   @IsString()
-  vnp_CreateDate: string;
+  vnp_CreateDate?: string;
 }
 
 export class VNPayVerificationResponseDto {

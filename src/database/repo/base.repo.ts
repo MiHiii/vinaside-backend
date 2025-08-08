@@ -61,13 +61,26 @@ export abstract class BaseRepo<T extends Document> {
     update: UpdateQuery<T>,
     userId?: string,
   ): Promise<T | null> {
+    console.log('[DEBUG] BaseRepo.updateById called with:', {
+      id,
+      update,
+      userId,
+    });
+
     const updateWithUser = {
       ...update,
       updatedBy: userId ? new Types.ObjectId(userId) : undefined,
     };
-    return this.model
+
+    console.log('[DEBUG] BaseRepo.updateById updateWithUser:', updateWithUser);
+
+    const result = await this.model
       .findByIdAndUpdate(id, updateWithUser, { new: true })
       .exec();
+
+    console.log('[DEBUG] BaseRepo.updateById result:', result);
+
+    return result;
   }
 
   async softDelete(id: string, userId: string): Promise<T | null> {
