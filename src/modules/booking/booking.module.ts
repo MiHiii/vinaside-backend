@@ -19,6 +19,7 @@ import { StaffFilterInterceptor } from '../../common/interceptors/staff-filter.i
 import { forwardRef } from '@nestjs/common';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { CashService } from './services/cash.service';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { TransactionsModule } from '../transactions/transactions.module';
     BookingService,
     BookingRepo,
     VNPayService,
+    CashService,
     PaymentFactory,
     {
       provide: APP_INTERCEPTOR,

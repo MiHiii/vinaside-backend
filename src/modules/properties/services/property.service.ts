@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
@@ -191,7 +192,11 @@ export class PropertyService {
     private serviceModel: Model<Service>,
     private googlePlacesService: GooglePlacesService,
     private propertyStaffAssignmentService: PropertyStaffAssignmentService,
-  ) {}
+  ) {
+    this.logger = new Logger(PropertyService.name);
+  }
+
+  private readonly logger: Logger;
 
   async create(
     createPropertyDto: CreatePropertyDto,
@@ -230,97 +235,117 @@ export class PropertyService {
     user?: JwtPayload,
     request?: RequestWithStaffFilter,
   ): Promise<PaginatedProperties> {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      ...filters
-    } = queryDto;
-    const skip = (page - 1) * limit;
+    try {
+      this.logger.log('PropertyService.findAll called with:', {
+        queryDto,
+        user: user ? { id: user._id, role: user.role } : null,
+        staffPropertyIds: request?.staffPropertyIds,
+      });
+      const {
+        page = 1,
+        limit = 10,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        ...filters
+      } = queryDto;
+      const skip = (page - 1) * limit;
 
-    // Build filter object with proper typing
-    const filterQuery: FilterQuery<PropertyDocument> = { isDeleted: false };
+      // Build filter object with proper typing
+      const filterQuery: FilterQuery<PropertyDocument> = { isDeleted: false };
 
-    // Apply staff filtering using utility function
-    const filteredQuery = applyStaffFilter(filterQuery, request, '_id');
+      // Apply staff filtering using utility function
+      const filteredQuery = applyStaffFilter(filterQuery, request, '_id');
 
-    // If staff has no assigned properties, return empty result
-    if (
-      user?.role === 'staff' &&
-      (!request?.staffPropertyIds || request.staffPropertyIds.length === 0)
-    ) {
-      return createEmptyResult(page, limit);
-    }
-
-    if (filters.keyword) {
-      filterQuery.$text = { $search: filters.keyword };
-    }
-
-    if (filters.type) {
-      filterQuery.type = filters.type;
-    }
-
-    if (filters.status) {
-      filterQuery.status = filters.status;
-    }
-
-    if (filters.isVerified !== undefined) {
-      filterQuery.isVerified = filters.isVerified;
-    }
-
-    if (filters.city) {
-      filterQuery['location.city'] = new RegExp(filters.city, 'i');
-    }
-
-    if (filters.district) {
-      filterQuery['location.district'] = new RegExp(filters.district, 'i');
-    }
-
-    if (filters.name && typeof filters.name === 'string') {
-      const nameStr = String(filters.name);
-      if (nameStr.trim()) {
-        filterQuery.name = { $regex: nameStr, $options: 'i' };
+      // If staff has no assigned properties, return empty result
+      if (
+        user?.role === 'staff' &&
+        (!request?.staffPropertyIds || request.staffPropertyIds.length === 0)
+      ) {
+        return createEmptyResult(page, limit);
       }
-    }
 
-    // Geospatial search
-    if (filters.lat && filters.lng && filters.radius) {
-      filterQuery['location.lat'] = {
-        $gte: filters.lat - filters.radius / 111, // Approximate conversion
-        $lte: filters.lat + filters.radius / 111,
+      if (filters.keyword) {
+        filterQuery.$text = { $search: filters.keyword };
+      }
+
+      if (filters.type) {
+        filterQuery.type = filters.type;
+      }
+
+      if (filters.status) {
+        filterQuery.status = filters.status;
+      }
+
+      if (filters.isVerified !== undefined) {
+        filterQuery.isVerified = filters.isVerified;
+      }
+
+      if (filters.city) {
+        filterQuery['location.city'] = new RegExp(filters.city, 'i');
+      }
+
+      if (filters.district) {
+        filterQuery['location.district'] = new RegExp(filters.district, 'i');
+      }
+
+      if (filters.name && typeof filters.name === 'string') {
+        const nameStr = String(filters.name);
+        if (nameStr.trim()) {
+          filterQuery.name = { $regex: nameStr, $options: 'i' };
+        }
+      }
+
+      // Geospatial search
+      if (filters.lat && filters.lng && filters.radius) {
+        filterQuery['location.lat'] = {
+          $gte: filters.lat - filters.radius / 111, // Approximate conversion
+          $lte: filters.lat + filters.radius / 111,
+        };
+        filterQuery['location.lng'] = {
+          $gte:
+            filters.lng -
+            filters.radius / (111 * Math.cos((filters.lat * Math.PI) / 180)),
+          $lte:
+            filters.lng +
+            filters.radius / (111 * Math.cos((filters.lat * Math.PI) / 180)),
+        };
+      }
+
+      // Build sort object with proper typing
+      const sortObj: Record<string, 1 | -1> = {};
+      sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+      const [data, total] = await Promise.all([
+        this.propertyModel
+          .find(filteredQuery)
+          .sort(sortObj)
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.propertyModel.countDocuments(filteredQuery),
+      ]);
+
+      const result = {
+        data,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / (limit || 1)),
       };
-      filterQuery['location.lng'] = {
-        $gte:
-          filters.lng -
-          filters.radius / (111 * Math.cos((filters.lat * Math.PI) / 180)),
-        $lte:
-          filters.lng +
-          filters.radius / (111 * Math.cos((filters.lat * Math.PI) / 180)),
-      };
+
+      this.logger.log('PropertyService.findAll result:', {
+        total,
+        page,
+        limit,
+        totalPages: result.totalPages,
+        propertiesCount: data.length,
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('PropertyService.findAll error:', error);
+      throw error;
     }
-
-    // Build sort object with proper typing
-    const sortObj: Record<string, 1 | -1> = {};
-    sortObj[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-    const [data, total] = await Promise.all([
-      this.propertyModel
-        .find(filteredQuery)
-        .sort(sortObj)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.propertyModel.countDocuments(filteredQuery),
-    ]);
-
-    return {
-      data,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / (limit || 1)),
-    };
   }
 
   async findOne(id: string): Promise<Property> {

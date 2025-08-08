@@ -34,7 +34,6 @@ export abstract class BaseRepo<T extends Document> {
       throw new InternalServerErrorException('Could not create document.');
     }
   }
-
   async findById(id: string, options?: QueryOptions): Promise<T | null> {
     return this.model.findById(id, null, options).exec();
   }

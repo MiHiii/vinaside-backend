@@ -276,9 +276,14 @@ export class BookingController {
   @ResponseMessage('Hủy booking thành công')
   async cancelBookingPublic(
     @Param('id') id: string,
+    @Body() cancellationDetails: UpdateCancellationDetailsDto,
     @Request() req: RequestWithUser,
   ) {
-    return this.bookingService.cancelBookingPublic(id, req.user._id);
+    return this.bookingService.cancelBookingPublic(
+      id,
+      req.user._id,
+      cancellationDetails,
+    );
   }
 
   // =================== GENERIC PAYMENT ENDPOINTS ===================

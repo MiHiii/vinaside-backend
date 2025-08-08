@@ -4,6 +4,8 @@ import {
   IsOptional,
   IsUrl,
   IsEnum,
+  IsNumber,
+  Min,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PaymentMethod } from '../../transactions/schemas/transaction.schema';
@@ -64,6 +66,16 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsUrl()
   notifyUrl?: string;
+
+  @ApiProperty({
+    description: 'Số tiền thanh toán (VND)',
+    example: 2500000,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  amount?: number;
 }
 
 export class PaymentResponseDto {
