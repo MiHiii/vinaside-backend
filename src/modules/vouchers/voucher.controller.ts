@@ -34,6 +34,7 @@ import { BookingService } from '../booking/booking.service';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 interface RequestWithOptionalUser extends Request {

@@ -373,8 +373,8 @@ export class ServicesRepo extends BaseRepo<Service> {
    */
   async getServiceDetailedStats(
     serviceId: string,
-    user?: any,
-    request?: any,
+    user?: { role: string; _id: string },
+    request?: { staffPropertyIds?: string[] },
   ): Promise<
     {
       _id: string;
@@ -385,15 +385,22 @@ export class ServicesRepo extends BaseRepo<Service> {
       average_price: number;
     }[]
   > {
-    const matchStage: any = {
+    const matchStage: Record<string, any> = {
       selected_services: { $exists: true, $ne: [] },
       isDeleted: false,
     };
 
     // Apply staff filter
-    if (user && user.role === 'staff' && request?.staffPropertyIds) {
+    if (
+      user &&
+      user.role === 'staff' &&
+      request?.staffPropertyIds &&
+      Array.isArray(request.staffPropertyIds)
+    ) {
       matchStage.propertyId = {
-        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+        $in: request.staffPropertyIds.map(
+          (id: string) => new Types.ObjectId(id),
+        ),
       };
     }
 

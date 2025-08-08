@@ -565,8 +565,8 @@ export class VoucherRepo extends BaseRepo<Voucher> {
    */
   async getVoucherDetailedStats(
     voucherId: string,
-    user?: any,
-    request?: any,
+    user?: { role: string; _id: string },
+    request?: { staffPropertyIds?: string[] },
   ): Promise<
     {
       _id: string;
@@ -578,16 +578,23 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       average_discount: number;
     }[]
   > {
-    const matchStage: any = {
+    const matchStage: Record<string, any> = {
       voucher_id: new Types.ObjectId(voucherId),
       voucher_discount_amount: { $exists: true, $gt: 0 },
       isDeleted: false,
     };
 
     // Apply staff filter
-    if (user && user.role === 'staff' && request?.staffPropertyIds) {
+    if (
+      user &&
+      user.role === 'staff' &&
+      request?.staffPropertyIds &&
+      Array.isArray(request.staffPropertyIds)
+    ) {
       matchStage.propertyId = {
-        $in: request.staffPropertyIds.map((id) => new Types.ObjectId(id)),
+        $in: request.staffPropertyIds.map(
+          (id: string) => new Types.ObjectId(id),
+        ),
       };
     }
 

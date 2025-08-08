@@ -37,6 +37,7 @@ import { BookingService } from '../booking/booking.service';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 @ApiTags('Services')

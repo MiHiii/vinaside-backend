@@ -633,7 +633,7 @@ export class VoucherService {
   async getVoucherDetailedStats(
     voucherId: string,
     user?: JwtPayload,
-    request?: any,
+    request?: { staffPropertyIds?: string[] },
   ): Promise<{
     _id: string;
     voucher_code: string;

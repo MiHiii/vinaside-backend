@@ -455,7 +455,7 @@ export class ServicesService {
   async getServiceDetailedStats(
     serviceId: string,
     user?: JwtPayload,
-    request?: any,
+    request?: { staffPropertyIds?: string[] },
   ): Promise<{
     _id: string;
     service_name: string;
