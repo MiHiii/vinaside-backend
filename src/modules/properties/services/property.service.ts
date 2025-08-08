@@ -116,7 +116,15 @@ export class PropertyService {
   /**
    * Lấy danh sách tất cả phòng trong property (public)
    */
-  async getPropertyRooms(propertyId: string, queryDto: any = {}) {
+  async getPropertyRooms(
+    propertyId: string,
+    queryDto: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: string;
+    } = {},
+  ) {
     const {
       page = 1,
       limit = 10,
