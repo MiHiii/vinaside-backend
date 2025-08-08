@@ -134,13 +134,13 @@ export class ListingService {
   }> {
     const {
       page = 1,
-      limit = 14,
+      limit = undefined,
       sortBy = 'created_at',
       sortOrder = 'desc',
       ...filters
     } = queryDto;
 
-    const skip = (page - 1) * limit;
+    const skip = limit ? (page - 1) * limit : 0;
 
     // First, handle location-based filtering by finding matching properties
     let propertyIds: Types.ObjectId[] | undefined;
@@ -165,7 +165,7 @@ export class ListingService {
           meta: {
             total: 0,
             page,
-            limit,
+            limit: limit ?? 0,
             totalPages: 0,
           },
         };
@@ -251,6 +251,39 @@ export class ListingService {
       };
     }
 
+    // =================== DATE-BASED FILTERING ===================
+
+    // Xử lý tìm kiếm theo ngày nhận phòng/trả phòng
+    if (filters.checkInDate || filters.checkOutDate) {
+      // Nếu có ngày nhận phòng hoặc trả phòng, cần kiểm tra availability
+      if (filters.checkAvailability !== false) {
+        // Lấy danh sách listing IDs có sẵn trong khoảng thời gian này
+        const availableListingIds = await this.getAvailableListingIds(
+          filters.checkInDate,
+          filters.checkOutDate,
+          filters.guests,
+          filters.minNights,
+          filters.maxNights,
+        );
+
+        // Nếu không có listing nào khả dụng, trả về kết quả rỗng
+        if (availableListingIds.length === 0) {
+          return {
+            listings: [],
+            meta: {
+              total: 0,
+              page,
+              limit: limit ?? 0,
+              totalPages: 0,
+            },
+          };
+        }
+
+        // Thêm filter cho listing IDs có sẵn
+        filteredQuery._id = { $in: availableListingIds };
+      }
+    }
+
     const sort: Record<string, SortOrder> = {
       [sortBy]: sortOrder === 'asc' ? 1 : -1,
     };
@@ -298,7 +331,7 @@ export class ListingService {
       meta: {
         total: result.total,
         page,
-        limit,
+        limit: limit ?? 0,
         totalPages: Math.ceil(result.total / (limit || 1)),
       },
     };
@@ -1493,5 +1526,114 @@ export class ListingService {
         totalPages: Math.ceil(result.total / (limit || 1)),
       },
     };
+  }
+
+  /**
+   * Lấy danh sách listing IDs có sẵn trong khoảng thời gian cụ thể
+   */
+  private async getAvailableListingIds(
+    checkInDate?: string,
+    checkOutDate?: string,
+    guests?: number,
+    minNights?: number,
+    maxNights?: number,
+  ): Promise<Types.ObjectId[]> {
+    try {
+      // Nếu không có ngày, trả về tất cả listing IDs
+      if (!checkInDate && !checkOutDate) {
+        const allListings = await this.listingRepo.findAll(
+          { isDeleted: false, status: ListingStatus.ACTIVE },
+          { limit: 0 }, // Không giới hạn
+        );
+        return allListings.data.map((listing) => listing._id as Types.ObjectId);
+      }
+
+      // Parse dates
+      const checkIn = checkInDate ? new Date(checkInDate) : new Date();
+      const checkOut = checkOutDate
+        ? new Date(checkOutDate)
+        : new Date(checkIn.getTime() + 24 * 60 * 60 * 1000); // +1 day
+
+      // Validate dates
+      if (checkIn >= checkOut) {
+        this.logger.warn('Invalid date range: checkIn >= checkOut');
+        return [];
+      }
+
+      // Calculate nights
+      const nights = Math.ceil(
+        (checkOut.getTime() - checkIn.getTime()) / (1000 * 3600 * 24),
+      );
+
+      // Validate nights constraints
+      if (minNights && nights < minNights) {
+        this.logger.warn(`Nights (${nights}) less than minimum (${minNights})`);
+        return [];
+      }
+
+      if (maxNights && nights > maxNights) {
+        this.logger.warn(`Nights (${nights}) more than maximum (${maxNights})`);
+        return [];
+      }
+
+      // Tìm tất cả bookings có xung đột với khoảng thời gian này
+      const conflictingBookings = await this.bookingModel.aggregate([
+        {
+          $match: {
+            isDeleted: false,
+            status: { $nin: ['cancelled', 'rejected'] }, // Chỉ xem xét bookings đã confirm
+            $or: [
+              // Booking bắt đầu trong khoảng thời gian
+              {
+                checkInDate: { $gte: checkIn, $lt: checkOut },
+              },
+              // Booking kết thúc trong khoảng thời gian
+              {
+                checkOutDate: { $gt: checkIn, $lte: checkOut },
+              },
+              // Booking bao trọn khoảng thời gian
+              {
+                checkInDate: { $lte: checkIn },
+                checkOutDate: { $gte: checkOut },
+              },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: '$listingId',
+            conflictingBookings: { $push: '$$ROOT' },
+          },
+        },
+      ]);
+
+      // Lấy danh sách listing IDs có xung đột
+      const conflictingListingIds = conflictingBookings.map(
+        (item) => item._id as Types.ObjectId,
+      );
+
+      // Lấy tất cả listings có sẵn (không có xung đột)
+      const availableListings = await this.listingRepo.findAll(
+        {
+          isDeleted: false,
+          status: ListingStatus.ACTIVE,
+          _id: { $nin: conflictingListingIds },
+        },
+        { limit: 0 }, // Không giới hạn
+      );
+
+      // Filter theo số khách nếu có yêu cầu
+      let filteredListings = availableListings.data;
+      if (guests) {
+        filteredListings = filteredListings.filter(
+          (listing) => listing.max_guests >= guests,
+        );
+      }
+
+      return filteredListings.map((listing) => listing._id as Types.ObjectId);
+    } catch (error) {
+      this.logger.error('Error getting available listing IDs:', error);
+      return [];
+    }
   }
 }

@@ -80,7 +80,7 @@ export class NotificationsController {
   @ApiResponse({ status: 200, description: 'Số thông báo chưa đọc' })
   @ResponseMessage('Lấy số thông báo chưa đọc thành công')
   getUnreadCount(@Request() req: RequestWithUser) {
-    return this.notificationsService.getUnreadCount(req.user._id);
+    return this.notificationsService.getUnreadCount(req.user);
   }
 
   @Get(':id')

@@ -65,6 +65,7 @@ export class PropertyController {
     @Query() queryDto: QueryPropertyDto,
     @Request() req: RequestWithUser,
   ) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     return this.propertyService.findAll(queryDto, req.user, req as any);
   }
 

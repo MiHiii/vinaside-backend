@@ -27,7 +27,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     // Kiểm tra xem staff đã được assign cho property này chưa (với status active)
     const existingAssignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Không convert to string nữa
+      staffId: payload.staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -37,7 +37,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
 
     const assignment = new this.propertyStaffAssignmentModel({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Lưu dưới dạng ObjectId
+      staffId: payload.staffId.toString(), // Lưu dưới dạng string để nhất quán
       assignedBy: payload.assignedBy,
       status: AssignmentStatus.ACTIVE,
       assignedAt: new Date(),
@@ -52,7 +52,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
   ): Promise<PropertyStaffAssignmentDocument | null> {
     const assignment = await this.propertyStaffAssignmentModel.findOne({
       propertyId: payload.propertyId,
-      staffId: payload.staffId, // Không convert to string nữa
+      staffId: payload.staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     });
 
@@ -73,7 +73,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
   ): Promise<PropertyStaffAssignmentDocument[]> {
     return this.propertyStaffAssignmentModel
       .find({
-        propertyId,
+        propertyId: propertyId.toString(), // Convert to string vì DB lưu dưới dạng string
         status: AssignmentStatus.ACTIVE,
       })
       .populate('staffId', 'name email phone')
@@ -85,7 +85,7 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     staffId: Types.ObjectId,
   ): Promise<PropertyStaffAssignmentDocument[]> {
     const query = {
-      staffId: staffId, // Không convert to string nữa
+      staffId: staffId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     };
 
@@ -103,8 +103,8 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     staffId?: Types.ObjectId,
   ): Promise<PropertyStaffAssignmentDocument[]> {
     const filter: Record<string, any> = {};
-    if (propertyId) filter.propertyId = propertyId;
-    if (staffId) filter.staffId = staffId;
+    if (propertyId) filter.propertyId = propertyId.toString(); // Convert to string vì DB lưu dưới dạng string
+    if (staffId) filter.staffId = staffId.toString(); // Convert to string vì DB lưu dưới dạng string
 
     return this.propertyStaffAssignmentModel
       .find(filter)
@@ -121,26 +121,12 @@ export class PropertyStaffAssignmentRepo extends BaseRepo<PropertyStaffAssignmen
     propertyId: Types.ObjectId,
   ): Promise<boolean> {
     const query = {
-      staffId: staffId, // Không convert to string nữa
-      propertyId,
+      staffId: staffId.toString(), // Convert to string vì DB lưu dưới dạng string
+      propertyId: propertyId.toString(), // Convert to string vì DB lưu dưới dạng string
       status: AssignmentStatus.ACTIVE,
     };
 
-    console.log('🔍 Debug isStaffAssignedToProperty:');
-    console.log('Query:', JSON.stringify(query, null, 2));
-
     const assignment = await this.propertyStaffAssignmentModel.findOne(query);
-
-    console.log('Assignment found:', assignment ? 'YES' : 'NO');
-    if (assignment) {
-      console.log('Assignment data:', {
-        _id: assignment._id,
-        staffId: assignment.staffId,
-        propertyId: assignment.propertyId,
-        status: assignment.status,
-      });
-    }
-
     return !!assignment;
   }
 

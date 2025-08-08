@@ -9,6 +9,7 @@ import {
   IsMongoId,
   Min,
   Max,
+  IsDateString,
 } from 'class-validator';
 import { ListingStatus, CancelPolicy } from '../schemas/listing.schema';
 
@@ -124,6 +125,37 @@ export class QueryListingDto {
   @IsNumber()
   @Min(0)
   maxViewCount?: number;
+
+  // =================== DATE-BASED SEARCH ===================
+
+  @IsOptional()
+  @IsDateString()
+  checkInDate?: string; // Ngày nhận phòng (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsDateString()
+  checkOutDate?: string; // Ngày trả phòng (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  checkAvailability?: boolean = true; // Kiểm tra tính khả dụng (default: true)
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(30)
+  minNights?: number; // Số đêm tối thiểu
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(365)
+  maxNights?: number; // Số đêm tối đa
+
+  // =================== LOCATION FILTERS ===================
 
   // Location filters (Priority: place_id > city/district/ward > address > geospatial)
   @IsOptional()

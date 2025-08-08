@@ -5,12 +5,15 @@ import { Service } from './schemas/service.schema';
 import { BaseRepo } from '../../database/repo/base.repo';
 import { QueryServiceDto } from './dto/query-service.dto';
 import { PaginatedServices, ServiceInterface } from './service.interface';
+import { Booking } from '../booking/schemas/booking.schema';
 
 @Injectable()
 export class ServicesRepo extends BaseRepo<Service> {
   constructor(
     @InjectModel(Service.name)
     private readonly serviceModel: Model<Service>,
+    @InjectModel(Booking.name)
+    private readonly bookingModel: Model<Booking>,
   ) {
     super(serviceModel);
   }
@@ -361,6 +364,84 @@ export class ServicesRepo extends BaseRepo<Service> {
         $project: {
           priceDifference: 0, // Remove the temporary field
         },
+      },
+    ]);
+  }
+
+  /**
+   * Lấy thống kê chi tiết cho service cụ thể
+   */
+  async getServiceDetailedStats(
+    serviceId: string,
+    user?: { role: string; _id: string },
+    request?: { staffPropertyIds?: string[] },
+  ): Promise<
+    {
+      _id: string;
+      service_name: string;
+      service_price: number;
+      total_bookings: number;
+      total_revenue: number;
+      average_price: number;
+    }[]
+  > {
+    const matchStage: Record<string, any> = {
+      selected_services: { $exists: true, $ne: [] },
+      isDeleted: false,
+    };
+
+    // Apply staff filter
+    if (
+      user &&
+      user.role === 'staff' &&
+      request?.staffPropertyIds &&
+      Array.isArray(request.staffPropertyIds)
+    ) {
+      matchStage.propertyId = {
+        $in: request.staffPropertyIds.map(
+          (id: string) => new Types.ObjectId(id),
+        ),
+      };
+    }
+
+    return this.bookingModel.aggregate([
+      {
+        $match: matchStage,
+      },
+      {
+        $unwind: '$selected_services',
+      },
+      {
+        $match: {
+          'selected_services.service_id': new Types.ObjectId(serviceId),
+        },
+      },
+      {
+        $group: {
+          _id: '$selected_services.service_id',
+          service_name: { $first: '$selected_services.service_name' },
+          service_price: { $first: '$selected_services.service_price' },
+          total_bookings: { $sum: 1 },
+          total_revenue: { $sum: '$selected_services.total_price' },
+        },
+      },
+      {
+        $addFields: {
+          total_revenue: { $round: ['$total_revenue', 0] },
+          service_price: { $round: ['$service_price', 0] },
+          average_price: {
+            $cond: {
+              if: { $gt: ['$total_bookings', 0] },
+              then: {
+                $round: [{ $divide: ['$total_revenue', '$total_bookings'] }, 0],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+      {
+        $sort: { total_revenue: -1 },
       },
     ]);
   }

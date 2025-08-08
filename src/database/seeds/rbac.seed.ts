@@ -87,6 +87,13 @@ export class RbacSeedService {
           description: 'Chỉnh sửa thông tin booking',
         },
         {
+          key: 'booking.update',
+          module: 'booking',
+          action: 'update',
+          description:
+            'Cập nhật thông tin booking (note, additional cost, cancellation details)',
+        },
+        {
           key: 'booking.delete',
           module: 'booking',
           action: 'delete',
@@ -491,6 +498,7 @@ export class RbacSeedService {
             'booking.view',
             'booking.create',
             'booking.edit',
+            'booking.update',
             'booking.manage_payment',
             'property.view',
             'listing.view',
@@ -526,6 +534,7 @@ export class RbacSeedService {
             'user.edit',
             'booking.view',
             'booking.edit',
+            'booking.update',
             'property.view',
             'listing.view',
             'message.view',

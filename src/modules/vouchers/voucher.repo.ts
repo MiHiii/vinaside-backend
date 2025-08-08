@@ -4,6 +4,7 @@ import { Model, FilterQuery, Types } from 'mongoose';
 import { Voucher } from './schemas/voucher.schema';
 import { VoucherUsage } from './schemas/voucher-usage.schema';
 import { BaseRepo } from '../../database/repo/base.repo';
+import { Booking } from '../booking/schemas/booking.schema';
 
 @Injectable()
 export class VoucherRepo extends BaseRepo<Voucher> {
@@ -12,6 +13,8 @@ export class VoucherRepo extends BaseRepo<Voucher> {
     private readonly voucherModel: Model<Voucher>,
     @InjectModel(VoucherUsage.name)
     private readonly voucherUsageModel: Model<VoucherUsage>,
+    @InjectModel(Booking.name)
+    private readonly bookingModel: Model<Booking>,
   ) {
     super(voucherModel);
   }
@@ -555,5 +558,81 @@ export class VoucherRepo extends BaseRepo<Voucher> {
       booking_id: new Types.ObjectId(bookingId),
     });
     return count > 0;
+  }
+
+  /**
+   * Lấy thống kê chi tiết cho voucher cụ thể
+   */
+  async getVoucherDetailedStats(
+    voucherId: string,
+    user?: { role: string; _id: string },
+    request?: { staffPropertyIds?: string[] },
+  ): Promise<
+    {
+      _id: string;
+      voucher_code: string;
+      voucher_discount_percent: number;
+      total_bookings: number;
+      total_discount: number;
+      revenue_after_discount: number;
+      average_discount: number;
+    }[]
+  > {
+    const matchStage: Record<string, any> = {
+      voucher_id: new Types.ObjectId(voucherId),
+      voucher_discount_amount: { $exists: true, $gt: 0 },
+      isDeleted: false,
+    };
+
+    // Apply staff filter
+    if (
+      user &&
+      user.role === 'staff' &&
+      request?.staffPropertyIds &&
+      Array.isArray(request.staffPropertyIds)
+    ) {
+      matchStage.propertyId = {
+        $in: request.staffPropertyIds.map(
+          (id: string) => new Types.ObjectId(id),
+        ),
+      };
+    }
+
+    return this.bookingModel.aggregate([
+      {
+        $match: matchStage,
+      },
+      {
+        $group: {
+          _id: '$voucher_id',
+          voucher_code: { $first: '$voucher_code' },
+          voucher_discount_percent: { $first: '$voucher_discount_percent' },
+          total_bookings: { $sum: 1 },
+          total_discount: { $sum: '$voucher_discount_amount' },
+          revenue_after_discount: { $sum: '$amount_after_discount' },
+        },
+      },
+      {
+        $addFields: {
+          total_discount: { $round: ['$total_discount', 0] },
+          revenue_after_discount: { $round: ['$revenue_after_discount', 0] },
+          average_discount: {
+            $cond: {
+              if: { $gt: ['$total_bookings', 0] },
+              then: {
+                $round: [
+                  { $divide: ['$total_discount', '$total_bookings'] },
+                  0,
+                ],
+              },
+              else: 0,
+            },
+          },
+        },
+      },
+      {
+        $sort: { total_discount: -1 },
+      },
+    ]);
   }
 }

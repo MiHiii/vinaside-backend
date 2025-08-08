@@ -217,6 +217,21 @@ export interface DashboardRealTimeStatistics {
   recentVoucherUsage: number; // Last 24 hours
 }
 
+export class RevenueChartData {
+  date: string;
+  totalRevenue: number;
+}
+
+export class RevenueChartResponse {
+  data: RevenueChartData[];
+  totalRevenue: number;
+  averageDailyRevenue: number;
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
 // ==================== MAIN DASHBOARD RESPONSE ====================
 export interface DashboardStatistics {
   overview: DashboardOverviewStatistics;
