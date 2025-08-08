@@ -10,6 +10,7 @@ import {
   PaymentProvider,
 } from '../../transactions/schemas/transaction.schema';
 import { BookingRepo } from '../booking.repo';
+import { BookingStatus } from '../schemas/booking.schema';
 
 @Injectable()
 export class CashService extends PaymentServiceInterface {
@@ -59,15 +60,25 @@ export class CashService extends PaymentServiceInterface {
       throw new NotFoundException('Booking not found');
     }
 
-    // Cập nhật trạng thái booking sang paid
+    // Cộng dồn số tiền đã trả
+    const newDepositPaidAmount = (booking.deposit_paid_amount || 0) + amount;
+
+    // Xác định payment status dựa trên số tiền đã trả
+    let paymentStatus = 'partially_paid';
+    if (newDepositPaidAmount >= booking.final_amount) {
+      paymentStatus = 'paid';
+    }
+
+    // Cập nhật trạng thái booking
     await this.bookingRepo.updateById(
       bookingId,
       {
         payment_method: 'cash',
-        payment_status: 'paid',
-        deposit_paid_amount: (booking.deposit_paid_amount || 0) + amount,
+        payment_status: paymentStatus,
+        deposit_paid_amount: newDepositPaidAmount,
         paid_at: new Date(),
         note: note || undefined,
+        status: BookingStatus.CONFIRMED, // Thêm status CONFIRMED
       },
       booking.guestId?.toString() || '',
     );

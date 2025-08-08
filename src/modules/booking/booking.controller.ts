@@ -58,6 +58,25 @@ interface RequestWithUser extends Request {
   user: JwtPayload;
 }
 
+interface VNPayReturnQueryParams {
+  vnp_TmnCode?: string;
+  vnp_Amount?: string;
+  vnp_BankCode?: string;
+  vnp_OrderInfo?: string;
+  vnp_TxnRef?: string;
+  vnp_ResponseCode?: string;
+  vnp_TransactionNo?: string;
+  vnp_BankTranNo?: string;
+  vnp_CardType?: string;
+  vnp_PayDate?: string;
+  vnp_SecureHash?: string;
+  vnp_Command?: string;
+  vnp_Version?: string;
+  vnp_CurrCode?: string;
+  vnp_Locale?: string;
+  vnp_CreateDate?: string;
+}
+
 @ApiTags('Booking Management')
 @Controller('bookings')
 @UseGuards(JwtAuthGuard, PermissionGuard, PropertyStaffGuard, RolesGuard)
@@ -496,10 +515,78 @@ export class BookingController {
 
   @Get('vnpay/return')
   @Public()
-  @ApiOperation({ summary: 'VNPay return callback' })
-  @ApiResponse({ status: 200, description: 'Return processed' })
-  async handleVNPayReturn(@Query() callbackData: VNPayCallbackDto) {
+  @ApiOperation({ summary: 'Handle VNPay return callback' })
+  @ApiResponse({
+    status: 200,
+    description: 'VNPay return handled successfully',
+  })
+  @ResponseMessage('VNPay return handled successfully')
+  async handleVNPayReturn(@Query() queryParams: VNPayReturnQueryParams) {
+    console.log('[DEBUG] VNPay Return called with params:', queryParams);
+
+    // Validate required fields
+    const requiredFields = [
+      'vnp_TmnCode',
+      'vnp_Amount',
+      'vnp_BankCode',
+      'vnp_OrderInfo',
+      'vnp_TxnRef',
+      'vnp_ResponseCode',
+      'vnp_TransactionNo',
+      'vnp_BankTranNo',
+      'vnp_CardType',
+      'vnp_PayDate',
+      'vnp_SecureHash',
+    ];
+
+    const missingFields = requiredFields.filter(
+      (field) => !queryParams[field as keyof VNPayReturnQueryParams],
+    );
+
+    if (missingFields.length > 0) {
+      console.log('[DEBUG] Missing required fields:', missingFields);
+      return {
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`,
+        bookingId: '',
+        amount: 0,
+      };
+    }
+
+    // Create a callback data object with only the fields that VNPay actually sends
+    const callbackData: VNPayCallbackDto = {
+      vnp_TmnCode: queryParams.vnp_TmnCode!,
+      vnp_Amount: queryParams.vnp_Amount!,
+      vnp_BankCode: queryParams.vnp_BankCode!,
+      vnp_OrderInfo: queryParams.vnp_OrderInfo!,
+      vnp_TxnRef: queryParams.vnp_TxnRef!,
+      vnp_ResponseCode: queryParams.vnp_ResponseCode!,
+      vnp_TransactionNo: queryParams.vnp_TransactionNo!,
+      vnp_BankTranNo: queryParams.vnp_BankTranNo!,
+      vnp_CardType: queryParams.vnp_CardType!,
+      vnp_PayDate: queryParams.vnp_PayDate!,
+      vnp_SecureHash: queryParams.vnp_SecureHash!,
+      // Optional fields - only include if they exist
+      ...(queryParams.vnp_Command && { vnp_Command: queryParams.vnp_Command }),
+      ...(queryParams.vnp_Version && { vnp_Version: queryParams.vnp_Version }),
+      ...(queryParams.vnp_CurrCode && {
+        vnp_CurrCode: queryParams.vnp_CurrCode,
+      }),
+      ...(queryParams.vnp_Locale && { vnp_Locale: queryParams.vnp_Locale }),
+      ...(queryParams.vnp_CreateDate && {
+        vnp_CreateDate: queryParams.vnp_CreateDate,
+      }),
+    };
+
+    console.log(
+      '[DEBUG] Calling vnpayService.handleCallback with:',
+      callbackData,
+    );
+
     const result = await this.vnpayService.handleCallback(callbackData);
+
+    console.log('[DEBUG] VNPay callback result:', result);
+
     return {
       success: result.success,
       message: result.message,
