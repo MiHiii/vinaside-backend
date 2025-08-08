@@ -62,7 +62,7 @@ import { CancelPolicy } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
 import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
-import { applyStaffFilter } from '../../utils/staff-filter.util';
+import { applyStaffFilter, RequestWithStaffFilter } from '../../utils/staff-filter.util';
 import { PaymentStatusDto } from './dto/payment.dto';
 import { CalendarQueryDto, CalendarViewType } from './dto/calendar-query.dto';
 import {
@@ -70,12 +70,6 @@ import {
   CalendarDayDto,
   CalendarBookingDto,
 } from './dto/calendar-response.dto';
-
-interface RequestWithStaffFilter {
-  user?: JwtPayload;
-  staffPropertyIds?: string[];
-  staffFilterApplied?: boolean;
-}
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;

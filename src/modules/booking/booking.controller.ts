@@ -212,7 +212,9 @@ export class BookingController {
     }
     return this.bookingService.update(
       id,
-      updateBookingDto,
+      updateBookingDto as Record<string, unknown> & {
+        selected_services?: Array<{ serviceId: string; quantity: number }>;
+      },
       req.user as any as JwtPayload,
     );
   }
@@ -267,7 +269,9 @@ export class BookingController {
   ): Promise<any> {
     return this.bookingService.update(
       id,
-      updateBookingDto,
+      updateBookingDto as Record<string, unknown> & {
+        selected_services?: Array<{ serviceId: string; quantity: number }>;
+      },
       req.user as any as JwtPayload,
     );
   }

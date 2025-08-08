@@ -9,9 +9,6 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
 
-interface RequestWithStaffFilter {
-  staffPropertyIds?: string[];
-}
 import { Property, PropertyDocument } from '../schemas/property.schema';
 import { Listing, ListingStatus } from '../../listing/schemas/listing.schema';
 import {
@@ -31,6 +28,7 @@ import { PropertyStaffAssignmentService } from '../../property-staff-assignment/
 import {
   applyStaffFilter,
   createEmptyResult,
+  RequestWithStaffFilter,
 } from '../../../utils/staff-filter.util';
 import {
   PropertyVoucherStatistics,

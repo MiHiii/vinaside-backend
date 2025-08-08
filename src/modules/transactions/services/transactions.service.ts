@@ -28,14 +28,8 @@ import { QueryTransactionDto } from '../dto/query-transaction.dto';
 import { BookingService } from '../../booking/booking.service';
 import { BookingStatus } from '../../booking/schemas/booking.schema';
 import { toSafeString } from 'src/utils';
-import { applyStaffFilter } from '../../../utils/staff-filter.util';
+import { applyStaffFilter, RequestWithStaffFilter } from '../../../utils/staff-filter.util';
 import { JwtPayload } from '../../../interfaces/jwt-payload.interface';
-
-interface RequestWithStaffFilter {
-  user?: JwtPayload;
-  staffPropertyIds?: string[];
-  staffFilterApplied?: boolean;
-}
 
 interface AmountRangeFilter {
   $gte?: number;

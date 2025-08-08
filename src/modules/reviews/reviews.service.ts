@@ -26,7 +26,7 @@ import {
   SentMethod,
 } from '../notifications/schemas/notification.schema';
 import { forwardRef, Inject } from '@nestjs/common';
-import { applyStaffFilter } from '../../utils/staff-filter.util';
+import { applyStaffFilter, RequestWithStaffFilter } from '../../utils/staff-filter.util';
 
 @Injectable()
 export class ReviewsService {

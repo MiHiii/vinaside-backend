@@ -1526,7 +1526,7 @@ export class DashboardService {
       : {};
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: propertyFilter },
+      { $match: matchStage },
       {
         $group: {
           _id: null,
@@ -1541,8 +1541,6 @@ export class DashboardService {
           },
         },
       },
-      { $match: matchStage },
-      { $group: { _id: null, total: { $sum: '$final_amount' } } },
     ]);
     return result[0]?.total || 0;
   }
