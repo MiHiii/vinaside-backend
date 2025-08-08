@@ -227,9 +227,8 @@ export class ListingController {
   }
 
   // =================== STATISTICS ENDPOINTS ===================
-
   @Get('statistics/:id')
-  @RequirePermission('listing.view_statistics')
+  @RequirePermission('listing.view')
   @ApiOperation({ summary: 'Lấy thống kê chi tiết cho một listing' })
   @ApiResponse({
     status: 200,
@@ -271,5 +270,46 @@ export class ListingController {
       radius,
       queryDto,
     );
+  }
+
+  @Public()
+  @Get('search/availability')
+  @ApiOperation({
+    summary:
+      'Tìm kiếm listings theo tính khả dụng (ngày nhận phòng, ngày trả phòng, số khách)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách listings có sẵn được trả về thành công.',
+  })
+  @ResponseMessage('Tìm kiếm listings theo tính khả dụng thành công')
+  async searchByAvailability(
+    @Query() queryDto: QueryListingDto,
+    @Request() req: any,
+  ) {
+    let user: JwtPayload | undefined = undefined;
+    if (
+      req &&
+      typeof req === 'object' &&
+      Object.prototype.hasOwnProperty.call(req, 'user')
+    ) {
+      user = (req as { user: JwtPayload }).user;
+    }
+
+    // Đảm bảo có ít nhất một trong các tham số tìm kiếm theo ngày
+    if (!queryDto.checkInDate && !queryDto.checkOutDate) {
+      return {
+        listings: [],
+        meta: {
+          total: 0,
+          page: queryDto.page || 1,
+          limit: queryDto.limit || 20,
+          totalPages: 0,
+        },
+        message: 'Vui lòng cung cấp ngày nhận phòng hoặc ngày trả phòng',
+      };
+    }
+
+    return this.listingService.findAll(queryDto, user, null);
   }
 }

@@ -18,6 +18,10 @@ import {
   VoucherUsage,
   VoucherUsageSchema,
 } from '../vouchers/schemas/voucher-usage.schema';
+import {
+  PropertyStaffAssignment,
+  PropertyStaffAssignmentSchema,
+} from '../property-staff-assignment/schemas/property-staff-assignment.schema';
 
 @Module({
   imports: [
@@ -32,6 +36,10 @@ import {
       { name: Service.name, schema: ServiceSchema },
       { name: Message.name, schema: MessageSchema },
       { name: Wishlist.name, schema: WishlistSchema },
+      {
+        name: PropertyStaffAssignment.name,
+        schema: PropertyStaffAssignmentSchema,
+      },
     ]),
   ],
   controllers: [DashboardController],

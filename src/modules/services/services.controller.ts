@@ -31,9 +31,13 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
+import { QueryBookingDto } from '../booking/dto/query-booking.dto';
+import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
+import { BookingService } from '../booking/booking.service';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 @ApiTags('Services')
@@ -41,7 +45,10 @@ interface RequestWithUser extends Request {
 @UseGuards(JwtAuthGuard, PermissionGuard)
 @ApiBearerAuth()
 export class ServicesController {
-  constructor(private readonly servicesService: ServicesService) {}
+  constructor(
+    private readonly servicesService: ServicesService,
+    private readonly bookingService: BookingService,
+  ) {}
 
   @Post()
   @RequirePermission('service.create')
@@ -161,7 +168,7 @@ export class ServicesController {
   }
 
   @Get(':id')
-  @RequirePermission('service.view')
+  @RequirePermission('booking.view')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết dịch vụ' })
   @ApiResponse({ status: 200, description: 'Thông tin dịch vụ' })
   @ResponseMessage('Lấy thông tin dịch vụ thành công')
@@ -241,5 +248,110 @@ export class ServicesController {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
     return this.servicesService.toggleStatus(id, req.user);
+  }
+
+  @Get('stats/detailed/:id')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết cho dịch vụ cụ thể',
+    description:
+      'Lấy thống kê chi tiết cho một dịch vụ cụ thể theo ID, staff chỉ xem được thống kê của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thống kê chi tiết dịch vụ cụ thể',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            service_name: { type: 'string' },
+            service_price: { type: 'number' },
+            total_bookings: { type: 'number' },
+            total_revenue: { type: 'number' },
+            average_price: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy thống kê chi tiết dịch vụ thành công')
+  async getServiceDetailedStatsById(
+    @Param('id') serviceId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const stats = await this.servicesService.getServiceDetailedStats(
+      serviceId,
+      req.user,
+      req,
+    );
+    return stats;
+  }
+
+  @Get(':id/bookings')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy danh sách booking sử dụng service này',
+    description:
+      'Trả về danh sách booking sử dụng service, staff chỉ xem được booking của property được gán',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách booking sử dụng service',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              _id: { type: 'string' },
+              guest_name: { type: 'string' },
+              guest_email: { type: 'string' },
+              property_name: { type: 'string' },
+              listing_title: { type: 'string' },
+              checkInDate: { type: 'string' },
+              checkOutDate: { type: 'string' },
+              service_quantity: { type: 'number' },
+              service_total_price: { type: 'number' },
+              booking_status: { type: 'string' },
+              created_at: { type: 'string' },
+              original_price: { type: 'number' },
+              final_price: { type: 'number' },
+              nights: { type: 'number' },
+            },
+          },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            totalPages: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  @ResponseMessage('Lấy danh sách booking sử dụng service thành công')
+  async getBookingsByService(
+    @Param('id') serviceId: string,
+    @Query() query: QueryBookingDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.getBookingsByService(
+      serviceId,
+      query,
+      req.user,
+      req,
+    );
   }
 }

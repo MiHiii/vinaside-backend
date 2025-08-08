@@ -235,6 +235,7 @@ export class PropertyService {
     user?: JwtPayload,
     request?: RequestWithStaffFilter,
   ): Promise<PaginatedProperties> {
+
     try {
       this.logger.log('PropertyService.findAll called with:', {
         queryDto,
@@ -263,6 +264,7 @@ export class PropertyService {
       ) {
         return createEmptyResult(page, limit);
       }
+
 
       if (filters.keyword) {
         filterQuery.$text = { $search: filters.keyword };

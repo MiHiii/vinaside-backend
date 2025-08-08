@@ -27,13 +27,13 @@ import {
   createRealtimeNotification,
   validatePaginationParams,
   buildSortObject,
-  buildNotificationFilter,
 } from './utils/notification.util';
 import {
   NotificationResponse,
   UnreadCountResponse,
   PopulatedNotification,
 } from './interfaces/notification.interface';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 @Injectable()
 export class NotificationsService {
@@ -44,6 +44,8 @@ export class NotificationsService {
     private notificationModel: Model<Notification>,
     @Inject(forwardRef(() => NotificationsGateway))
     private readonly notificationsGateway: NotificationsGateway,
+    @Inject(forwardRef(() => PropertyStaffAssignmentService))
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
   ) {}
 
   // ==================== USER ENDPOINTS ====================
@@ -89,21 +91,69 @@ export class NotificationsService {
           is_read: savedNotification.is_read,
           sent_at: savedNotification.sent_at,
           created_at: savedNotification.created_at,
+          avatar_url: createNotificationDto.avatar_url,
+          sender_user_id: createNotificationDto.sender_user_id,
         });
+
+        this.logger.log(
+          `Emitting real-time notification to user ${createNotificationDto.user_id} with recipient_type: ${createNotificationDto.recipient_type}`,
+        );
 
         this.notificationsGateway.emitNewNotification(
           formattedNotification,
           createNotificationDto.user_id,
         );
 
-        // Update unread count
-        const unreadCount = await this.getUnreadCount(
-          createNotificationDto.user_id,
-        );
-        this.notificationsGateway.emitUnreadCountUpdate(
-          createNotificationDto.user_id,
-          unreadCount.unreadCount,
-        );
+        // Update unread count - use the new overloaded method for role-based count
+        try {
+          // Try to get user info to use role-based unread count
+          const userObjectId = new Types.ObjectId(
+            createNotificationDto.user_id,
+          );
+          const userInfo = await this.notificationModel.db
+            .collection('users')
+            .findOne({ _id: userObjectId });
+
+          if (userInfo) {
+            const userPayload: JwtPayload = {
+              _id: createNotificationDto.user_id,
+              email: (userInfo.email as string) || '',
+              role: userInfo.role as 'guest' | 'staff' | 'admin',
+              customRoles: Array.isArray(userInfo.customRoles)
+                ? userInfo.customRoles.filter(
+                    (r: unknown) => typeof r === 'string',
+                  )
+                : [],
+            };
+            const unreadCount = await this.getUnreadCount(userPayload);
+            this.notificationsGateway.emitUnreadCountUpdate(
+              createNotificationDto.user_id,
+              unreadCount.unreadCount,
+            );
+            this.logger.log(
+              `Updated unread count for ${userInfo.role} user ${createNotificationDto.user_id}: ${unreadCount.unreadCount}`,
+            );
+          } else {
+            // Fallback to old method
+            const unreadCount = await this.getUnreadCount(
+              createNotificationDto.user_id,
+            );
+            this.notificationsGateway.emitUnreadCountUpdate(
+              createNotificationDto.user_id,
+              unreadCount.unreadCount,
+            );
+          }
+        } catch (error) {
+          this.logger.error('Error updating unread count:', error);
+          // Fallback to old method
+          const unreadCount = await this.getUnreadCount(
+            createNotificationDto.user_id,
+          );
+          this.notificationsGateway.emitUnreadCountUpdate(
+            createNotificationDto.user_id,
+            unreadCount.unreadCount,
+          );
+        }
       }
 
       return savedNotification;
@@ -125,8 +175,9 @@ export class NotificationsService {
         query.limit ? parseInt(query.limit) : undefined,
       );
 
-      const filter = buildNotificationFilter({
-        userId: _user._id,
+      // Build role-based filter
+      const filter = await this.buildRoleBasedNotificationFilter({
+        user: _user,
         is_read: query.is_read,
         type: query.type,
         status: query.status,
@@ -174,11 +225,16 @@ export class NotificationsService {
       throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
+    // Build role-based filter for finding the notification
+    const baseFilter = await this.buildRoleBasedNotificationFilter({
+      user,
+      isDeleted: false,
+    });
+
     const notification = await this.notificationModel
       .findOne({
         _id: id,
-        user_id: user._id,
-        isDeleted: false,
+        ...baseFilter,
       })
       .populate('user_id', 'username email avatar role')
       .exec();
@@ -196,12 +252,16 @@ export class NotificationsService {
     }
 
     const objectId = new Types.ObjectId(id);
-    const objectUserId = new Types.ObjectId(user._id);
+
+    // Build role-based filter for finding the notification
+    const baseFilter = await this.buildRoleBasedNotificationFilter({
+      user,
+      isDeleted: false,
+    });
 
     const notification = await this.notificationModel.findOne({
       _id: objectId,
-      user_id: objectUserId,
-      isDeleted: false,
+      ...baseFilter,
     });
 
     if (!notification) {
@@ -216,17 +276,20 @@ export class NotificationsService {
     notification.updated_at = new Date();
     const updatedNotification = await notification.save();
 
-    // Emit real-time update
-    this.notificationsGateway.emitNotificationRead(id, user._id);
+    // Emit real-time update to the notification owner, not the admin
+    const notificationOwnerId = notification.user_id.toString();
+    this.notificationsGateway.emitNotificationRead(id, notificationOwnerId);
 
-    // Update unread count
-    const unreadCount = await this.getUnreadCount(user._id);
+    // Update unread count for the notification owner
+    const unreadCount = await this.getUnreadCount(notificationOwnerId);
     this.notificationsGateway.emitUnreadCountUpdate(
-      user._id,
+      notificationOwnerId,
       unreadCount.unreadCount,
     );
 
-    this.logger.log(`Notification ${id} marked as read by user ${user._id}`);
+    this.logger.log(
+      `Notification ${id} marked as read by user ${user._id} (role: ${user.role})`,
+    );
 
     return updatedNotification;
   }
@@ -261,12 +324,16 @@ export class NotificationsService {
     }
 
     const objectId = new Types.ObjectId(id);
-    const objectUserId = new Types.ObjectId(user._id);
+
+    // Build role-based filter for finding the notification
+    const baseFilter = await this.buildRoleBasedNotificationFilter({
+      user,
+      isDeleted: false,
+    });
 
     const notification = await this.notificationModel.findOne({
       _id: objectId,
-      user_id: objectUserId,
-      isDeleted: false,
+      ...baseFilter,
     });
 
     if (!notification) {
@@ -277,16 +344,19 @@ export class NotificationsService {
     notification.updated_at = new Date();
     await notification.save();
 
-    // Update unread count if notification was unread
+    // Update unread count if notification was unread (for the notification owner)
     if (!notification.is_read) {
-      const unreadCount = await this.getUnreadCount(user._id);
+      const notificationOwnerId = notification.user_id.toString();
+      const unreadCount = await this.getUnreadCount(notificationOwnerId);
       this.notificationsGateway.emitUnreadCountUpdate(
-        user._id,
+        notificationOwnerId,
         unreadCount.unreadCount,
       );
     }
 
-    this.logger.log(`Notification ${id} soft deleted by user ${user._id}`);
+    this.logger.log(
+      `Notification ${id} soft deleted by user ${user._id} (role: ${user.role})`,
+    );
   }
 
   async clearAll(user: JwtPayload): Promise<{ modifiedCount: number }> {
@@ -312,60 +382,126 @@ export class NotificationsService {
     return { modifiedCount: result.modifiedCount };
   }
 
-  async getUnreadCount(userId: string): Promise<UnreadCountResponse> {
-    if (!isValidObjectId(userId)) {
-      throw new BadRequestException('ID người dùng không hợp lệ');
-    }
+  // Overloaded method - with user context for role-based filtering
+  async getUnreadCount(user: JwtPayload): Promise<UnreadCountResponse>;
+  // Original method - for backward compatibility
+  async getUnreadCount(userId: string): Promise<UnreadCountResponse>;
 
-    const objectUserId = new Types.ObjectId(userId);
+  async getUnreadCount(
+    userOrId: JwtPayload | string,
+  ): Promise<UnreadCountResponse> {
+    // Determine if it's a user object or just userId string
+    const isUserObject =
+      typeof userOrId === 'object' && userOrId !== null && '_id' in userOrId;
 
-    const [totalUnread, byTypeData] = await Promise.all([
-      this.notificationModel.countDocuments({
-        user_id: objectUserId,
+    if (isUserObject) {
+      // New implementation with role-based filtering
+      const user = userOrId;
+
+      // Build role-based filter for unread count
+      const baseFilter = await this.buildRoleBasedNotificationFilter({
+        user,
         is_read: false,
         isDeleted: false,
-      }),
-      this.notificationModel.aggregate([
-        {
-          $match: {
-            user_id: objectUserId,
-            is_read: false,
-            isDeleted: false,
+      });
+
+      const [totalUnread, byTypeData] = await Promise.all([
+        this.notificationModel.countDocuments(baseFilter),
+        this.notificationModel.aggregate([
+          {
+            $match: baseFilter,
           },
-        },
-        {
-          $group: {
-            _id: '$type',
-            count: { $sum: 1 },
+          {
+            $group: {
+              _id: '$type',
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
-    ]);
+        ]),
+      ]);
 
-    const byType: Record<NotificationType, number> = {} as Record<
-      NotificationType,
-      number
-    >;
+      const byType: Record<NotificationType, number> = {} as Record<
+        NotificationType,
+        number
+      >;
 
-    // Initialize all types with 0
-    for (const type of Object.values(NotificationType)) {
-      byType[type] = 0;
-    }
-
-    // Fill in actual counts
-    for (const item of byTypeData as {
-      _id: NotificationType;
-      count: number;
-    }[]) {
-      if (item._id && Object.values(NotificationType).includes(item._id)) {
-        byType[item._id] = item.count;
+      // Initialize all types with 0
+      for (const type of Object.values(NotificationType)) {
+        byType[type] = 0;
       }
-    }
 
-    return {
-      unreadCount: totalUnread,
-      byType,
-    };
+      // Fill in actual counts
+      for (const item of byTypeData as {
+        _id: NotificationType;
+        count: number;
+      }[]) {
+        if (item._id && Object.values(NotificationType).includes(item._id)) {
+          byType[item._id] = item.count;
+        }
+      }
+
+      return {
+        unreadCount: totalUnread,
+        byType,
+      };
+    } else {
+      // Original implementation for backward compatibility
+      const userId = userOrId;
+
+      if (!isValidObjectId(userId)) {
+        throw new BadRequestException('ID người dùng không hợp lệ');
+      }
+
+      const objectUserId = new Types.ObjectId(userId);
+
+      const [totalUnread, byTypeData] = await Promise.all([
+        this.notificationModel.countDocuments({
+          user_id: objectUserId,
+          is_read: false,
+          isDeleted: false,
+        }),
+        this.notificationModel.aggregate([
+          {
+            $match: {
+              user_id: objectUserId,
+              is_read: false,
+              isDeleted: false,
+            },
+          },
+          {
+            $group: {
+              _id: '$type',
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+      ]);
+
+      const byType: Record<NotificationType, number> = {} as Record<
+        NotificationType,
+        number
+      >;
+
+      // Initialize all types with 0
+      for (const type of Object.values(NotificationType)) {
+        byType[type] = 0;
+      }
+
+      // Fill in actual counts
+      for (const item of byTypeData as {
+        _id: NotificationType;
+        count: number;
+      }[]) {
+        if (item._id && Object.values(NotificationType).includes(item._id)) {
+          byType[item._id] = item.count;
+        }
+      }
+
+      return {
+        unreadCount: totalUnread,
+        byType,
+      };
+    }
   }
 
   // ==================== ADMIN ENDPOINTS ====================
@@ -471,10 +607,15 @@ export class NotificationsService {
       throw new BadRequestException('ID thông báo không hợp lệ');
     }
 
+    // Build role-based filter for finding the notification
+    const baseFilter = await this.buildRoleBasedNotificationFilter({
+      user,
+      isDeleted: false,
+    });
+
     const notification = await this.notificationModel.findOne({
       _id: id,
-      user_id: user._id,
-      isDeleted: false,
+      ...baseFilter,
     });
 
     if (!notification) {
@@ -487,9 +628,94 @@ export class NotificationsService {
 
     const updatedNotification = await notification.save();
 
-    this.logger.log(`Notification ${id} updated by user ${user._id}`);
+    this.logger.log(
+      `Notification ${id} updated by user ${user._id} (role: ${user.role})`,
+    );
 
     return updatedNotification;
+  }
+
+  // ==================== ROLE-BASED FILTERING ====================
+
+  /**
+   * Build role-based notification filter
+   * - Guest: Only their own notifications
+   * - Staff: Only notifications for properties they manage + their own notifications
+   * - Admin: All notifications
+   */
+  private async buildRoleBasedNotificationFilter(params: {
+    user: JwtPayload;
+    is_read?: boolean;
+    type?: NotificationType;
+    status?: NotificationStatus;
+    isDeleted?: boolean;
+  }): Promise<Record<string, unknown>> {
+    const { user, is_read, type, status, isDeleted = false } = params;
+
+    const baseFilter: Record<string, unknown> = {
+      isDeleted,
+    };
+
+    // Add optional filters
+    if (typeof is_read === 'boolean') {
+      baseFilter.is_read = is_read;
+    }
+    if (type) {
+      baseFilter.type = type;
+    }
+    if (status) {
+      baseFilter.status = status;
+    }
+
+    // Role-based filtering
+    if (user.role === 'admin') {
+      // Admin sees all notifications - no user filter needed
+      return baseFilter;
+    } else if (user.role === 'staff') {
+      try {
+        // Staff sees notifications for properties they manage + their own notifications
+        const staffAssignments =
+          await this.propertyStaffAssignmentService.getPropertiesByStaff(
+            new Types.ObjectId(user._id),
+          );
+
+        const managedPropertyIds = staffAssignments.map(
+          (assignment) => assignment.propertyId,
+        );
+
+        // Get notifications where:
+        // 1. User is the recipient (their own notifications)
+        // 2. Notification is for a property they manage (check metadata.propertyId)
+        const userFilter = {
+          $or: [
+            { user_id: new Types.ObjectId(user._id) },
+            {
+              'metadata.propertyId': {
+                $in: managedPropertyIds.map((id) => id.toString()),
+              },
+            },
+          ],
+        };
+
+        return { ...baseFilter, ...userFilter };
+      } catch (error) {
+        this.logger.error(
+          'Error building staff filter, falling back to user-only:',
+          error,
+        );
+        // Fallback to user-only notifications if there's an error
+        return {
+          ...baseFilter,
+          user_id: new Types.ObjectId(user._id),
+        };
+      }
+    } else {
+      // Guest sees only their own notifications
+      return {
+        ...baseFilter,
+        user_id: new Types.ObjectId(user._id),
+      };
+    }
   }
 
   // ==================== INTERNAL SERVICE ENDPOINTS ====================
