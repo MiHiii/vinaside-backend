@@ -373,7 +373,7 @@ export class ServicesRepo extends BaseRepo<Service> {
    */
   async getServiceDetailedStats(
     serviceId: string,
-    user?: { role: string; _id: string }, 
+    user?: { role: string; _id: string },
     request?: { staffPropertyIds?: string[] },
   ): Promise<
     {
