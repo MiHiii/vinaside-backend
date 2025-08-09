@@ -10,12 +10,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, FilterQuery } from 'mongoose';
 
 import { Property, PropertyDocument } from '../schemas/property.schema';
-import { Listing, ListingStatus } from '../../listing/schemas/listing.schema';
-import {
-  Booking,
-  BookingStatus,
-  PaymentStatus,
-} from '../../booking/schemas/booking.schema';
+import { Listing } from '../../listing/schemas/listing.schema';
+import { Booking, PaymentStatus } from '../../booking/schemas/booking.schema';
 import { Review } from '../../reviews/schemas/review.schema';
 import { Voucher } from '../../vouchers/schemas/voucher.schema';
 import { Service } from '../../services/schemas/service.schema';
@@ -34,7 +30,6 @@ import {
   PropertyStatisticsQueryDto,
   PropertyStatisticsResponseDto,
   PropertyChartDataPoint,
-  PropertyDateRange,
   DateRangeType,
   PropertyBookingPerformance,
   PropertyOccupancyStats,
@@ -42,12 +37,7 @@ import {
   PropertyServiceStats,
   PropertyReviewStats,
 } from '../dto/property-statistics.dto';
-import {
-  getDefaultDateRange,
-  determineGroupBy,
-  getGroupFormat,
-  generateLabels,
-} from '../../../utils/date.util';
+// Removed unused date utility imports
 
 export interface PaginatedProperties {
   data: Property[];
@@ -489,7 +479,9 @@ export class PropertyService {
 
     // Get all bookings for detailed analysis
     const allBookings = await this.bookingModel.find(baseMatch);
-    const paidBookings = allBookings.filter((b) => b.payment_status === 'paid');
+    const paidBookings = allBookings.filter(
+      (b) => b.payment_status === PaymentStatus.PAID,
+    );
     const totalRevenue = paidBookings.reduce(
       (sum, booking) => sum + booking.final_amount,
       0,
@@ -743,7 +735,7 @@ export class PropertyService {
       { $limit: 5 },
     ]);
 
-    const topVouchers = topVouchersResult.map((item) => ({
+    const topVouchers = topVouchersResult.map((item: any) => ({
       voucherId: item._id.toString(),
       voucherCode: item.voucherCode || 'N/A',
       usageCount: item.usageCount,
@@ -821,7 +813,7 @@ export class PropertyService {
       { $limit: 5 },
     ]);
 
-    const topServices = topServicesResult.map((item) => ({
+    const topServices = topServicesResult.map((item: any) => ({
       serviceId: item._id.toString(),
       serviceName: item.serviceName || 'N/A',
       usageCount: item.usageCount,
@@ -1029,7 +1021,7 @@ export class PropertyService {
         };
       }
 
-      case DateRangeType.CUSTOM:
+      case DateRangeType.CUSTOM: {
         if (queryDto.startDate && queryDto.endDate) {
           return {
             startDate: new Date(queryDto.startDate + 'T00:00:00.000Z'),
@@ -1044,8 +1036,9 @@ export class PropertyService {
           startDate: thirtyDaysAgo,
           endDate: todayEnd,
         };
+      }
 
-      default:
+      default: {
         // Default to last 30 days
         const defaultThirtyDaysAgo = new Date(
           today.getTime() - 30 * 24 * 60 * 60 * 1000,
@@ -1054,6 +1047,7 @@ export class PropertyService {
           startDate: defaultThirtyDaysAgo,
           endDate: todayEnd,
         };
+      }
     }
   }
 

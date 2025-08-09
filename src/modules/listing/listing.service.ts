@@ -25,22 +25,14 @@ import { Transaction } from '../transactions/schemas/transaction.schema';
 import { Service } from '../services/schemas/service.schema';
 
 import {
-  ListingStatistics,
-  ChartDataPoint,
   ListingStatisticsDto,
   ListingStatisticsResponseDto,
   ListingChartDataPoint,
-  ListingDateRange,
   DateRangeType,
   ListingVoucherDetail,
   ListingServiceDetail,
 } from './dto/listing-statistics.dto';
-import {
-  getDefaultDateRange,
-  determineGroupBy,
-  getGroupFormat,
-  generateLabels,
-} from '../../utils/date.util';
+// Removed unused date utility imports
 import { GooglePlacesService } from '../location/google-places.service';
 import { applyStaffFilter } from '../../utils/staff-filter.util';
 
@@ -869,11 +861,11 @@ export class ListingService {
     );
 
     const totalVoucherDiscount = voucherDetailsResult.reduce(
-      (sum, item) => sum + item.totalDiscount,
+      (sum: number, item: any) => sum + (item.totalDiscount || 0),
       0,
     );
     const totalVouchersUsed = voucherDetailsResult.reduce(
-      (sum, item) => sum + item.usageCount,
+      (sum: number, item: any) => sum + (item.usageCount || 0),
       0,
     );
 
@@ -912,11 +904,11 @@ export class ListingService {
     );
 
     const totalServiceRevenue = serviceDetailsResult.reduce(
-      (sum, item) => sum + item.totalRevenue,
+      (sum: number, item: any) => sum + (item.totalRevenue || 0),
       0,
     );
     const totalServicesUsed = serviceDetailsResult.reduce(
-      (sum, item) => sum + item.usageCount,
+      (sum: number, item: any) => sum + (item.usageCount || 0),
       0,
     );
 
@@ -1599,7 +1591,7 @@ export class ListingService {
         };
       }
 
-      case DateRangeType.CUSTOM:
+      case DateRangeType.CUSTOM: {
         if (queryDto.startDate && queryDto.endDate) {
           return {
             startDate: new Date(queryDto.startDate + 'T00:00:00.000Z'),
@@ -1614,8 +1606,9 @@ export class ListingService {
           startDate: thirtyDaysAgo,
           endDate: todayEnd,
         };
+      }
 
-      default:
+      default: {
         // Default to last 30 days
         const defaultThirtyDaysAgo = new Date(
           today.getTime() - 30 * 24 * 60 * 60 * 1000,
@@ -1624,6 +1617,7 @@ export class ListingService {
           startDate: defaultThirtyDaysAgo,
           endDate: todayEnd,
         };
+      }
     }
   }
 
