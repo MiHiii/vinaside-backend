@@ -1,135 +1,98 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsDateString } from 'class-validator';
+import { IsOptional, IsString, IsEnum } from 'class-validator';
 
-export interface PropertyOverviewStatistics {
-  totalRooms: number;
-  activeRooms: number;
-  roomsWithBookings: number;
-  roomsWithoutBookings: number;
-  totalBookings: number;
-  successfulBookings: number;
-  cancelledBookings: number;
-  cancellationRate: number;
-  averageOccupancyRate: number;
+export enum DateRangeType {
+  TODAY = 'today',
+  LAST_7_DAYS = 'last_7_days',
+  LAST_15_DAYS = 'last_15_days',
+  LAST_30_DAYS = 'last_30_days',
+  CUSTOM = 'custom',
+}
+
+export class PropertyStatisticsQueryDto {
+  @ApiPropertyOptional({
+    description: 'Date range type for filtering',
+    enum: DateRangeType,
+    default: DateRangeType.LAST_30_DAYS,
+  })
+  @IsOptional()
+  @IsEnum(DateRangeType)
+  dateRange?: DateRangeType = DateRangeType.LAST_30_DAYS;
+
+  @ApiPropertyOptional({
+    description: 'Start date for custom date range (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'End date for custom date range (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+// Simplified chart data interface
+export interface PropertyChartDataPoint {
+  date: string;
   totalRevenue: number;
-  averagePricePerNight: number;
+}
+
+export interface PropertyDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+// Enhanced interfaces for detailed statistics
+export interface PropertyBookingPerformance {
+  totalBookings: number;
+  confirmedBookings: number;
+  cancelledBookings: number;
+  completedBookings: number;
+  bookingSuccessRate: number;
+  cancellationRate: number;
+  averageBookingValue: number;
   averageStayDuration: number;
 }
 
-export interface PropertyVoucherStatistics {
+export interface PropertyOccupancyStats {
+  occupancyRate: number;
+  totalPossibleNights: number;
+  totalBookedNights: number;
+  averageAdvanceBookingDays: number;
+}
+
+export interface PropertyVoucherStats {
   totalVouchersUsed: number;
-  totalDiscountAmount: number;
-  averageDiscountPerBooking: number;
-  mostPopularVoucher: string;
-  voucherUsageByMonth: Array<{
-    month: string;
-    vouchersUsed: number;
-    totalDiscount: number;
-  }>;
+  totalVoucherDiscount: number;
+  averageVoucherDiscount: number;
+  voucherUsageRate: number;
   topVouchers: Array<{
+    voucherId: string;
     voucherCode: string;
     usageCount: number;
     totalDiscount: number;
   }>;
 }
 
-export interface PropertyServiceStatistics {
-  totalServices: number;
-  activeServices: number;
-  totalServiceRevenue: number;
-  averageServicePrice: number;
-  mostPopularService: string;
-  serviceUsageByMonth: Array<{
-    month: string;
-    servicesUsed: number;
-    revenue: number;
-  }>;
+export interface PropertyServiceStats {
+  totalServicesUsed: number;
+  serviceRevenue: number;
+  averageServicesPerBooking: number;
   topServices: Array<{
+    serviceId: string;
     serviceName: string;
     usageCount: number;
-    revenue: number;
+    totalRevenue: number;
   }>;
 }
 
-export interface PropertyFinancialStatistics {
-  totalRevenue: number;
-  totalServiceFees: number;
-  totalTaxAmount: number;
-  totalDiscountAmount: number;
-  netRevenue: number;
-  averageBookingValue: number;
-  revenueByMonth: Array<{
-    month: string;
-    revenue: number;
-    bookings: number;
-    services: number;
-    vouchers: number;
-  }>;
-}
-
-export interface PropertyTimelineStatistics {
-  bookingsByDay: Array<{
-    date: string;
-    bookings: number;
-    revenue: number;
-    services: number;
-  }>;
-  bookingsByWeek: Array<{
-    week: string;
-    bookings: number;
-    revenue: number;
-    services: number;
-  }>;
-  bookingsByMonth: Array<{
-    month: string;
-    bookings: number;
-    revenue: number;
-    services: number;
-  }>;
-  averageAdvanceBookingDays: number;
-  averageStayDuration: number;
-}
-
-export enum PropertyChartGroupBy {
-  AUTO = 'auto',
-  DAY = 'day',
-  WEEK = 'week',
-  MONTH = 'month',
-  YEAR = 'year',
-}
-
-export interface PropertyChartDataPoint {
-  label: string; // label cho trục X (ngày/tuần/tháng)
-  revenue: number;
-  bookings: number;
-  occupancyRate: number;
-}
-
-export class PropertyStatisticsQueryDto {
-  @ApiPropertyOptional({
-    description: 'Ngày bắt đầu (YYYY-MM-DD)',
-    example: '2024-01-01',
-  })
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @ApiPropertyOptional({
-    description: 'Ngày kết thúc (YYYY-MM-DD)',
-    example: '2024-12-31',
-  })
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
-
-  @ApiPropertyOptional({
-    description: 'Cách nhóm dữ liệu',
-    enum: ['auto', 'day', 'week', 'month', 'year'],
-    example: 'auto',
-  })
-  @IsOptional()
-  @IsString()
-  groupBy?: string;
+export interface PropertyReviewStats {
+  totalReviews: number;
+  averageRating: number;
+  ratingDistribution: { [rating: number]: number };
 }
 
 export class PropertyStatisticsResponseDto {
@@ -139,19 +102,38 @@ export class PropertyStatisticsResponseDto {
   @ApiProperty({ description: 'Tên property' })
   propertyName: string;
 
-  @ApiProperty({ description: 'Thống kê tổng quan' })
-  overview: PropertyOverviewStatistics;
+  // Core statistics
+  @ApiProperty({ description: 'Tổng số listing' })
+  totalListings: number;
 
-  @ApiProperty({ description: 'Thống kê voucher' })
-  vouchers: PropertyVoucherStatistics;
+  @ApiProperty({ description: 'Số listing đang hoạt động' })
+  activeListings: number;
 
-  @ApiProperty({ description: 'Thống kê dịch vụ' })
-  services: PropertyServiceStatistics;
+  @ApiProperty({ description: 'Tổng doanh thu' })
+  totalRevenue: number;
 
-  @ApiProperty({
-    description: 'Dữ liệu biểu đồ doanh thu/ngày',
-    type: [Object],
-    required: false,
-  })
-  chartData?: PropertyChartDataPoint[];
+  @ApiProperty({ description: 'Tổng số user đã booking' })
+  totalUsers: number;
+
+  // Detailed performance statistics
+  @ApiProperty({ description: 'Thống kê hiệu suất booking' })
+  bookingPerformance: PropertyBookingPerformance;
+
+  @ApiProperty({ description: 'Thống kê tỉ lệ lấp đầy' })
+  occupancyStats: PropertyOccupancyStats;
+
+  @ApiProperty({ description: 'Thống kê voucher chi tiết' })
+  voucherStats: PropertyVoucherStats;
+
+  @ApiProperty({ description: 'Thống kê service chi tiết' })
+  serviceStats: PropertyServiceStats;
+
+  @ApiProperty({ description: 'Thống kê đánh giá' })
+  reviewStats: PropertyReviewStats;
+
+  @ApiProperty({ description: 'Dữ liệu biểu đồ doanh thu theo ngày' })
+  chartData: PropertyChartDataPoint[];
+
+  @ApiProperty({ description: 'Khoảng thời gian' })
+  dateRange: PropertyDateRange;
 }

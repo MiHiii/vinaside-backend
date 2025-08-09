@@ -39,6 +39,7 @@ import { StaffFiltered } from '../../decorators/staff-filtered.decorator';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 @ApiTags('Listings')
@@ -137,15 +138,56 @@ export class ListingController {
   @StaffFiltered({ propertyField: 'propertyId' })
   @ApiOperation({
     summary:
-      'Lấy tất cả listing (Admin: tất cả, Staff: chỉ assigned properties)',
+      'Lấy tất cả listing với phân trang (Admin: tất cả, Staff: chỉ assigned properties)',
+    description:
+      'Hỗ trợ phân trang với page và limit. Ví dụ: ?page=1&limit=10 hoặc ?page=2&limit=10',
   })
-  @ApiResponse({ status: 200, description: 'Danh sách listing' })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách listing với metadata phân trang',
+    schema: {
+      type: 'object',
+      properties: {
+        listings: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number', description: 'Tổng số listing' },
+            page: { type: 'number', description: 'Trang hiện tại' },
+            limit: { type: 'number', description: 'Số item mỗi trang' },
+            totalPages: { type: 'number', description: 'Tổng số trang' },
+          },
+        },
+      },
+    },
+  })
   @ResponseMessage('Lấy danh sách listing thành công')
   findAllAdmin(
     @Query() queryListingDto: QueryListingDto,
     @Request() req: RequestWithUser,
   ) {
     return this.listingService.findAll(queryListingDto, req.user, req);
+  }
+
+  @Get('admin/:id')
+  @RequirePermission('listing.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Xem chi tiết listing cho Admin/Staff (bao gồm cả INACTIVE)',
+    description:
+      'Admin và Staff có thể xem chi tiết listing ở mọi trạng thái including INACTIVE. Trả về dữ liệu giống hệt API findOne.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Chi tiết listing (bao gồm cả trạng thái INACTIVE) - cấu trúc dữ liệu giống API findOne',
+  })
+  @ResponseMessage('Lấy chi tiết listing thành công')
+  findOneForAdmin(@Param('id') id: string) {
+    return this.listingService.findOneForStaff(id);
   }
 
   // =================== PUBLIC ENDPOINTS ===================
@@ -229,20 +271,29 @@ export class ListingController {
   // =================== STATISTICS ENDPOINTS ===================
   @Get('statistics/:id')
   @RequirePermission('listing.view')
-  @ApiOperation({ summary: 'Lấy thống kê chi tiết cho một listing' })
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết cho một listing',
+    description:
+      'Lấy thống kê chi tiết bao gồm booking, revenue, occupancy, reviews với date range filter',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Thống kê listing được trả về thành công.',
-    type: ListingStatisticsResponseDto,
+    description:
+      'Thống kê listing với chart data và date range. Chi tiết schema xem ListingService.getListingStatistics()',
   })
   @ResponseMessage('Lấy thống kê listing thành công')
   async getListingStatistics(
     @Param('id') id: string,
-    @Query() query: ListingStatisticsDto,
-  ): Promise<ListingStatisticsResponseDto & { chartData: any[] }> {
-    const startDate = query.startDate ? new Date(query.startDate) : undefined;
-    const endDate = query.endDate ? new Date(query.endDate) : undefined;
-    return this.listingService.getListingStatistics(id, startDate, endDate);
+    @Query() queryDto: ListingStatisticsDto,
+    @Request() req: RequestWithUser,
+  ): Promise<ListingStatisticsResponseDto> {
+    return this.listingService.getListingStatistics(
+      id,
+      queryDto,
+      req.user,
+      req,
+    );
   }
 
   // =================== LOCATION-BASED ENDPOINTS ===================
