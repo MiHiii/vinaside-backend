@@ -26,7 +26,10 @@ import {
   SentMethod,
 } from '../notifications/schemas/notification.schema';
 import { forwardRef, Inject } from '@nestjs/common';
-import { applyStaffFilter } from '../../utils/staff-filter.util';
+import {
+  applyStaffFilter,
+  RequestWithStaffFilter,
+} from '../../utils/staff-filter.util';
 
 @Injectable()
 export class ReviewsService {
@@ -118,7 +121,7 @@ export class ReviewsService {
   async findAllForAdmin(
     queryDto: QueryReviewDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     const result = await this.findAllWithFilters(queryDto, user, request);
     const { page = 1, limit = 10 } = queryDto;
@@ -395,7 +398,7 @@ export class ReviewsService {
   private async findAllWithFilters(
     queryDto: QueryReviewDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     const {
       page = 1,
@@ -420,7 +423,11 @@ export class ReviewsService {
     if (rating) filter.rating = rating;
 
     // Apply staff filtering using utility function
-    const filteredFilter = applyStaffFilter(filter, request, 'room_id');
+    const filteredFilter = applyStaffFilter(
+      filter,
+      request || undefined,
+      'room_id',
+    );
 
     const options = {
       sort,

@@ -765,10 +765,38 @@ export class DashboardService {
             year: { $year: '$created_at' },
             month: { $month: '$created_at' },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          voucherDiscount: { $sum: '$voucher_discount_amount' },
-          servicesRevenue: { $sum: '$services_total_amount' },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          bookings: {
+            $sum: {
+              $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+            },
+          },
+          voucherDiscount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$voucher_discount_amount',
+                0,
+              ],
+            },
+          },
+          servicesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$services_total_amount',
+                0,
+              ],
+            },
+          },
         },
       },
       { $sort: { '_id.year': 1, '_id.month': 1 } },
@@ -805,8 +833,20 @@ export class DashboardService {
           $group: {
             _id: '$propertyId',
             propertyName: { $first: '$propertyInfo.name' },
-            revenue: { $sum: '$final_amount' },
-            bookings: { $sum: 1 },
+            revenue: {
+              $sum: {
+                $cond: [
+                  { $in: ['$status', ['confirmed', 'completed']] },
+                  '$final_amount',
+                  0,
+                ],
+              },
+            },
+            bookings: {
+              $sum: {
+                $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+              },
+            },
           },
         },
         { $sort: { revenue: -1 } },
@@ -1487,7 +1527,20 @@ export class DashboardService {
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
       { $match: matchStage },
-      { $group: { _id: null, total: { $sum: '$final_amount' } } },
+      {
+        $group: {
+          _id: null,
+          total: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+        },
+      },
     ]);
     return result[0]?.total || 0;
   }

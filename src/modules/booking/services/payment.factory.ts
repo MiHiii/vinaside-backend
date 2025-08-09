@@ -5,6 +5,7 @@ import {
 } from '../../transactions/schemas/transaction.schema';
 import { PaymentServiceInterface } from '../interfaces/payment-service.interface';
 import { VNPayService } from './vnpay.service';
+import { CashService } from './cash.service';
 // import { MoMoService } from './momo.service'; // Will be created later
 
 @Injectable()
@@ -17,6 +18,7 @@ export class PaymentFactory {
 
   constructor(
     private readonly vnpayService: VNPayService,
+    private readonly cashService: CashService,
     // private readonly momoService: MoMoService, // Will be injected later
   ) {
     this.logger.log('Initializing PaymentFactory...');
@@ -26,6 +28,8 @@ export class PaymentFactory {
   private registerPaymentServices(): void {
     this.logger.log('Registering VNPayService...');
     this.paymentServices.set(PaymentMethod.VNPAY, this.vnpayService);
+    this.logger.log('Registering CashService...');
+    this.paymentServices.set(PaymentMethod.CASH, this.cashService);
     // this.logger.log('Registering MoMoService...');
     // this.paymentServices.set(PaymentMethod.MOMO, this.momoService); // Will be added later
   }

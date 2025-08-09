@@ -3,12 +3,7 @@ import { FilterQuery, Types } from 'mongoose';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { PropertyStaffAssignmentService } from '../../modules/property-staff-assignment/property-staff-assignment.service';
 import { AssignmentStatus } from '../../modules/property-staff-assignment/schemas/property-staff-assignment.schema';
-
-interface RequestWithStaffFilter {
-  user?: JwtPayload;
-  staffPropertyIds?: string[];
-  staffFilterApplied?: boolean;
-}
+import { RequestWithStaffFilter } from '../../utils/staff-filter.util';
 
 @Injectable()
 export abstract class StaffFilteredBaseService {

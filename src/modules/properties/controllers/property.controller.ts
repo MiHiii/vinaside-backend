@@ -35,6 +35,13 @@ interface RequestWithUser extends Request {
   staffPropertyIds?: string[];
 }
 
+interface PropertyRoomsQueryDto {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: string;
+}
+
 @ApiTags('Properties')
 @Controller('properties')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -230,7 +237,7 @@ export class PropertyController {
   @ResponseMessage('Lấy danh sách phòng trong property thành công')
   getPropertyRooms(
     @Param('propertyId') propertyId: string,
-    @Query() queryDto: any,
+    @Query() queryDto: PropertyRoomsQueryDto,
   ) {
     return this.propertyService.getPropertyRooms(propertyId, queryDto);
   }

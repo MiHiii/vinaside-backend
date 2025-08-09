@@ -1,7 +1,7 @@
 import { FilterQuery, Types } from 'mongoose';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 
-interface RequestWithStaffFilter {
+export interface RequestWithStaffFilter {
   user?: JwtPayload;
   staffPropertyIds?: string[];
   staffFilterApplied?: boolean;

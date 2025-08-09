@@ -8,10 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { BookingRepo } from '../booking.repo';
 import { VNPayUtil, VNPayParams } from '../utils/vnpay.util';
 import {
-  CreateVNPayPaymentDto,
-  VNPayPaymentResponseDto,
+  // CreateVNPayPaymentDto,
+  // VNPayPaymentResponseDto,
   VNPayCallbackDto,
-  VNPayVerificationResponseDto,
+  // VNPayVerificationResponseDto,
 } from '../dto/vnpay-payment.dto';
 import { PaymentStatus, BookingStatus } from '../schemas/booking.schema';
 import {
@@ -133,8 +133,9 @@ export class VNPayService extends PaymentServiceInterface {
         // Lần 1: 50% tổng tiền (giá phòng + dịch vụ + phí + thuế - voucher)
         amountToPay = Math.round(baseTotal * 0.5);
       } else if (paymentType === 'remaining') {
-        // Lần 2: 50% còn lại
-        amountToPay = Math.round(baseTotal * 0.5);
+        // Lần 2: Số tiền còn lại thực tế (không phải 50%)
+        const depositPaidAmount = booking.deposit_paid_amount || 0;
+        amountToPay = Math.round(baseTotal - depositPaidAmount);
         if (amountToPay <= 0) {
           throw new BadRequestException('Không còn số tiền nào cần thanh toán');
         }
@@ -146,6 +147,10 @@ export class VNPayService extends PaymentServiceInterface {
     const orderId = VNPayUtil.generateOrderId(bookingId);
     const createDate = VNPayUtil.formatDate(new Date());
     const amount = VNPayUtil.formatAmount(amountToPay);
+
+    // Debug: Log amount information
+    this.logger.log(`Original amountToPay: ${amountToPay}`);
+    this.logger.log(`Formatted amount for VNPay: ${amount}`);
 
     // Tạo parameters cho VNPay (chỉ những parameters cần thiết như official code)
     const vnpParams: VNPayParams = {
@@ -198,7 +203,7 @@ export class VNPayService extends PaymentServiceInterface {
         vnpay_order_id: orderId,
         payment_method: 'vnpay',
       },
-      booking.guestId.toString(),
+      booking.guestId?.toString() || '',
     );
 
     // Tạo transaction record
@@ -207,7 +212,7 @@ export class VNPayService extends PaymentServiceInterface {
       propertyId: booking.propertyId?.toString(),
       reference_id: bookingId,
       reference_type: ReferenceType.BOOKING,
-      user_id: booking.guestId.toString(),
+      user_id: booking.guestId?.toString() || '',
       direction: TransactionDirection.IN,
       amount: amountToPay, // Use amountToPay for transaction amount
       currency: 'VND',
@@ -215,7 +220,7 @@ export class VNPayService extends PaymentServiceInterface {
       provider: PaymentProvider.VNPAY,
       provider_order_id: orderId,
       note: `VNPay payment for booking ${bookingId}`,
-      created_by: booking.guestId.toString(),
+      created_by: booking.guestId?.toString() || '',
     });
 
     this.logger.log(
@@ -268,11 +273,28 @@ export class VNPayService extends PaymentServiceInterface {
         };
       }
       // Xác thực secure hash
-      const isValidSignature = VNPayUtil.verifySecureHash(
-        callbackData as unknown as VNPayParams,
-        callbackData.vnp_SecureHash,
-        this.vnpHashSecret,
+      this.logger.log(`[VNPay RETURN] Received callback data:`, callbackData);
+      this.logger.log(
+        `[VNPay RETURN] Secure hash from VNPay: ${callbackData.vnp_SecureHash}`,
       );
+      this.logger.log(`[VNPay RETURN] Hash secret key: ${this.vnpHashSecret}`);
+
+      // Trong môi trường development, có thể bypass việc kiểm tra hash
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      let isValidSignature = true;
+
+      if (!isDevelopment) {
+        isValidSignature = VNPayUtil.verifySecureHash(
+          callbackData as unknown as VNPayParams,
+          callbackData.vnp_SecureHash,
+          this.vnpHashSecret,
+        );
+      } else {
+        this.logger.warn(
+          `[VNPay RETURN] Development mode: Bypassing hash verification`,
+        );
+      }
+
       this.logger.log(`[VNPay RETURN] isValidSignature: ${isValidSignature}`);
       if (!isValidSignature) {
         this.logger.error(
@@ -312,7 +334,8 @@ export class VNPayService extends PaymentServiceInterface {
       }
       // Parse amount từ VNPay
       vnpayAmount = VNPayUtil.parseAmount(callbackData.vnp_Amount);
-      // Kiểm tra idempotency: Nếu transactionNo đã xử lý thì bỏ qua
+      // Kiểm tra idempotency: Chỉ bỏ qua nếu đây là callback lặp lại của cùng một transaction
+      // Cho phép thanh toán lại với transaction mới
       if (booking.vnpay_transaction_no === callbackData.vnp_TransactionNo) {
         this.logger.warn(
           `[VNPay RETURN] Giao dịch đã xử lý, bỏ qua callback lặp lại.`,
@@ -335,10 +358,18 @@ export class VNPayService extends PaymentServiceInterface {
       this.logger.log(
         `[VNPay LOG] bookingId: ${bookingId}, vnpayAmount: ${vnpayAmount}, final_amount: ${booking.final_amount}, deposit_paid_amount: ${booking.deposit_paid_amount}, deposit_amount: ${booking.deposit_amount}, remainingAmount: ${remainingAmount}, payment_status: ${booking.payment_status}`,
       );
-      // Cộng dồn số tiền đã trả bằng $inc
+      // Cộng dồn số tiền đã trả bằng cách tính toán thủ công
+      const currentDepositPaidAmount = booking.deposit_paid_amount || 0;
+      const newDepositPaidAmount = currentDepositPaidAmount + vnpayAmount;
+
+      this.logger.log(
+        `[VNPay LOG] Cập nhật deposit_paid_amount: ${currentDepositPaidAmount} + ${vnpayAmount} = ${newDepositPaidAmount}`,
+      );
+
       await this.bookingRepo.updateById(bookingId, {
-        $inc: { deposit_paid_amount: vnpayAmount },
+        deposit_paid_amount: newDepositPaidAmount,
       });
+
       // Lấy booking mới nhất
       const updatedBooking = await this.bookingRepo.findById(bookingId);
       if (!updatedBooking) {
@@ -358,6 +389,10 @@ export class VNPayService extends PaymentServiceInterface {
           },
         };
       }
+
+      this.logger.log(
+        `[VNPay LOG] Sau khi cập nhật: deposit_paid_amount = ${updatedBooking.deposit_paid_amount}, payment_status = ${updatedBooking.payment_status}`,
+      );
       if (
         (updatedBooking.deposit_paid_amount ?? 0) >=
         (updatedBooking.final_amount ?? 0)
@@ -368,14 +403,14 @@ export class VNPayService extends PaymentServiceInterface {
         await this.bookingRepo.updateById(bookingId, {
           payment_status: PaymentStatus.PAID,
           deposit_paid: true,
-          deposit_paid_amount: updatedBooking.final_amount,
+          // Không ghi đè deposit_paid_amount vì đã cộng dồn ở trên
           vnpay_transaction_no: callbackData.vnp_TransactionNo,
           vnpay_bank_tran_no: callbackData.vnp_BankTranNo,
           vnpay_card_type: callbackData.vnp_CardType,
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.PENDING,
+          status: BookingStatus.CONFIRMED, // Thay đổi từ PENDING thành CONFIRMED
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
@@ -411,7 +446,7 @@ export class VNPayService extends PaymentServiceInterface {
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.PENDING,
+          status: BookingStatus.CONFIRMED, // Thay đổi từ PENDING thành CONFIRMED
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
@@ -490,7 +525,7 @@ export class VNPayService extends PaymentServiceInterface {
       if (bookingId) {
         const updatedBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
-          `[VNPay IPN][END] bookingId: ${bookingId}, payment_status: ${updatedBooking && updatedBooking.payment_status}, deposit_paid: ${updatedBooking && updatedBooking.deposit_paid}, final_amount: ${updatedBooking && updatedBooking.final_amount}`,
+          `[VNPay IPN][END] bookingId: ${bookingId}, payment_status: ${updatedBooking?.payment_status}, deposit_paid: ${updatedBooking?.deposit_paid}, final_amount: ${updatedBooking?.final_amount}`,
         );
       }
     }
@@ -536,70 +571,6 @@ export class VNPayService extends PaymentServiceInterface {
       signature,
       this.vnpHashSecret,
     );
-  }
-
-  // =========================== LEGACY METHODS FOR BACKWARD COMPATIBILITY ===========================
-
-  /**
-   * Legacy method - use createPaymentUrl with CreatePaymentRequest instead
-   * @deprecated
-   */
-  async createVNPayPaymentUrl(
-    createPaymentDto: CreateVNPayPaymentDto,
-  ): Promise<VNPayPaymentResponseDto> {
-    const request: CreatePaymentRequest = {
-      bookingId: createPaymentDto.bookingId,
-      paymentMethod: PaymentMethod.VNPAY,
-      amount: 0, // Will be fetched from booking
-      description: createPaymentDto.orderDescription,
-      returnUrl: createPaymentDto.returnUrl,
-    };
-
-    const response = await this.createPaymentUrl(request);
-
-    return {
-      paymentUrl: response.paymentUrl!,
-      orderId: response.orderId,
-      amount: response.amount,
-      createDate: VNPayUtil.formatDate(response.createdAt),
-      expireDate: VNPayUtil.formatDate(response.expiresAt || new Date()),
-    };
-  }
-
-  /**
-   * Legacy method - use handleCallback instead
-   * @deprecated
-   */
-  async handlePaymentReturn(
-    callbackData: VNPayCallbackDto,
-  ): Promise<VNPayVerificationResponseDto> {
-    const result = await this.handleCallback(callbackData);
-
-    return {
-      success: result.success,
-      responseCode: (result.metadata?.responseCode as string) || '00',
-      message: result.message,
-      bookingId: result.bookingId,
-      amount: result.amount,
-      transactionNo: result.transactionId,
-      bankTranNo: (result.metadata?.bankTranNo as string) || '',
-      cardType: (result.metadata?.cardType as string) || '',
-      payDate: result.paidAt || new Date(),
-    };
-  }
-
-  /**
-   * Legacy method - use handleIPN instead
-   * @deprecated
-   */
-  async handlePaymentIPN(
-    callbackData: VNPayCallbackDto,
-  ): Promise<{ RspCode: string; Message: string }> {
-    const result = await this.handleIPN(callbackData);
-    return {
-      RspCode: result.success ? '00' : '99',
-      Message: result.message,
-    };
   }
 
   /**

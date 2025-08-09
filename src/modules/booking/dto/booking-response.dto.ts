@@ -66,6 +66,7 @@ export class BookingResponseDto {
   additionalCostReason?: string;
 
   // Cancellation details
+  cancelled_at?: Date;
   cancellationDetails?: {
     accountName?: string;
     bankName?: string;

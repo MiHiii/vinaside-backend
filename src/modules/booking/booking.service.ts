@@ -58,10 +58,14 @@ import {
   generateLabels,
 } from '../../utils/date.util';
 import { CancelPolicy } from '../listing/schemas/listing.schema';
+// import { Listing } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
 import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
 import { TransactionsService } from '../transactions/services/transactions.service';
-import { applyStaffFilter } from '../../utils/staff-filter.util';
+import {
+  applyStaffFilter,
+  RequestWithStaffFilter,
+} from '../../utils/staff-filter.util';
 import { PaymentStatusDto } from './dto/payment.dto';
 import { CalendarQueryDto, CalendarViewType } from './dto/calendar-query.dto';
 import {
@@ -200,6 +204,7 @@ export class BookingService {
       deposit_paid_amount: booking.deposit_paid_amount,
       outstanding_amount:
         (booking.final_amount || 0) - (booking.deposit_paid_amount || 0),
+
       note: booking.note,
       additionalCost: booking.additionalCost,
       additionalCostReason: booking.additionalCostReason,
@@ -269,6 +274,7 @@ export class BookingService {
     }
 
     interface PopulatedListingForBooking {
+      _id: Types.ObjectId;
       propertyId: {
         _id: Types.ObjectId;
         name?: string;
@@ -594,9 +600,11 @@ export class BookingService {
    */
   async update(
     id: string,
-    updateBookingDto: any, // mở rộng để nhận selected_services
+    updateBookingDto: Record<string, unknown> & {
+      selected_services?: Array<{ serviceId: string; quantity: number }>;
+    }, // mở rộng để nhận selected_services
     user: JwtPayload,
-  ): Promise<any> {
+  ): Promise<BookingResponseDto> {
     // 1. Lấy booking hiện tại
     const booking = await this.bookingRepo.findById(id);
     if (!booking) throw new NotFoundException('Không tìm thấy booking.');
@@ -607,7 +615,10 @@ export class BookingService {
     // 2. Check quyền
     const isGuest = user.role === 'guest';
     if (isGuest) {
-      if (booking.guestId.toString() !== user._id.toString()) {
+      if (
+        booking.guestId &&
+        booking.guestId.toString() !== user._id.toString()
+      ) {
         throw new ForbiddenException(
           'Bạn chỉ được sửa booking của chính mình.',
         );
@@ -698,8 +709,14 @@ export class BookingService {
       updateBookingDto.selected_services = processedServices;
 
       // e. Cập nhật payment_status nếu có thêm dịch vụ và booking đã PAID
+      // Chỉ chuyển sang PARTIALLY_PAID nếu số tiền đã trả chưa đủ cho tổng tiền mới
       if (diff > 0 && booking.payment_status === PaymentStatus.PAID) {
-        updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
+        const newTotalAmount = booking.final_amount + diff;
+        const paidAmount = booking.deposit_paid_amount || 0;
+        if (paidAmount < newTotalAmount) {
+          updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
+        }
+        // Nếu đã trả đủ cho tổng tiền mới thì giữ nguyên PAID
       }
     }
 
@@ -808,7 +825,7 @@ export class BookingService {
   async findAll(
     queryDto: QueryBookingDto,
     user?: JwtPayload,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ): Promise<PaginatedBookings> {
     const { page = 1, limit = 10, sortBy, sortOrder, ...filters } = queryDto;
     const skip = (page - 1) * limit;
@@ -978,7 +995,7 @@ export class BookingService {
   async findMyBookingsAsStaff(
     user: JwtPayload,
     queryDto: QueryBookingDto,
-    request?: any,
+    request?: RequestWithStaffFilter,
   ) {
     if (!user || !user._id) {
       throw new BadRequestException('Thông tin người dùng không hợp lệ');
@@ -1084,13 +1101,24 @@ export class BookingService {
     });
   }
 
-  async cancelBookingPublic(id: string, guestId: string) {
+  async cancelBookingPublic(
+    id: string,
+    guestId: string,
+    cancellationDetails?: {
+      accountName?: string;
+      bankName?: string;
+      accountNumber?: string;
+      cancellationReason?: string;
+      refundMethod?: string;
+      refundNote?: string;
+    },
+  ) {
     // 1. Xác thực quyền
     const booking = await this.bookingRepo.findById(id);
     if (!booking) {
       throw new NotFoundException('Không tìm thấy booking');
     }
-    if (booking.guestId.toString() !== guestId) {
+    if (booking.guestId && booking.guestId.toString() !== guestId) {
       throw new ForbiddenException('Bạn không có quyền huỷ booking này');
     }
     if (booking.status === BookingStatus.CANCELLED) {
@@ -1105,7 +1133,22 @@ export class BookingService {
       booking.payment_status = PaymentStatus.UNPAID;
     }
     booking.cancelled_at = new Date();
-    booking.cancellation_reason = 'Public user cancelled';
+
+    // 3. Lưu thông tin hủy chi tiết nếu có
+    if (cancellationDetails) {
+      booking.cancellationDetails = {
+        accountName: cancellationDetails.accountName,
+        bankName: cancellationDetails.bankName,
+        accountNumber: cancellationDetails.accountNumber,
+        cancellationReason: cancellationDetails.cancellationReason,
+        refundMethod: cancellationDetails.refundMethod,
+        refundNote: cancellationDetails.refundNote,
+      };
+      booking.cancellationDetailsUpdatedAt = new Date();
+      booking.cancellationDetailsUpdatedBy = new Types.ObjectId(guestId);
+    } else {
+      booking.cancellation_reason = 'Public user cancelled';
+    }
 
     // 3. Tính toán hoàn tiền theo chính sách
     // Lấy thông tin listing để lấy cancel_policy (cho phép lấy listing ở bất kỳ trạng thái nào vì booking đã được tạo)
@@ -1174,7 +1217,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;
@@ -1226,7 +1269,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;
@@ -1279,7 +1322,7 @@ export class BookingService {
 
       // Thêm các bộ lọc khác
       if (filters.status) query.status = filters.status;
-      if (filters.paymentStatus) query.paymentStatus = filters.paymentStatus;
+      if (filters.paymentStatus) query.payment_status = filters.paymentStatus;
 
       // Tính toán skip cho phân trang
       const skip = (page - 1) * limit;
@@ -1430,8 +1473,8 @@ export class BookingService {
    */
   private async createStaffNotifications(
     propertyId: string,
-    booking: any,
-    listing: any,
+    booking: Booking,
+    listing: { _id: Types.ObjectId; title?: string },
     finalAmount: number,
   ): Promise<void> {
     try {
@@ -1458,10 +1501,13 @@ export class BookingService {
       const checkOutDate = new Date(booking.check_out_date).toLocaleDateString(
         'vi-VN',
       );
-      const bookingCode = booking._id.toString().slice(-8).toUpperCase();
+      const bookingCode = (booking._id as Types.ObjectId)
+        .toString()
+        .slice(-8)
+        .toUpperCase();
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestPhone = guestInfo?.phone || '';
-      const propertyName = listing.propertyId?.name || listing.title;
+      const propertyName = listing.title || 'Property';
 
       // Find first actual staff member to create ONE representative staff notification
       let representativeStaff: any = null;
@@ -1521,7 +1567,7 @@ export class BookingService {
    * Tạo thông báo khi trạng thái booking thay đổi
    */
   private async createStatusChangeNotification(
-    booking: any,
+    booking: Booking,
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
@@ -1780,7 +1826,7 @@ export class BookingService {
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestEmail = guestInfo?.email || '';
       const guestPhone = guestInfo?.phone || '';
-      const propertyName = listing.propertyId?.name || listing.title;
+      const propertyName = listing.title || 'Property';
 
       // Get all admin users
       const adminUsers = await this.bookingRepo
@@ -2036,9 +2082,29 @@ export class BookingService {
               $dateToString: { format: groupFormat, date: '$created_at' },
             },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          nights: { $sum: '$nights' },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          bookings: {
+            $sum: {
+              $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+            },
+          },
+          nights: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$nights',
+                0,
+              ],
+            },
+          },
         },
       },
       { $sort: { '_id.group': 1 } },
@@ -2077,18 +2143,58 @@ export class BookingService {
       };
     });
 
-    // Thống kê tổng quan
+    // Thống kê tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
     const overviewStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
           totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: '$final_amount' },
-          totalNights: { $sum: '$nights' },
-          totalGuests: { $sum: '$guests' },
-          totalInfants: { $sum: '$infants' },
-          averageBookingValue: { $avg: '$final_amount' },
+          totalRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          totalNights: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$nights',
+                0,
+              ],
+            },
+          },
+          totalGuests: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$guests',
+                0,
+              ],
+            },
+          },
+          totalInfants: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$infants',
+                0,
+              ],
+            },
+          },
+          averageBookingValue: {
+            $avg: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                null,
+              ],
+            },
+          },
         },
       },
     ]);
@@ -2265,30 +2371,58 @@ export class BookingService {
       listingId,
     );
 
-    // Thống kê tài chính tổng quan
+    // Thống kê tài chính tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
     const financialStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$final_amount' },
-          totalServiceFees: { $sum: '$service_fee' },
-          totalTaxAmount: { $sum: '$tax_amount' },
-          totalRefunds: {
+          totalRevenue: {
             $sum: {
               $cond: [
-                { $eq: ['$payment_status', 'refunded'] },
+                { $in: ['$status', ['confirmed', 'completed']] },
                 '$final_amount',
                 0,
               ],
             },
           },
-          averageBookingValue: { $avg: '$final_amount' },
+          totalServiceFees: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$service_fee',
+                0,
+              ],
+            },
+          },
+          totalTaxAmount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$tax_amount',
+                0,
+              ],
+            },
+          },
+          totalRefunds: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, '$refund_amount', 0],
+            },
+          },
+          averageBookingValue: {
+            $avg: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                null,
+              ],
+            },
+          },
         },
       },
     ]);
 
-    // Thống kê doanh thu theo tháng
+    // Thống kê doanh thu theo tháng - chỉ tính từ booking đã xác nhận/hoàn thành
     const revenueByMonth = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2297,10 +2431,38 @@ export class BookingService {
             year: { $year: '$created_at' },
             month: { $month: '$created_at' },
           },
-          revenue: { $sum: '$final_amount' },
-          bookings: { $sum: 1 },
-          voucherDiscount: { $sum: '$voucher_discount_amount' },
-          servicesRevenue: { $sum: '$services_total_amount' },
+          revenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$final_amount',
+                0,
+              ],
+            },
+          },
+          bookings: {
+            $sum: {
+              $cond: [{ $in: ['$status', ['confirmed', 'completed']] }, 1, 0],
+            },
+          },
+          voucherDiscount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$voucher_discount_amount',
+                0,
+              ],
+            },
+          },
+          servicesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$services_total_amount',
+                0,
+              ],
+            },
+          },
         },
       },
       {
@@ -2316,15 +2478,39 @@ export class BookingService {
       averageBookingValue: 0,
     };
 
-    // Calculate additional financial metrics
+    // Calculate additional financial metrics - chỉ tính từ booking đã xác nhận/hoàn thành
     const voucherServicesStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
-          totalVoucherDiscount: { $sum: '$voucher_discount_amount' },
-          totalServicesRevenue: { $sum: '$services_total_amount' },
-          totalRevenueBeforeVoucher: { $sum: '$subtotal_amount' },
+          totalVoucherDiscount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$voucher_discount_amount',
+                0,
+              ],
+            },
+          },
+          totalServicesRevenue: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$services_total_amount',
+                0,
+              ],
+            },
+          },
+          totalRevenueBeforeVoucher: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['confirmed', 'completed']] },
+                '$subtotal_amount',
+                0,
+              ],
+            },
+          },
         },
       },
     ]);
@@ -2384,172 +2570,188 @@ export class BookingService {
     propertyId?: string,
     listingId?: string,
   ): Promise<BookingCustomerStatistics> {
-    const filter = this.createStatisticsFilter(
-      startDate,
-      endDate,
-      propertyId,
-      listingId,
-    );
+    try {
+      this.logger.log('getCustomerStatistics called with:', {
+        startDate,
+        endDate,
+        propertyId,
+        listingId,
+      });
 
-    // Thống kê khách hàng
-    const customerStats = await this.bookingRepo.getModel().aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: '$guestId',
-          totalBookings: { $sum: 1 },
-          totalSpent: { $sum: '$final_amount' },
-          totalNights: { $sum: '$nights' },
-          totalGuests: { $sum: '$guests' },
-          guestName: { $first: '$guest_name' },
-        },
-      },
-    ]);
+      const filter = this.createStatisticsFilter(
+        startDate,
+        endDate,
+        propertyId,
+        listingId,
+      );
 
-    // Thống kê khách hàng mới vs quay lại
-    const newCustomers = await this.bookingRepo.getModel().aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: '$guestId',
-          firstBooking: { $min: '$created_at' },
-        },
-      },
-      {
-        $match: {
-          firstBooking: {
-            $gte: startDate
-              ? new Date(startDate)
-              : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      this.logger.log('Statistics filter:', filter);
+
+      // Thống kê khách hàng (loại bỏ guestId null)
+      const customerStats = await this.bookingRepo.getModel().aggregate([
+        { $match: { ...filter, guestId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$guestId',
+            totalBookings: { $sum: 1 },
+            totalSpent: { $sum: '$final_amount' },
+            totalNights: { $sum: '$nights' },
+            totalGuests: { $sum: '$guests' },
+            guestName: { $first: '$guest_name' },
           },
         },
-      },
-      {
-        $count: 'count',
-      },
-    ]);
+      ]);
 
-    // Top khách hàng
-    const topCustomers = customerStats
-      .sort((a: any, b: any) => b.totalSpent - a.totalSpent)
-      .slice(0, 10)
-      .map((customer: any) => ({
-        customerId: customer._id.toString(),
-        customerName: customer.guestName,
-        totalBookings: customer.totalBookings,
-        totalSpent: customer.totalSpent,
-      }));
-
-    const totalCustomers = customerStats.length;
-    const newCustomersCount = newCustomers[0]?.count || 0;
-    const returningCustomers = totalCustomers - newCustomersCount;
-
-    // Tính trung bình
-    const totalNights = customerStats.reduce(
-      (sum: number, customer: any) => sum + customer.totalNights,
-      0,
-    );
-    const totalGuests = customerStats.reduce(
-      (sum: number, customer: any) => sum + customer.totalGuests,
-      0,
-    );
-    const totalBookings = customerStats.reduce(
-      (sum: number, customer: any) => sum + customer.totalBookings,
-      0,
-    );
-
-    // Voucher usage by customers
-    const voucherUsageStats = await this.bookingRepo.getModel().aggregate([
-      { $match: filter },
-      {
-        $group: {
-          _id: '$guestId',
-          guestName: { $first: '$guest_name' },
-          voucherUsageCount: {
-            $sum: { $cond: [{ $ne: ['$voucher_id', null] }, 1, 0] },
+      // Thống kê khách hàng mới vs quay lại (loại bỏ guestId null)
+      const newCustomers = await this.bookingRepo.getModel().aggregate([
+        { $match: { ...filter, guestId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$guestId',
+            firstBooking: { $min: '$created_at' },
           },
-          totalVoucherDiscount: { $sum: '$voucher_discount_amount' },
         },
-      },
-      { $match: { voucherUsageCount: { $gt: 0 } } },
-    ]);
-
-    const customersUsingVouchers = voucherUsageStats.length;
-    const topVoucherUsers = voucherUsageStats
-      .sort((a: any, b: any) => b.totalVoucherDiscount - a.totalVoucherDiscount)
-      .slice(0, 10)
-      .map((user: any) => ({
-        customerId: user._id.toString(),
-        customerName: user.guestName,
-        voucherUsageCount: user.voucherUsageCount,
-        totalVoucherDiscount: user.totalVoucherDiscount,
-      }));
-
-    // Services usage by customers
-    const servicesUsageStats = await this.bookingRepo.getModel().aggregate([
-      { $match: filter },
-      { $unwind: '$selected_services' },
-      {
-        $group: {
-          _id: '$guestId',
-          guestName: { $first: '$guest_name' },
-          servicesUsageCount: { $sum: 1 },
-          totalServicesSpent: { $sum: '$selected_services.total_price' },
+        {
+          $match: {
+            firstBooking: {
+              $gte: startDate
+                ? new Date(startDate)
+                : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+            },
+          },
         },
-      },
-    ]);
+        {
+          $count: 'count',
+        },
+      ]);
 
-    const customersUsingServices = servicesUsageStats.length;
-    const topServicesUsers = servicesUsageStats
-      .sort((a: any, b: any) => b.totalServicesSpent - a.totalServicesSpent)
-      .slice(0, 10)
-      .map((user: any) => ({
-        customerId: user._id.toString(),
-        customerName: user.guestName,
-        servicesUsageCount: user.servicesUsageCount,
-        totalServicesSpent: user.totalServicesSpent,
-      }));
+      // Top khách hàng
+      const topCustomers = customerStats
+        .sort((a: any, b: any) => b.totalSpent - a.totalSpent)
+        .slice(0, 10)
+        .map((customer: any) => ({
+          customerId: customer._id ? customer._id.toString() : 'unknown',
+          customerName: customer.guestName || 'Unknown Guest',
+          totalBookings: customer.totalBookings,
+          totalSpent: customer.totalSpent,
+        }));
 
-    return {
-      totalCustomers,
-      newCustomers: newCustomersCount,
-      returningCustomers,
-      averageNightsPerBooking:
-        totalBookings > 0
-          ? Math.round((totalNights / totalBookings) * 10) / 10
-          : 0,
-      averageGuestsPerBooking:
-        totalBookings > 0
-          ? Math.round((totalGuests / totalBookings) * 10) / 10
-          : 0,
-      customersUsingVouchers,
-      averageVoucherUsagePerCustomer:
-        customersUsingVouchers > 0
-          ? Math.round(
-              (voucherUsageStats.reduce(
-                (sum: number, user: any) => sum + user.voucherUsageCount,
-                0,
-              ) /
-                customersUsingVouchers) *
-                10,
-            ) / 10
-          : 0,
-      topVoucherUsers,
-      customersUsingServices,
-      averageServicesUsagePerCustomer:
-        customersUsingServices > 0
-          ? Math.round(
-              (servicesUsageStats.reduce(
-                (sum: number, user: any) => sum + user.servicesUsageCount,
-                0,
-              ) /
-                customersUsingServices) *
-                10,
-            ) / 10
-          : 0,
-      topServicesUsers,
-      topCustomers,
-    };
+      const totalCustomers = customerStats.length;
+      const newCustomersCount = newCustomers[0]?.count || 0;
+      const returningCustomers = totalCustomers - newCustomersCount;
+
+      // Tính trung bình
+      const totalNights = customerStats.reduce(
+        (sum: number, customer: any) => sum + customer.totalNights,
+        0,
+      );
+      const totalGuests = customerStats.reduce(
+        (sum: number, customer: any) => sum + customer.totalGuests,
+        0,
+      );
+      const totalBookings = customerStats.reduce(
+        (sum: number, customer: any) => sum + customer.totalBookings,
+        0,
+      );
+
+      // Voucher usage by customers (loại bỏ guestId null)
+      const voucherUsageStats = await this.bookingRepo.getModel().aggregate([
+        { $match: { ...filter, guestId: { $ne: null } } },
+        {
+          $group: {
+            _id: '$guestId',
+            guestName: { $first: '$guest_name' },
+            voucherUsageCount: {
+              $sum: { $cond: [{ $ne: ['$voucher_id', null] }, 1, 0] },
+            },
+            totalVoucherDiscount: { $sum: '$voucher_discount_amount' },
+          },
+        },
+        { $match: { voucherUsageCount: { $gt: 0 } } },
+      ]);
+
+      const customersUsingVouchers = voucherUsageStats.length;
+      const topVoucherUsers = voucherUsageStats
+        .sort(
+          (a: any, b: any) => b.totalVoucherDiscount - a.totalVoucherDiscount,
+        )
+        .slice(0, 10)
+        .map((user: any) => ({
+          customerId: user._id ? user._id.toString() : 'unknown',
+          customerName: user.guestName || 'Unknown Guest',
+          voucherUsageCount: user.voucherUsageCount,
+          totalVoucherDiscount: user.totalVoucherDiscount,
+        }));
+
+      // Services usage by customers (loại bỏ guestId null)
+      const servicesUsageStats = await this.bookingRepo.getModel().aggregate([
+        { $match: { ...filter, guestId: { $ne: null } } },
+        { $unwind: '$selected_services' },
+        {
+          $group: {
+            _id: '$guestId',
+            guestName: { $first: '$guest_name' },
+            servicesUsageCount: { $sum: 1 },
+            totalServicesSpent: { $sum: '$selected_services.total_price' },
+          },
+        },
+      ]);
+
+      const customersUsingServices = servicesUsageStats.length;
+      const topServicesUsers = servicesUsageStats
+        .sort((a: any, b: any) => b.totalServicesSpent - a.totalServicesSpent)
+        .slice(0, 10)
+        .map((user: any) => ({
+          customerId: user._id ? user._id.toString() : 'unknown',
+          customerName: user.guestName || 'Unknown Guest',
+          servicesUsageCount: user.servicesUsageCount,
+          totalServicesSpent: user.totalServicesSpent,
+        }));
+
+      return {
+        totalCustomers,
+        newCustomers: newCustomersCount,
+        returningCustomers,
+        averageNightsPerBooking:
+          totalBookings > 0
+            ? Math.round((totalNights / totalBookings) * 10) / 10
+            : 0,
+        averageGuestsPerBooking:
+          totalBookings > 0
+            ? Math.round((totalGuests / totalBookings) * 10) / 10
+            : 0,
+        customersUsingVouchers,
+        averageVoucherUsagePerCustomer:
+          customersUsingVouchers > 0
+            ? Math.round(
+                (voucherUsageStats.reduce(
+                  (sum: number, user: any) => sum + user.voucherUsageCount,
+                  0,
+                ) /
+                  customersUsingVouchers) *
+                  10,
+              ) / 10
+            : 0,
+        topVoucherUsers,
+        customersUsingServices,
+        averageServicesUsagePerCustomer:
+          customersUsingServices > 0
+            ? Math.round(
+                (servicesUsageStats.reduce(
+                  (sum: number, user: any) => sum + user.servicesUsageCount,
+                  0,
+                ) /
+                  customersUsingServices) *
+                  10,
+              ) / 10
+            : 0,
+        topServicesUsers,
+        topCustomers,
+      };
+    } catch (error) {
+      this.logger.error('getCustomerStatistics error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -2975,6 +3177,7 @@ export class BookingService {
     // ✅ Kiểm tra người gọi có phải là người đặt không (chỉ khi là guest)
     if (
       user.role === 'guest' &&
+      booking.guestId &&
       booking.guestId.toString() !== user._id.toString()
     ) {
       throw new ForbiddenException('Bạn không có quyền thanh toán booking này');
@@ -3095,6 +3298,9 @@ export class BookingService {
       );
     }
 
+    // Sử dụng amount từ request nếu có, nếu không thì sử dụng outstandingAmount
+    const paymentAmount = createPaymentDto.amount || outstandingAmount;
+
     const paymentService = this.paymentFactory.getPaymentService(
       createPaymentDto.paymentMethod,
     );
@@ -3102,20 +3308,20 @@ export class BookingService {
     const paymentRequest = {
       ...createPaymentDto,
       bookingId,
-      amount: outstandingAmount,
+      amount: paymentAmount,
       paymentType: 'remaining' as const,
-      description: `Nhân viên thanh toán phần còn lại cho booking ${bookingId}`,
+      description: `Nhân viên xác nhận thanh toán phần còn lại cho booking ${bookingId}`,
     };
 
     const result = await paymentService.createPaymentUrl(paymentRequest);
 
     // Tạo notification cho guest
     await this.notificationsService.create({
-      user_id: booking.guestId.toString(),
+      user_id: booking.guestId?.toString() || '',
       recipient_type: RecipientType.GUEST,
       type: NotificationType.PAYMENT,
-      title: 'Thanh toán phần còn lại',
-      message: `Nhân viên đã tạo thanh toán phần còn lại ${outstandingAmount.toLocaleString('vi-VN')}đ cho booking của bạn`,
+      title: 'Xác nhận thanh toán',
+      message: `Nhân viên đã xác nhận thanh toán phần còn lại ${paymentAmount.toLocaleString('vi-VN')}đ cho booking của bạn`,
       sent_method: [SentMethod.IN_APP],
       status: NotificationStatus.SENT,
       metadata: {
@@ -3444,6 +3650,12 @@ export class BookingService {
         updatedBy: new Types.ObjectId(user._id),
       };
 
+      // Debug log before creating booking
+      this.logger.log(
+        'Creating booking with data:',
+        JSON.stringify(bookingData, null, 2),
+      );
+
       // Tạo booking
       const booking = await this.bookingRepo.create(bookingData, user._id);
 
@@ -3451,7 +3663,7 @@ export class BookingService {
       await this.createStaffNotifications(
         createBookingDto.propertyId,
         booking,
-        listing,
+        { _id: listing._id as Types.ObjectId, title: listing.title },
         finalAmount,
       );
 

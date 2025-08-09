@@ -39,10 +39,10 @@ export class Booking extends Document {
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false,
     index: true,
   })
-  guestId: Types.ObjectId;
+  guestId?: Types.ObjectId;
 
   @Prop({ required: true })
   checkInDate: Date;
