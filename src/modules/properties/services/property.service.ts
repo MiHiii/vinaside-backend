@@ -736,7 +736,7 @@ export class PropertyService {
     ]);
 
     const topVouchers = topVouchersResult.map((item: any) => ({
-      voucherId: item._id.toString(),
+      voucherId: String(item._id),
       voucherCode: item.voucherCode || 'N/A',
       usageCount: item.usageCount,
       totalDiscount: Math.round(item.totalDiscount || 0),
@@ -814,7 +814,7 @@ export class PropertyService {
     ]);
 
     const topServices = topServicesResult.map((item: any) => ({
-      serviceId: item._id.toString(),
+      serviceId: String(item._id),
       serviceName: item.serviceName || 'N/A',
       usageCount: item.usageCount,
       totalRevenue: Math.round(item.totalRevenue),
@@ -890,7 +890,7 @@ export class PropertyService {
       4: 0,
       5: 0,
     };
-    reviewData.ratings.forEach((rating: number) => {
+    (reviewData.ratings as number[]).forEach((rating: number) => {
       if (rating >= 1 && rating <= 5) {
         ratingDistribution[rating]++;
       }

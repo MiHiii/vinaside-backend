@@ -851,8 +851,8 @@ export class ListingService {
     ]);
 
     const voucherDetails: ListingVoucherDetail[] = voucherDetailsResult.map(
-      (item) => ({
-        voucherId: item._id.toString(),
+      (item: any) => ({
+        voucherId: String(item._id),
         voucherCode: item.voucherCode || 'N/A',
         usageCount: item.usageCount,
         totalDiscount: Math.round(item.totalDiscount),
@@ -894,8 +894,8 @@ export class ListingService {
     ]);
 
     const serviceDetails: ListingServiceDetail[] = serviceDetailsResult.map(
-      (item) => ({
-        serviceId: item._id.toString(),
+      (item: any) => ({
+        serviceId: String(item._id),
         serviceName: item.serviceName || 'N/A',
         usageCount: item.usageCount,
         totalRevenue: Math.round(item.totalRevenue),
