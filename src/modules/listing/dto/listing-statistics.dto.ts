@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
+export enum DateRangeType {
+  TODAY = 'today',
+  LAST_7_DAYS = 'last_7_days',
+  LAST_15_DAYS = 'last_15_days',
+  LAST_30_DAYS = 'last_30_days',
+  CUSTOM = 'custom',
+}
+
 export enum TimeGroupBy {
   DAY = 'day',
   WEEK = 'week',
@@ -63,78 +71,111 @@ export interface ChartDataPoint {
   occupancyRate: number;
 }
 
-export class ListingStatisticsDto {
-  @ApiProperty({ description: 'ID của listing', required: false })
-  @IsOptional()
-  @IsString()
-  listingId?: string;
-
-  @ApiProperty({ description: 'ID của property', required: false })
-  @IsOptional()
-  @IsString()
-  propertyId?: string;
-
-  @ApiProperty({ description: 'Ngày bắt đầu thống kê', required: false })
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @ApiProperty({ description: 'Ngày kết thúc thống kê', required: false })
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
-
-  @ApiProperty({
-    description: 'Kiểu nhóm dữ liệu biểu đồ',
-    enum: ListingChartGroupBy,
-    required: false,
-    default: ListingChartGroupBy.AUTO,
-  })
-  @IsOptional()
-  @IsEnum(ListingChartGroupBy)
-  groupBy?: ListingChartGroupBy = ListingChartGroupBy.AUTO;
+// Simplified chart data interface similar to properties
+export interface ListingChartDataPoint {
+  date: string;
+  totalRevenue: number;
 }
 
-export class ListingStatisticsResponseDto implements ListingStatistics {
+export interface ListingDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+export class ListingStatisticsDto {
+  @ApiProperty({
+    description: 'Date range type for filtering',
+    enum: DateRangeType,
+    default: DateRangeType.LAST_30_DAYS,
+  })
+  @IsOptional()
+  @IsEnum(DateRangeType)
+  dateRange?: DateRangeType = DateRangeType.LAST_30_DAYS;
+
+  @ApiProperty({
+    description: 'Start date for custom date range (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @ApiProperty({
+    description: 'End date for custom date range (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+// Simplified response DTO - not too detailed as requested
+// Detailed voucher and service stats interfaces
+export interface ListingVoucherDetail {
+  voucherId: string;
+  voucherCode: string;
+  usageCount: number;
+  totalDiscount: number;
+  averageDiscount: number;
+}
+
+export interface ListingServiceDetail {
+  serviceId: string;
+  serviceName: string;
+  usageCount: number;
+  totalRevenue: number;
+  averagePrice: number;
+}
+
+export class ListingStatisticsResponseDto {
   @ApiProperty({ description: 'ID của listing' })
   listingId: string;
 
   @ApiProperty({ description: 'Tên listing' })
   listingTitle: string;
 
-  @ApiProperty({ description: 'Hiệu suất kinh doanh' })
-  businessPerformance: {
-    totalBookings: number;
-    occupancyRate: number;
-    monthlyRevenue: number;
-    cancellationRate: number;
-    returningGuests: number;
-  };
+  @ApiProperty({ description: 'Tổng số booking' })
+  totalBookings: number;
 
-  @ApiProperty({ description: 'Đánh giá' })
-  reviews: {
-    averageRating: number;
-    totalReviews: number;
-  };
+  @ApiProperty({ description: 'Tổng doanh thu' })
+  totalRevenue: number;
 
-  @ApiProperty({ description: 'Mức độ quan tâm & chuyển đổi' })
-  engagement: {
-    viewCount: number;
-    wishlistCount: number;
-  };
+  @ApiProperty({ description: 'Tỉ lệ lấp đầy (%)' })
+  occupancyRate: number;
 
-  @ApiProperty({ description: 'Tác động từ Voucher' })
-  voucherImpact: {
-    totalDiscountAmount: number;
-    mostPopularVoucher: string;
-  };
+  @ApiProperty({ description: 'Tổng số lượt xem' })
+  totalViews: number;
 
-  @ApiProperty({
-    description: 'Dữ liệu biểu đồ doanh thu 7 ngày gần nhất',
-    type: [Object],
-    required: false,
-  })
-  chartData?: ChartDataPoint[];
+  @ApiProperty({ description: 'Tổng số đánh giá' })
+  totalReviews: number;
+
+  @ApiProperty({ description: 'Rating trung bình' })
+  averageRating: number;
+
+  @ApiProperty({ description: 'Số lần được thêm vào wishlist' })
+  wishlistCount: number;
+
+  @ApiProperty({ description: 'Tổng giảm giá từ voucher' })
+  totalVoucherDiscount: number;
+
+  @ApiProperty({ description: 'Số lượng voucher đã sử dụng' })
+  totalVouchersUsed: number;
+
+  @ApiProperty({ description: 'Chi tiết các voucher được sử dụng' })
+  voucherDetails: ListingVoucherDetail[];
+
+  @ApiProperty({ description: 'Tổng doanh thu từ service' })
+  totalServiceRevenue: number;
+
+  @ApiProperty({ description: 'Số lượng service đã sử dụng' })
+  totalServicesUsed: number;
+
+  @ApiProperty({ description: 'Chi tiết các service được sử dụng' })
+  serviceDetails: ListingServiceDetail[];
+
+  @ApiProperty({ description: 'Dữ liệu biểu đồ doanh thu theo ngày' })
+  chartData: ListingChartDataPoint[];
+
+  @ApiProperty({ description: 'Khoảng thời gian' })
+  dateRange: ListingDateRange;
 }
 
 export class ListingRevenueStatisticsResponseDto

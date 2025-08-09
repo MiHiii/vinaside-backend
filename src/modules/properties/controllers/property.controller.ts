@@ -32,6 +32,7 @@ import {
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+  staffPropertyIds?: string[];
 }
 
 @ApiTags('Properties')
@@ -110,19 +111,28 @@ export class PropertyController {
 
   @Get(':id/statistics')
   @RequirePermission('property.view')
-  @ApiOperation({ summary: 'Lấy thống kê chi tiết của một tài sản' })
-  @ApiResponse({ status: 200, description: 'Thống kê chi tiết tài sản' })
+  @StaffFiltered({ propertyField: '_id' })
+  @ApiOperation({
+    summary: 'Lấy thống kê chi tiết của một tài sản',
+    description:
+      'Lấy thống kê chi tiết bao gồm booking, property, listing, service, voucher, users với date range filter',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Thống kê chi tiết tài sản với tỉ lệ lấp đầy, voucher và service analytics. Chi tiết schema xem PropertyService.getPropertyStatistics()',
+  })
   @ResponseMessage('Lấy thống kê chi tiết tài sản thành công')
   async getPropertyStatistics(
     @Param('id') id: string,
     @Query() queryDto: PropertyStatisticsQueryDto,
+    @Request() req: RequestWithUser,
   ) {
-    const { startDate, endDate, groupBy } = queryDto;
     return this.propertyService.getPropertyStatistics(
       id,
-      startDate,
-      endDate,
-      groupBy,
+      queryDto,
+      req.user,
+      req,
     );
   }
 
@@ -196,7 +206,13 @@ export class PropertyController {
   @Get(':propertyId/room-status')
   @RequirePermission('property.view')
   @ApiOperation({
-    summary: 'Lấy trạng thái phòng của property (đang đặt/còn trống)',
+    summary:
+      'Lấy trạng thái phòng của property (đang đặt/còn trống), bao gồm cả phòng INACTIVE',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Danh sách trạng thái phòng bao gồm cả phòng INACTIVE. Chi tiết schema xem PropertyService.getRoomStatus()',
   })
   async findRoomStatus(@Param('propertyId') propertyId: string) {
     return this.propertyService.getRoomStatus(propertyId);
