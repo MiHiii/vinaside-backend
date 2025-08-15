@@ -14,6 +14,8 @@ export interface BookingOverviewStatistics {
   totalVoucherDiscount: number;
   averageVoucherDiscount: number;
   voucherUsageRate: number;
+  totalVoucherDiscountPercent: number;
+  averageVoucherDiscountPercent: number;
   // Services statistics
   totalServicesRevenue: number;
   totalServicesBooked: number;
@@ -23,6 +25,14 @@ export interface BookingOverviewStatistics {
     serviceName: string;
     usageCount: number;
     totalRevenue: number;
+  }>;
+  // Top vouchers used
+  topVouchersUsed: Array<{
+    voucherId: string;
+    voucherCode: string;
+    usageCount: number;
+    averageDiscountPercent: number;
+    discountPercent: number;
   }>;
 }
 
@@ -34,6 +44,15 @@ export interface BookingStatusStatistics {
   rejected: number;
   confirmationRate: number;
   cancellationRate: number;
+}
+
+export interface PaymentStatusStatistics {
+  unpaid: number;
+  partially_paid: number;
+  paid: number;
+  refunding: number;
+  refunded: number;
+  failed: number;
 }
 
 export interface BookingFinancialStatistics {
@@ -124,18 +143,38 @@ export interface BookingChartDataPoint {
   label: string; // label cho trục X (ngày/tuần/tháng)
   revenue: number;
   bookings: number;
-  occupancyRate: number;
+}
+
+export enum DateRangeType {
+  TODAY = 'today',
+  LAST_7_DAYS = 'last_7_days',
+  LAST_15_DAYS = 'last_15_days',
+  LAST_30_DAYS = 'last_30_days',
+  CUSTOM = 'custom',
 }
 
 export class BookingStatisticsQueryDto {
-  @ApiProperty({ description: 'Ngày bắt đầu thống kê', required: false })
+  @ApiProperty({
+    description: 'Date range type for filtering',
+    enum: DateRangeType,
+    default: DateRangeType.LAST_30_DAYS,
+  })
   @IsOptional()
-  @IsDateString()
+  @IsEnum(DateRangeType)
+  dateRange?: DateRangeType = DateRangeType.LAST_30_DAYS;
+
+  @ApiProperty({
+    description: 'Start date for custom date range (YYYY-MM-DD)',
+  })
+  @IsOptional()
+  @IsString()
   startDate?: string;
 
-  @ApiProperty({ description: 'Ngày kết thúc thống kê', required: false })
+  @ApiProperty({
+    description: 'End date for custom date range (YYYY-MM-DD)',
+  })
   @IsOptional()
-  @IsDateString()
+  @IsString()
   endDate?: string;
 
   @ApiProperty({ description: 'ID của property', required: false })
@@ -193,6 +232,12 @@ export class BookingOverviewResponseDto implements BookingOverviewStatistics {
   @ApiProperty({ description: 'Tỉ lệ sử dụng voucher (%)' })
   voucherUsageRate: number;
 
+  @ApiProperty({ description: 'Tổng phần trăm giảm giá voucher' })
+  totalVoucherDiscountPercent: number;
+
+  @ApiProperty({ description: 'Trung bình phần trăm giảm giá voucher' })
+  averageVoucherDiscountPercent: number;
+
   @ApiProperty({ description: 'Tổng doanh thu từ services' })
   totalServicesRevenue: number;
 
@@ -210,8 +255,20 @@ export class BookingOverviewResponseDto implements BookingOverviewStatistics {
     totalRevenue: number;
   }>;
 
-  @ApiProperty({ description: 'Thống kê theo trạng thái' })
+  @ApiProperty({ description: 'Top vouchers được sử dụng' })
+  topVouchersUsed: Array<{
+    voucherId: string;
+    voucherCode: string;
+    usageCount: number;
+    averageDiscountPercent: number;
+    discountPercent: number;
+  }>;
+
+  @ApiProperty({ description: 'Thống kê theo trạng thái booking' })
   statusBreakdown: BookingStatusStatistics;
+
+  @ApiProperty({ description: 'Thống kê theo trạng thái thanh toán' })
+  paymentStatusBreakdown: PaymentStatusStatistics;
 
   @ApiProperty({
     description: 'Dữ liệu biểu đồ doanh thu/ngày',

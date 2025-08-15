@@ -271,7 +271,6 @@ export class ListingController {
   // =================== STATISTICS ENDPOINTS ===================
   @Get('statistics/:id')
   @RequirePermission('listing.view')
-  @StaffFiltered({ propertyField: 'propertyId' })
   @ApiOperation({
     summary: 'Lấy thống kê chi tiết cho một listing',
     description:

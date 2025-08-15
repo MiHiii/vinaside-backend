@@ -34,7 +34,11 @@ import {
 } from './dto/listing-statistics.dto';
 // Removed unused date utility imports
 import { GooglePlacesService } from '../location/google-places.service';
-import { applyStaffFilter } from '../../utils/staff-filter.util';
+import {
+  applyStaffFilter,
+  hasPropertyAccess,
+} from '../../utils/staff-filter.util';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -63,6 +67,7 @@ export class ListingService {
   constructor(
     private readonly listingRepo: ListingRepo,
     private readonly propertyService: PropertyService,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
     @InjectModel(Property.name) private readonly propertyModel: Model<Property>,
     @InjectModel(Booking.name) private readonly bookingModel: Model<Booking>,
     @InjectModel(Review.name) private readonly reviewModel: Model<Review>,
@@ -749,14 +754,48 @@ export class ListingService {
       throw new NotFoundException(`Listing with ID ${listingId} not found.`);
     }
 
-    // Apply staff filter if needed
-    if (
-      user &&
-      user.role === 'staff' &&
-      request?.staffPropertyIds &&
-      Array.isArray(request.staffPropertyIds)
-    ) {
-      if (!request.staffPropertyIds.includes(listing.propertyId.toString())) {
+    // Check staff access to this listing's property
+    if (user && user.role === 'staff') {
+      const assignments =
+        await this.propertyStaffAssignmentService.getPropertiesByStaff(
+          new Types.ObjectId(user._id),
+        );
+
+      const staffPropertyIds = assignments.map((assignment: any) => {
+        // Handle both populated and unpopulated propertyId
+        if (
+          typeof assignment.propertyId === 'object' &&
+          assignment.propertyId?._id
+        ) {
+          return assignment.propertyId._id.toString();
+        }
+
+        // Handle case where propertyId is a string containing object representation
+        if (
+          typeof assignment.propertyId === 'string' &&
+          assignment.propertyId.includes('ObjectId(')
+        ) {
+          const match = assignment.propertyId.match(/ObjectId\('([^']+)'\)/);
+          if (match) {
+            return match[1];
+          }
+        }
+
+        // If propertyId is already a string or ObjectId
+        return assignment.propertyId.toString();
+      });
+
+      // Handle case where listing.propertyId is also populated
+      let listingPropertyId: string;
+      if (typeof listing.propertyId === 'object' && listing.propertyId?._id) {
+        listingPropertyId = listing.propertyId._id.toString();
+      } else {
+        listingPropertyId = listing.propertyId.toString();
+      }
+
+      const hasAccess = staffPropertyIds.includes(listingPropertyId);
+
+      if (!hasAccess) {
         throw new ForbiddenException(
           'Staff không có quyền xem thống kê của listing này',
         );
