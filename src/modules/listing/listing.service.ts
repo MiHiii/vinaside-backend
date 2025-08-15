@@ -743,7 +743,6 @@ export class ListingService {
     listingId: string,
     queryDto: ListingStatisticsDto,
     user?: JwtPayload,
-    request?: { staffPropertyIds?: string[] },
   ): Promise<ListingStatisticsResponseDto> {
     // Validate listing exists
     const listing = await this.findOne(listingId);
@@ -770,26 +769,24 @@ export class ListingService {
         // Handle case where propertyId is a string containing object representation
         if (
           typeof assignment.propertyId === 'string' &&
-          (assignment.propertyId as string).includes('ObjectId(')
+          assignment.propertyId.includes('ObjectId(')
         ) {
-          const match = (assignment.propertyId as string).match(
-            /ObjectId\('([^']+)'\)/,
-          );
+          const match = assignment.propertyId.match(/ObjectId\('([^']+)'\)/);
           if (match) {
             return match[1];
           }
         }
 
         // If propertyId is already a string or ObjectId
-        return (assignment.propertyId as any).toString();
+        return assignment.propertyId.toString();
       });
 
       // Handle case where listing.propertyId is also populated
       let listingPropertyId: string;
       if (typeof listing.propertyId === 'object' && listing.propertyId?._id) {
-        listingPropertyId = (listing.propertyId._id as any).toString();
+        listingPropertyId = listing.propertyId._id.toString();
       } else {
-        listingPropertyId = (listing.propertyId as any).toString();
+        listingPropertyId = listing.propertyId.toString();
       }
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);

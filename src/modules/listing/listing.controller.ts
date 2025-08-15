@@ -287,12 +287,7 @@ export class ListingController {
     @Query() queryDto: ListingStatisticsDto,
     @Request() req: RequestWithUser,
   ): Promise<ListingStatisticsResponseDto> {
-    return this.listingService.getListingStatistics(
-      id,
-      queryDto,
-      req.user,
-      req,
-    );
+    return this.listingService.getListingStatistics(id, queryDto, req.user);
   }
 
   // =================== LOCATION-BASED ENDPOINTS ===================
