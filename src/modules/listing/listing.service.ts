@@ -752,60 +752,62 @@ export class ListingService {
 
     // Check staff access to this listing's property
 
+    // Khai báo kiểu id có thể gặp
+    type IdLike =
+      | Types.ObjectId
+      | string
+      | number
+      | { _id: Types.ObjectId | string | number }
+      | { id: Types.ObjectId | string | number };
+
+    // Interface cho kết quả getPropertiesByStaff
     interface Assignment {
-      propertyId: Types.ObjectId | string | { _id: Types.ObjectId | string };
+      propertyId: IdLike;
     }
 
+    // Helper chuẩn hóa về string an toàn
+    function normalizeId(value: unknown): string {
+      if (value == null) {
+        throw new Error('Invalid id: null/undefined');
+      }
+
+      if (typeof value === 'string') {
+        // Xử lý dạng "ObjectId('...')"
+        const match = value.match(/ObjectId\('([^']+)'\)/);
+        return match ? match[1] : value;
+      }
+
+      if (typeof value === 'number') {
+        return String(value);
+      }
+
+      if (value instanceof Types.ObjectId) {
+        return value.toHexString();
+      }
+
+      if (typeof value === 'object') {
+        const obj = value as { _id?: unknown; id?: unknown };
+        if (obj._id !== undefined) return normalizeId(obj._id);
+        if (obj.id !== undefined) return normalizeId(obj.id);
+      }
+
+      throw new Error('Unsupported id type');
+    }
+
+    // ====== ĐOẠN LOGIC CẦN THAY ======
     if (user && user.role === 'staff') {
       const assignments: Assignment[] =
         await this.propertyStaffAssignmentService.getPropertiesByStaff(
-          new Types.ObjectId(user._id),
+          new Types.ObjectId(String(user._id)),
         );
 
-      const staffPropertyIds = assignments.map((assignment) => {
-        const { propertyId } = assignment;
+      // Lấy list propertyId mà staff được assign (chuẩn hóa về string)
+      const staffPropertyIds: string[] = assignments.map((assignment) =>
+        normalizeId(assignment.propertyId),
+      );
 
-        // Case: propertyId là object chứa _id
-        if (
-          typeof propertyId === 'object' &&
-          '_id' in propertyId &&
-          propertyId._id
-        ) {
-          return propertyId._id.toString();
-        }
-
-        // Case: propertyId là string chứa ObjectId('...')
-        if (
-          typeof propertyId === 'string' &&
-          propertyId.includes('ObjectId(')
-        ) {
-          const match = propertyId.match(/ObjectId\('([^']+)'\)/);
-          if (match) {
-            return match[1];
-          }
-        }
-
-        // Trường hợp còn lại: string hoặc ObjectId
-        if (typeof propertyId === 'string') {
-          return propertyId;
-        }
-        // Nếu là ObjectId hoặc object khác
-        return propertyId.toString();
-      });
-
-      // Handle case listing.propertyId
-      let listingPropertyId: string;
-      if (
-        typeof listing.propertyId === 'object' &&
-        '_id' in listing.propertyId &&
-        listing.propertyId._id
-      ) {
-        listingPropertyId = listing.propertyId._id.toString();
-      } else if (typeof listing.propertyId === 'string') {
-        listingPropertyId = listing.propertyId;
-      } else {
-        listingPropertyId = listing.propertyId.toString();
-      }
+      // Lấy propertyId của listing hiện tại (chuẩn hóa về string)
+      const listingPropertyId = normalizeId(listing.propertyId as IdLike);
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);
 
