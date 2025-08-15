@@ -751,44 +751,58 @@ export class ListingService {
     }
 
     // Check staff access to this listing's property
+
+    interface Assignment {
+      propertyId: Types.ObjectId | string | { _id: Types.ObjectId | string };
+    }
+
+    interface Listing {
+      propertyId: Types.ObjectId | string | { _id: Types.ObjectId | string };
+    }
+
     if (user && user.role === 'staff') {
-      const assignments =
+      const assignments: Assignment[] =
         await this.propertyStaffAssignmentService.getPropertiesByStaff(
           new Types.ObjectId(user._id),
         );
 
-      const staffPropertyIds = assignments.map((assignment: any) => {
-        // Handle both populated and unpopulated propertyId
+      const staffPropertyIds = assignments.map((assignment) => {
+        const { propertyId } = assignment;
+
+        // Case: propertyId là object chứa _id
         if (
-          typeof assignment.propertyId === 'object' &&
-          assignment.propertyId?._id
+          typeof propertyId === 'object' &&
+          '_id' in propertyId &&
+          propertyId._id
         ) {
-          return (assignment.propertyId._id as any).toString();
+          return propertyId._id.toString();
         }
 
-        // Handle case where propertyId is a string containing object representation
+        // Case: propertyId là string chứa ObjectId('...')
         if (
-          typeof assignment.propertyId === 'string' &&
-          (assignment.propertyId as string).includes('ObjectId(')
+          typeof propertyId === 'string' &&
+          propertyId.includes('ObjectId(')
         ) {
-          const match = (assignment.propertyId as string).match(
-            /ObjectId\('([^']+)'\)/,
-          );
+          const match = propertyId.match(/ObjectId\('([^']+)'\)/);
           if (match) {
             return match[1];
           }
         }
 
-        // If propertyId is already a string or ObjectId
-        return (assignment.propertyId as any).toString();
+        // Trường hợp còn lại: string hoặc ObjectId
+        return propertyId.toString();
       });
 
-      // Handle case where listing.propertyId is also populated
+      // Handle case listing.propertyId
       let listingPropertyId: string;
-      if (typeof listing.propertyId === 'object' && listing.propertyId?._id) {
-        listingPropertyId = (listing.propertyId._id as any).toString();
+      if (
+        typeof listing.propertyId === 'object' &&
+        '_id' in listing.propertyId &&
+        listing.propertyId._id
+      ) {
+        listingPropertyId = listing.propertyId._id.toString();
       } else {
-        listingPropertyId = (listing.propertyId as any).toString();
+        listingPropertyId = listing.propertyId.toString();
       }
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);
