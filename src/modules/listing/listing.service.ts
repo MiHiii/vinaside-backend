@@ -756,10 +756,6 @@ export class ListingService {
       propertyId: Types.ObjectId | string | { _id: Types.ObjectId | string };
     }
 
-    interface Listing {
-      propertyId: Types.ObjectId | string | { _id: Types.ObjectId | string };
-    }
-
     if (user && user.role === 'staff') {
       const assignments: Assignment[] =
         await this.propertyStaffAssignmentService.getPropertiesByStaff(
@@ -790,7 +786,7 @@ export class ListingService {
         }
 
         // Trường hợp còn lại: string hoặc ObjectId
-        return propertyId.toString();
+        return String(propertyId);
       });
 
       // Handle case listing.propertyId
@@ -802,7 +798,7 @@ export class ListingService {
       ) {
         listingPropertyId = listing.propertyId._id.toString();
       } else {
-        listingPropertyId = listing.propertyId.toString();
+        listingPropertyId = String(listing.propertyId);
       }
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);
