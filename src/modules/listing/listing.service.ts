@@ -34,10 +34,7 @@ import {
 } from './dto/listing-statistics.dto';
 // Removed unused date utility imports
 import { GooglePlacesService } from '../location/google-places.service';
-import {
-  applyStaffFilter,
-  hasPropertyAccess,
-} from '../../utils/staff-filter.util';
+import { applyStaffFilter } from '../../utils/staff-filter.util';
 import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 export interface PaginatedListings {
@@ -773,24 +770,26 @@ export class ListingService {
         // Handle case where propertyId is a string containing object representation
         if (
           typeof assignment.propertyId === 'string' &&
-          assignment.propertyId.includes('ObjectId(')
+          (assignment.propertyId as string).includes('ObjectId(')
         ) {
-          const match = assignment.propertyId.match(/ObjectId\('([^']+)'\)/);
+          const match = (assignment.propertyId as string).match(
+            /ObjectId\('([^']+)'\)/,
+          );
           if (match) {
             return match[1];
           }
         }
 
         // If propertyId is already a string or ObjectId
-        return assignment.propertyId.toString();
+        return (assignment.propertyId as any).toString();
       });
 
       // Handle case where listing.propertyId is also populated
       let listingPropertyId: string;
       if (typeof listing.propertyId === 'object' && listing.propertyId?._id) {
-        listingPropertyId = listing.propertyId._id.toString();
+        listingPropertyId = (listing.propertyId._id as any).toString();
       } else {
-        listingPropertyId = listing.propertyId.toString();
+        listingPropertyId = (listing.propertyId as any).toString();
       }
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);

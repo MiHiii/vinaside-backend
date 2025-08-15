@@ -52,12 +52,7 @@ import {
   BookingTimelineStatistics,
   BookingChartDataPoint,
 } from './dto/booking-statistics.dto';
-import {
-  getDefaultDateRange,
-  determineGroupBy,
-  getGroupFormat,
-  generateLabels,
-} from '../../utils/date.util';
+import { getGroupFormat, generateLabels } from '../../utils/date.util';
 import {
   CancelPolicy,
   Listing,
