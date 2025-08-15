@@ -786,7 +786,11 @@ export class ListingService {
         }
 
         // Trường hợp còn lại: string hoặc ObjectId
-        return String(propertyId);
+        if (typeof propertyId === 'string') {
+          return propertyId;
+        }
+        // Nếu là ObjectId hoặc object khác
+        return propertyId.toString();
       });
 
       // Handle case listing.propertyId
@@ -797,8 +801,10 @@ export class ListingService {
         listing.propertyId._id
       ) {
         listingPropertyId = listing.propertyId._id.toString();
+      } else if (typeof listing.propertyId === 'string') {
+        listingPropertyId = listing.propertyId;
       } else {
-        listingPropertyId = String(listing.propertyId);
+        listingPropertyId = listing.propertyId.toString();
       }
 
       const hasAccess = staffPropertyIds.includes(listingPropertyId);
