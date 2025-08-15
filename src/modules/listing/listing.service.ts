@@ -35,6 +35,7 @@ import {
 // Removed unused date utility imports
 import { GooglePlacesService } from '../location/google-places.service';
 import { applyStaffFilter } from '../../utils/staff-filter.util';
+import { PropertyStaffAssignmentService } from '../property-staff-assignment/property-staff-assignment.service';
 
 export interface PaginatedListings {
   listings: Listing[];
@@ -63,6 +64,7 @@ export class ListingService {
   constructor(
     private readonly listingRepo: ListingRepo,
     private readonly propertyService: PropertyService,
+    private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
     @InjectModel(Property.name) private readonly propertyModel: Model<Property>,
     @InjectModel(Booking.name) private readonly bookingModel: Model<Booking>,
     @InjectModel(Review.name) private readonly reviewModel: Model<Review>,
@@ -741,7 +743,6 @@ export class ListingService {
     listingId: string,
     queryDto: ListingStatisticsDto,
     user?: JwtPayload,
-    request?: { staffPropertyIds?: string[] },
   ): Promise<ListingStatisticsResponseDto> {
     // Validate listing exists
     const listing = await this.findOne(listingId);
@@ -749,14 +750,68 @@ export class ListingService {
       throw new NotFoundException(`Listing with ID ${listingId} not found.`);
     }
 
-    // Apply staff filter if needed
-    if (
-      user &&
-      user.role === 'staff' &&
-      request?.staffPropertyIds &&
-      Array.isArray(request.staffPropertyIds)
-    ) {
-      if (!request.staffPropertyIds.includes(listing.propertyId.toString())) {
+    // Check staff access to this listing's property
+
+    // Khai báo kiểu id có thể gặp
+    type IdLike =
+      | Types.ObjectId
+      | string
+      | number
+      | { _id: Types.ObjectId | string | number }
+      | { id: Types.ObjectId | string | number };
+
+    // Interface cho kết quả getPropertiesByStaff
+    interface Assignment {
+      propertyId: IdLike;
+    }
+
+    // Helper chuẩn hóa về string an toàn
+    function normalizeId(value: unknown): string {
+      if (value == null) {
+        throw new Error('Invalid id: null/undefined');
+      }
+
+      if (typeof value === 'string') {
+        // Xử lý dạng "ObjectId('...')"
+        const match = value.match(/ObjectId\('([^']+)'\)/);
+        return match ? match[1] : value;
+      }
+
+      if (typeof value === 'number') {
+        return String(value);
+      }
+
+      if (value instanceof Types.ObjectId) {
+        return value.toHexString();
+      }
+
+      if (typeof value === 'object') {
+        const obj = value as { _id?: unknown; id?: unknown };
+        if (obj._id !== undefined) return normalizeId(obj._id);
+        if (obj.id !== undefined) return normalizeId(obj.id);
+      }
+
+      throw new Error('Unsupported id type');
+    }
+
+    // ====== ĐOẠN LOGIC CẦN THAY ======
+    if (user && user.role === 'staff') {
+      const assignments: Assignment[] =
+        await this.propertyStaffAssignmentService.getPropertiesByStaff(
+          new Types.ObjectId(String(user._id)),
+        );
+
+      // Lấy list propertyId mà staff được assign (chuẩn hóa về string)
+      const staffPropertyIds: string[] = assignments.map((assignment) =>
+        normalizeId(assignment.propertyId),
+      );
+
+      // Lấy propertyId của listing hiện tại (chuẩn hóa về string)
+      const listingPropertyId = normalizeId(listing.propertyId as IdLike);
+
+      const hasAccess = staffPropertyIds.includes(listingPropertyId);
+
+      if (!hasAccess) {
         throw new ForbiddenException(
           'Staff không có quyền xem thống kê của listing này',
         );

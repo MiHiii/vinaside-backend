@@ -10,7 +10,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { FilterQuery, Types, SortOrder } from 'mongoose';
+import { FilterQuery, Types, SortOrder, Model } from 'mongoose';
 import {
   Booking,
   BookingStatus,
@@ -46,18 +46,19 @@ import { ReviewsService } from '../reviews/reviews.service';
 import {
   BookingOverviewStatistics,
   BookingStatusStatistics,
+  PaymentStatusStatistics,
   BookingFinancialStatistics,
   BookingCustomerStatistics,
   BookingTimelineStatistics,
   BookingChartDataPoint,
 } from './dto/booking-statistics.dto';
+import { getGroupFormat, generateLabels } from '../../utils/date.util';
 import {
-  getDefaultDateRange,
-  determineGroupBy,
-  getGroupFormat,
-  generateLabels,
-} from '../../utils/date.util';
-import { CancelPolicy } from '../listing/schemas/listing.schema';
+  CancelPolicy,
+  Listing,
+  ListingStatus,
+} from '../listing/schemas/listing.schema';
+import { InjectModel } from '@nestjs/mongoose';
 // import { Listing } from '../listing/schemas/listing.schema';
 import { PaymentFactory } from './services/payment.factory';
 import { PaymentResponseDto, CreatePaymentDto } from './dto/payment.dto';
@@ -73,6 +74,10 @@ import {
   CalendarDayDto,
   CalendarBookingDto,
 } from './dto/calendar-response.dto';
+import {
+  BookingStatisticsQueryDto,
+  DateRangeType,
+} from './dto/booking-statistics.dto';
 export interface PaginatedBookings {
   data: BookingResponseDto[];
   total: number;
@@ -102,6 +107,7 @@ export class BookingService {
     private readonly paymentFactory: PaymentFactory,
     private readonly transactionsService: TransactionsService,
     private readonly propertyStaffAssignmentService: PropertyStaffAssignmentService,
+    @InjectModel(Listing.name) private readonly listingModel: Model<Listing>,
   ) {}
 
   // =========================== PUBLIC API METHODS ===========================
@@ -1003,12 +1009,14 @@ export class BookingService {
 
     const {
       page = 1,
-      limit = 10,
       sortBy = 'created_at',
       sortOrder = 'desc',
       includeDeleted = false,
       ...filters
     } = queryDto;
+
+    // Đảm bảo limit có giá trị hợp lệ
+    const limit = queryDto.limit || 10;
 
     // Tạo base query
     const baseQuery: FilterQuery<Booking> = {
@@ -1086,7 +1094,8 @@ export class BookingService {
     }
 
     return this.findBookingsByGuest(user._id, queryDto).then((result) => {
-      const { page = 1, limit = 10 } = queryDto;
+      const page = queryDto.page || 1;
+      const limit = queryDto.limit || 10;
       return {
         bookings: result.data.map((booking) =>
           this.transformBookingToResponse(booking),
@@ -2022,56 +2031,127 @@ export class BookingService {
   }
 
   /**
-   * Lấy thống kê tổng quan
+   * Tạo filter cho thống kê với hỗ trợ nhiều property (cho staff)
    */
-
-  async getOverviewStatistics(
+  private createStatisticsFilterWithMultipleProperties(
     startDate?: string,
     endDate?: string,
     propertyId?: string,
     listingId?: string,
-    groupBy?: string,
+  ): any {
+    const filter: any = { isDeleted: false };
+
+    if (startDate || endDate) {
+      filter.created_at = {};
+      if (startDate) filter.created_at.$gte = new Date(startDate);
+      if (endDate) filter.created_at.$lte = new Date(endDate);
+    }
+
+    if (propertyId) {
+      // Handle comma-separated property IDs for staff
+      if (propertyId.includes(',')) {
+        const propertyIds = propertyId
+          .split(',')
+          .map((id) => new Types.ObjectId(id.trim()));
+        filter.propertyId = { $in: propertyIds };
+      } else {
+        filter.propertyId = new Types.ObjectId(propertyId);
+      }
+    }
+
+    if (listingId) {
+      filter.listingId = new Types.ObjectId(listingId);
+    }
+
+    return filter;
+  }
+
+  /**
+   * Lấy thống kê tổng quan
+   */
+  async getOverviewStatistics(
+    queryDto: BookingStatisticsQueryDto,
+    user?: JwtPayload,
   ): Promise<
     BookingOverviewStatistics & {
       statusBreakdown: BookingStatusStatistics;
+      paymentStatusBreakdown: PaymentStatusStatistics;
       chartData: BookingChartDataPoint[];
     }
   > {
-    // Sử dụng 7 ngày gần nhất nếu không có ngày được chỉ định
-    let actualStartDate: Date | undefined;
-    let actualEndDate: Date | undefined;
+    // Check staff access if user is staff
+    if (user && user.role === 'staff') {
+      const assignments =
+        await this.propertyStaffAssignmentService.getPropertiesByStaff(
+          new Types.ObjectId(user._id),
+        );
 
-    if (!startDate && !endDate) {
-      const defaultRange = getDefaultDateRange();
-      actualStartDate = defaultRange.startDate;
-      actualEndDate = defaultRange.endDate;
-    } else {
-      if (startDate) actualStartDate = new Date(startDate);
-      if (endDate) actualEndDate = new Date(endDate);
+      const staffPropertyIds = assignments.map((assignment: any) => {
+        // Handle both populated and unpopulated propertyId
+        if (
+          typeof assignment.propertyId === 'object' &&
+          assignment.propertyId?._id
+        ) {
+          return assignment.propertyId._id.toString();
+        }
+
+        // Handle case where propertyId is a string containing object representation
+        if (
+          typeof assignment.propertyId === 'string' &&
+          assignment.propertyId.includes('ObjectId(')
+        ) {
+          const match = assignment.propertyId.match(/ObjectId\('([^']+)'\)/);
+          if (match) {
+            return match[1];
+          }
+        }
+
+        // If propertyId is already a string or ObjectId
+        return assignment.propertyId.toString();
+      });
+
+      // If propertyId is specified in query, check if staff has access
+      if (queryDto.propertyId) {
+        // Handle comma-separated property IDs
+        const requestedPropertyIds = queryDto.propertyId.includes(',')
+          ? queryDto.propertyId.split(',').map((id) => id.trim())
+          : [queryDto.propertyId];
+
+        // Check if all requested property IDs are in staff's assigned properties
+        const hasAccess = requestedPropertyIds.every((requestedId) =>
+          staffPropertyIds.includes(requestedId),
+        );
+
+        if (!hasAccess) {
+          throw new ForbiddenException(
+            'Staff không có quyền xem thống kê của property này',
+          );
+        }
+      }
+
+      // If no propertyId specified, filter to only staff's assigned properties
+      if (!queryDto.propertyId) {
+        queryDto.propertyId = staffPropertyIds.join(',');
+      }
     }
 
+    // Get date range from query
+    const { startDate, endDate } = this.getDateRangeFromQuery(queryDto);
+
     // Tạo filter cho thống kê chính (sử dụng cùng khoảng thời gian)
-    const filter = this.createStatisticsFilter(
-      actualStartDate?.toISOString(),
-      actualEndDate?.toISOString(),
-      propertyId,
-      listingId,
+    const filter = this.createStatisticsFilterWithMultipleProperties(
+      startDate.toISOString(),
+      endDate.toISOString(),
+      queryDto.propertyId,
+      queryDto.listingId,
     );
 
-    const finalGroupBy = determineGroupBy(
-      actualStartDate!,
-      actualEndDate!,
-      groupBy,
-    );
-    const { format: groupFormat, labelFn } = getGroupFormat(finalGroupBy);
+    // Force daily grouping to always return full 30-day (or selected range) series by day
+    const finalGroupBy = 'day';
+    const { format: groupFormat } = getGroupFormat(finalGroupBy);
 
     // Lấy dữ liệu cho biểu đồ (sử dụng cùng khoảng thời gian)
     const chartMatch: any = { ...filter };
-    if (actualStartDate || actualEndDate) {
-      chartMatch.created_at = {};
-      if (actualStartDate) chartMatch.created_at.$gte = actualStartDate;
-      if (actualEndDate) chartMatch.created_at.$lte = actualEndDate;
-    }
 
     const chartDataAgg = await this.bookingRepo.getModel().aggregate([
       { $match: chartMatch },
@@ -2123,11 +2203,7 @@ export class BookingService {
       });
     });
 
-    const labels = generateLabels(
-      actualStartDate!,
-      actualEndDate!,
-      finalGroupBy,
-    );
+    const labels = generateLabels(startDate, endDate, finalGroupBy);
 
     const chartData: BookingChartDataPoint[] = labels.map((label) => {
       const data = labelMap.get(label) || {
@@ -2136,10 +2212,10 @@ export class BookingService {
         nights: 0,
       };
       return {
-        label: labelFn(String(label)),
+        // Keep label as raw YYYY-MM-DD string to match dashboard format
+        label: String(label),
         revenue: data.revenue,
         bookings: data.bookings,
-        occupancyRate: data.nights > 0 ? 100 : 0,
       };
     });
 
@@ -2212,12 +2288,36 @@ export class BookingService {
 
     // Tính toán tỉ lệ lấp đầy dựa trên khoảng thời gian thực tế
     const daysInPeriod =
-      actualStartDate && actualEndDate
-        ? Math.ceil(
-            (actualEndDate.getTime() - actualStartDate.getTime()) /
-              (1000 * 60 * 60 * 24),
-          ) + 1
-        : 7; // Mặc định 7 ngày
+      Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+      ) + 1;
+
+    // Tổng số đêm có thể bán = số ngày trong kỳ x số listing hoạt động trong phạm vi lọc
+    let totalPossibleNights = 0;
+    if (queryDto.listingId) {
+      const activeOneListing = await this.listingModel.countDocuments({
+        _id: new Types.ObjectId(queryDto.listingId),
+        status: ListingStatus.ACTIVE,
+      });
+      totalPossibleNights = daysInPeriod * activeOneListing;
+    } else if (queryDto.propertyId) {
+      const propertyIds = queryDto.propertyId.includes(',')
+        ? queryDto.propertyId
+            .split(',')
+            .map((id) => new Types.ObjectId(id.trim()))
+        : [new Types.ObjectId(queryDto.propertyId)];
+      const activeListingsCount = await this.listingModel.countDocuments({
+        propertyId: { $in: propertyIds },
+        status: ListingStatus.ACTIVE,
+      });
+      totalPossibleNights = daysInPeriod * activeListingsCount;
+    } else {
+      // Admin xem tất cả listings hoạt động
+      const activeListingsCount = await this.listingModel.countDocuments({
+        status: ListingStatus.ACTIVE,
+      });
+      totalPossibleNights = daysInPeriod * activeListingsCount;
+    }
 
     const overview = overviewStats[0] || {
       totalBookings: 0,
@@ -2259,6 +2359,35 @@ export class BookingService {
       );
     }
 
+    // Thống kê theo trạng thái thanh toán
+    const paymentStatusStats = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$payment_status',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Tạo object trạng thái thanh toán
+    const paymentStatusBreakdown: PaymentStatusStatistics = {
+      unpaid: 0,
+      partially_paid: 0,
+      paid: 0,
+      refunding: 0,
+      refunded: 0,
+      failed: 0,
+    };
+
+    paymentStatusStats.forEach(
+      (stat: { _id: keyof PaymentStatusStatistics; count: number }) => {
+        if (stat._id in paymentStatusBreakdown) {
+          paymentStatusBreakdown[stat._id] = stat.count;
+        }
+      },
+    );
+
     // Thống kê voucher
     const voucherStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
@@ -2270,6 +2399,8 @@ export class BookingService {
           },
           totalVoucherDiscount: { $sum: '$voucher_discount_amount' },
           averageVoucherDiscount: { $avg: '$voucher_discount_amount' },
+          totalVoucherDiscountPercent: { $sum: '$voucher_discount_percent' },
+          averageVoucherDiscountPercent: { $avg: '$voucher_discount_percent' },
         },
       },
     ]);
@@ -2278,7 +2409,26 @@ export class BookingService {
       totalVouchersUsed: 0,
       totalVoucherDiscount: 0,
       averageVoucherDiscount: 0,
+      totalVoucherDiscountPercent: 0,
+      averageVoucherDiscountPercent: 0,
     };
+
+    // Thống kê chi tiết voucher theo mã
+    const voucherBreakdown = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      { $match: { voucher_id: { $ne: null } } },
+      {
+        $group: {
+          _id: '$voucher_code',
+          voucherId: { $first: '$voucher_id' },
+          usageCount: { $sum: 1 },
+          averageDiscountPercent: { $avg: '$voucher_discount_percent' },
+          discountPercent: { $first: '$voucher_discount_percent' },
+        },
+      },
+      { $sort: { usageCount: -1 } },
+      { $limit: 10 },
+    ]);
 
     // Thống kê services
     const servicesStats = await this.bookingRepo.getModel().aggregate([
@@ -2315,13 +2465,17 @@ export class BookingService {
       { $limit: 10 },
     ]);
 
+    // Tính tỉ lệ lấp đầy trung bình toàn hệ
+    const averageOccupancyRate =
+      totalPossibleNights > 0
+        ? (Number(overview.totalNights || 0) / totalPossibleNights) * 100
+        : 0;
+
     return {
       totalBookings: overview.totalBookings,
       totalRevenue: overview.totalRevenue,
       totalNights: overview.totalNights,
-      averageOccupancyRate: Math.round(
-        ((overview.totalNights as number) / daysInPeriod) * 100,
-      ),
+      averageOccupancyRate: Math.round(averageOccupancyRate * 100) / 100,
       averageBookingValue: Math.round(overview.averageBookingValue as number),
       totalGuests: overview.totalGuests,
       totalInfants: overview.totalInfants,
@@ -2336,6 +2490,10 @@ export class BookingService {
               (voucherData.totalVouchersUsed / overview.totalBookings) * 100,
             )
           : 0,
+      totalVoucherDiscountPercent: voucherData.totalVoucherDiscountPercent,
+      averageVoucherDiscountPercent: Math.round(
+        voucherData.averageVoucherDiscountPercent || 0,
+      ),
       totalServicesRevenue: servicesData.totalServicesRevenue,
       totalServicesBooked: servicesData.totalServicesBooked,
       averageServicesPerBooking:
@@ -2350,9 +2508,107 @@ export class BookingService {
         usageCount: service.usageCount,
         totalRevenue: service.totalRevenue,
       })),
+      topVouchersUsed: voucherBreakdown.map((voucher: any) => ({
+        voucherId: voucher.voucherId?.toString() || 'Unknown',
+        voucherCode: voucher._id || 'Unknown',
+        usageCount: voucher.usageCount,
+        averageDiscountPercent: Math.round(voucher.averageDiscountPercent || 0),
+        discountPercent: Math.round(voucher.discountPercent || 0),
+      })),
       statusBreakdown,
+      paymentStatusBreakdown,
       chartData,
     };
+  }
+
+  /**
+   * Helper method to get date range from query DTO (similar to listings service)
+   */
+  private getDateRangeFromQuery(queryDto: BookingStatisticsQueryDto): {
+    startDate: Date;
+    endDate: Date;
+  } {
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const todayEnd = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        59,
+        59,
+        999,
+      ),
+    );
+
+    switch (queryDto.dateRange) {
+      case DateRangeType.TODAY:
+        return {
+          startDate: today,
+          endDate: todayEnd,
+        };
+
+      case DateRangeType.LAST_7_DAYS: {
+        const sevenDaysAgo = new Date(
+          today.getTime() - 7 * 24 * 60 * 60 * 1000,
+        );
+        return {
+          startDate: sevenDaysAgo,
+          endDate: todayEnd,
+        };
+      }
+
+      case DateRangeType.LAST_15_DAYS: {
+        const fifteenDaysAgo = new Date(
+          today.getTime() - 15 * 24 * 60 * 60 * 1000,
+        );
+        return {
+          startDate: fifteenDaysAgo,
+          endDate: todayEnd,
+        };
+      }
+
+      case DateRangeType.LAST_30_DAYS: {
+        const thirtyDaysAgo = new Date(
+          today.getTime() - 30 * 24 * 60 * 60 * 1000,
+        );
+        return {
+          startDate: thirtyDaysAgo,
+          endDate: todayEnd,
+        };
+      }
+
+      case DateRangeType.CUSTOM: {
+        if (queryDto.startDate && queryDto.endDate) {
+          return {
+            startDate: new Date(queryDto.startDate + 'T00:00:00.000Z'),
+            endDate: new Date(queryDto.endDate + 'T23:59:59.999Z'),
+          };
+        }
+        // Fall back to last 30 days if custom dates are not provided
+        const thirtyDaysAgo = new Date(
+          today.getTime() - 30 * 24 * 60 * 60 * 1000,
+        );
+        return {
+          startDate: thirtyDaysAgo,
+          endDate: todayEnd,
+        };
+      }
+
+      default: {
+        // Default to last 30 days
+        const defaultThirtyDaysAgo = new Date(
+          today.getTime() - 30 * 24 * 60 * 60 * 1000,
+        );
+        return {
+          startDate: defaultThirtyDaysAgo,
+          endDate: todayEnd,
+        };
+      }
+    }
   }
 
   /**
@@ -3081,87 +3337,6 @@ export class BookingService {
         totalVoucherDiscount: user.totalVoucherDiscount,
       })),
     };
-  }
-
-  /**
-   * Lấy thống kê chi tiết (financial, customers, vouchers, services)
-   */
-  async getDetailedStatistics(
-    startDate?: string,
-    endDate?: string,
-    propertyId?: string,
-    listingId?: string,
-    type: 'financial' | 'customers' | 'all' = 'all',
-  ): Promise<any> {
-    const result: any = {};
-
-    if (type === 'financial' || type === 'all') {
-      result.financial = await this.getFinancialStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-    }
-
-    if (type === 'customers' || type === 'all') {
-      result.customers = await this.getCustomerStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-    }
-
-    if (type === 'all') {
-      result.vouchers = await this.getVoucherStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-      result.services = await this.getServicesStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-    }
-
-    return result;
-  }
-
-  /**
-   * Lấy phân tích hành vi user (services, vouchers)
-   */
-  async getUserAnalytics(
-    startDate?: string,
-    endDate?: string,
-    propertyId?: string,
-    listingId?: string,
-    type: 'services' | 'vouchers' | 'all' = 'all',
-  ): Promise<any> {
-    const result: any = {};
-
-    if (type === 'services' || type === 'all') {
-      result.servicesByUser = await this.getServicesByUserStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-    }
-
-    if (type === 'vouchers' || type === 'all') {
-      result.vouchersByUser = await this.getVouchersByUserStatistics(
-        startDate,
-        endDate,
-        propertyId,
-        listingId,
-      );
-    }
-
-    return result;
   }
 
   async createRemainingPayment(

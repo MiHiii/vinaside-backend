@@ -271,7 +271,6 @@ export class ListingController {
   // =================== STATISTICS ENDPOINTS ===================
   @Get('statistics/:id')
   @RequirePermission('listing.view')
-  @StaffFiltered({ propertyField: 'propertyId' })
   @ApiOperation({
     summary: 'Lấy thống kê chi tiết cho một listing',
     description:
@@ -288,12 +287,7 @@ export class ListingController {
     @Query() queryDto: ListingStatisticsDto,
     @Request() req: RequestWithUser,
   ): Promise<ListingStatisticsResponseDto> {
-    return this.listingService.getListingStatistics(
-      id,
-      queryDto,
-      req.user,
-      req,
-    );
+    return this.listingService.getListingStatistics(id, queryDto, req.user);
   }
 
   // =================== LOCATION-BASED ENDPOINTS ===================

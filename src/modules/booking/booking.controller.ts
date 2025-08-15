@@ -445,58 +445,11 @@ export class BookingController {
     type: BookingOverviewResponseDto,
   })
   @ResponseMessage('Lấy thống kê tổng quan booking thành công')
-  async getOverviewStatistics(@Query() query: BookingStatisticsQueryDto) {
-    return this.bookingService.getOverviewStatistics(
-      query.startDate,
-      query.endDate,
-      query.propertyId,
-      query.listingId,
-    );
-  }
-
-  @Get('statistics/detailed')
-  @RequirePermission('booking.view_statistics')
-  @ApiOperation({
-    summary:
-      'Lấy thống kê chi tiết booking (financial, customers, vouchers, services)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Thống kê chi tiết được trả về thành công.',
-  })
-  @ResponseMessage('Lấy thống kê chi tiết thành công')
-  getDetailedStatistics(
+  async getOverviewStatistics(
     @Query() query: BookingStatisticsQueryDto,
-    @Query('type') type: 'financial' | 'customers' | 'all' = 'all',
-  ): Promise<any> {
-    return this.bookingService.getDetailedStatistics(
-      query.startDate,
-      query.endDate,
-      query.propertyId,
-      query.listingId,
-      type,
-    );
-  }
-
-  @Get('statistics/user-analytics')
-  @RequirePermission('booking.view_statistics')
-  @ApiOperation({ summary: 'Lấy phân tích hành vi user (services, vouchers)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Phân tích hành vi user được trả về thành công.',
-  })
-  @ResponseMessage('Lấy phân tích hành vi user thành công')
-  getUserAnalytics(
-    @Query() query: BookingStatisticsQueryDto,
-    @Query('type') type: 'services' | 'vouchers' | 'all' = 'all',
-  ): Promise<any> {
-    return this.bookingService.getUserAnalytics(
-      query.startDate,
-      query.endDate,
-      query.propertyId,
-      query.listingId,
-      type,
-    );
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.getOverviewStatistics(query, req.user);
   }
 
   // =================== VNPAY CALLBACK ENDPOINTS ===================

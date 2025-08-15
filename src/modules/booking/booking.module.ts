@@ -9,6 +9,7 @@ import { BookingRepo } from './booking.repo';
 import { VNPayService } from './services/vnpay.service';
 import { PaymentFactory } from './services/payment.factory';
 import { ListingModule } from '../listing/listing.module';
+import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
 import { PropertyModule } from '../properties/property.module';
 import { MailModule } from '../mail/mail.module';
 import { VoucherModule } from '../vouchers/voucher.module';
@@ -23,7 +24,10 @@ import { CashService } from './services/cash.service';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Booking.name, schema: BookingSchema }]),
+    MongooseModule.forFeature([
+      { name: Booking.name, schema: BookingSchema },
+      { name: Listing.name, schema: ListingSchema },
+    ]),
     ConfigModule,
     ListingModule,
     PropertyModule,
