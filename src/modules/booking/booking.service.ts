@@ -51,6 +51,7 @@ import {
   BookingCustomerStatistics,
   BookingTimelineStatistics,
   BookingChartDataPoint,
+  BookingDetailDto,
 } from './dto/booking-statistics.dto';
 import { getGroupFormat, generateLabels } from '../../utils/date.util';
 import {
@@ -2518,7 +2519,81 @@ export class BookingService {
       statusBreakdown,
       paymentStatusBreakdown,
       chartData,
+      bookingDetails: await this.getBookingDetails(filter),
     };
+  }
+
+  /**
+   * Lấy thông tin chi tiết booking theo filter
+   */
+  private async getBookingDetails(filter: any): Promise<BookingDetailDto[]> {
+    const bookings = await this.bookingRepo.getModel().aggregate([
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'property',
+        },
+      },
+      { $unwind: '$property' },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'listingId',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      { $unwind: '$listing' },
+      {
+        $project: {
+          _id: 1,
+          guest_name: 1,
+          guest_email: 1,
+          propertyId: '$property._id',
+          property_name: '$property.name',
+          listingId: '$listing._id',
+          listing_title: '$listing.title',
+          listing_images: '$listing.images',
+          checkInDate: 1,
+          check_out_date: 1,
+          guests: 1,
+          infants: 1,
+          nights: 1,
+          final_amount: 1,
+          status: 1,
+          payment_status: 1,
+          created_at: 1,
+          note: 1,
+          additionalCost: 1,
+        },
+      },
+      { $sort: { created_at: -1 } },
+    ]);
+
+    return bookings.map((booking) => ({
+      _id: booking._id.toString(),
+      guest_name: booking.guest_name || 'N/A',
+      guest_email: booking.guest_email || 'N/A',
+      propertyId: booking.propertyId.toString(),
+      property_name: booking.property_name || 'N/A',
+      listingId: booking.listingId.toString(),
+      listing_title: booking.listing_title || 'N/A',
+      listing_images: booking.listing_images || [],
+      checkInDate: booking.checkInDate,
+      check_out_date: booking.check_out_date,
+      guests: booking.guests || 0,
+      infants: booking.infants || 0,
+      nights: booking.nights || 0,
+      final_amount: booking.final_amount || 0,
+      status: booking.status,
+      payment_status: booking.payment_status,
+      created_at: booking.created_at,
+      note: booking.note,
+      additionalCost: booking.additionalCost || 0,
+    }));
   }
 
   /**
@@ -4228,14 +4303,20 @@ export class BookingService {
           _id: (booking._id as any).toString(),
           guest_name: booking.guest_name,
           guest_email: booking.guest_email,
+          propertyId:
+            (booking.propertyId as any)?._id?.toString() ||
+            (booking.propertyId as any)?.toString(),
+          property_name: (booking.propertyId as any)?.name || 'N/A',
+          listingId:
+            (booking.listingId as any)?._id?.toString() ||
+            (booking.listingId as any)?.toString(),
+          listing_title: (booking.listingId as any)?.title || 'N/A',
           checkInDate: booking.checkInDate,
           checkOutDate: booking.check_out_date,
           guests: booking.guests,
           status: booking.status,
           payment_status: booking.payment_status,
           final_amount: booking.final_amount,
-          listing_title: (booking.listingId as any)?.title || 'N/A',
-          property_name: (booking.propertyId as any)?.name || 'N/A',
           note: booking.note,
           additionalCost: booking.additionalCost,
         }));
@@ -4470,14 +4551,20 @@ export class BookingService {
       _id: (booking._id as any).toString(),
       guest_name: booking.guest_name,
       guest_email: booking.guest_email,
+      propertyId:
+        (booking.propertyId as any)?._id?.toString() ||
+        (booking.propertyId as any)?.toString(),
+      property_name: (booking.propertyId as any)?.name,
+      listingId:
+        (booking.listingId as any)?._id?.toString() ||
+        (booking.listingId as any)?.toString(),
+      listing_title: (booking.listingId as any)?.title,
       checkInDate: booking.checkInDate,
       checkOutDate: booking.check_out_date,
       guests: booking.guests,
       status: booking.status,
       payment_status: booking.payment_status,
       final_amount: booking.final_amount,
-      listing_title: (booking.listingId as any)?.title,
-      property_name: (booking.propertyId as any)?.name,
       note: booking.note,
       additionalCost: booking.additionalCost,
     }));

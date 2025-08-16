@@ -11,6 +11,18 @@ export class CalendarBookingDto {
   guest_email: string;
 
   @ApiProperty()
+  propertyId: string;
+
+  @ApiProperty()
+  property_name?: string;
+
+  @ApiProperty()
+  listingId: string;
+
+  @ApiProperty()
+  listing_title?: string;
+
+  @ApiProperty()
   checkInDate: Date;
 
   @ApiProperty()
@@ -27,12 +39,6 @@ export class CalendarBookingDto {
 
   @ApiProperty()
   final_amount: number;
-
-  @ApiProperty()
-  listing_title?: string;
-
-  @ApiProperty()
-  property_name?: string;
 
   @ApiProperty()
   note?: string;
