@@ -100,6 +100,19 @@ export class TransactionsService {
     return transaction;
   }
 
+  async findPendingTransactionByOrderId(
+    orderId: string,
+  ): Promise<TransactionDocument | null> {
+    const transaction = await this.transactionModel
+      .findOne({
+        provider_order_id: orderId,
+        status: TransactionStatus.PENDING,
+      })
+      .exec();
+
+    return transaction;
+  }
+
   async getTransactions(
     query: QueryTransactionDto,
     user?: JwtPayload,
