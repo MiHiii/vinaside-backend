@@ -498,6 +498,29 @@ export class BookingController {
 
     if (missingFields.length > 0) {
       console.log('[DEBUG] Missing required fields:', missingFields);
+
+      // Nếu có vnp_TxnRef, cập nhật trạng thái booking thành FAILED
+      if (queryParams.vnp_TxnRef) {
+        try {
+          console.log(
+            '[DEBUG] User cancelled payment, updating status to FAILED',
+          );
+
+          const result = await this.vnpayService.handleUserCancellation(
+            queryParams.vnp_TxnRef,
+          );
+
+          return {
+            success: result.success,
+            message: result.message,
+            bookingId: result.bookingId,
+            amount: result.amount,
+          };
+        } catch (error) {
+          console.error('[DEBUG] Error updating booking status:', error);
+        }
+      }
+
       return {
         success: false,
         message: `Missing required fields: ${missingFields.join(', ')}`,

@@ -13,7 +13,7 @@ import {
   VNPayCallbackDto,
   // VNPayVerificationResponseDto,
 } from '../dto/vnpay-payment.dto';
-import { PaymentStatus, BookingStatus } from '../schemas/booking.schema';
+import { PaymentStatus } from '../schemas/booking.schema';
 import {
   PaymentMethod,
   PaymentProvider,
@@ -90,6 +90,38 @@ export class VNPayService extends PaymentServiceInterface {
     // Kiểm tra trạng thái booking
     if (booking.payment_status === PaymentStatus.REFUNDED) {
       throw new BadRequestException('Booking này đã được hoàn tiền');
+    }
+
+    // Kiểm tra FAILED status - cho phép thanh toán lại nhưng cần reset trạng thái
+    if (booking.payment_status === PaymentStatus.FAILED) {
+      this.logger.log(
+        `[VNPay] Booking ${bookingId} có trạng thái FAILED, cho phép thanh toán lại`,
+      );
+
+      // Reset trạng thái về UNPAID để tránh race condition
+      await this.bookingRepo.updateById(
+        bookingId,
+        {
+          payment_status: PaymentStatus.UNPAID,
+          vnpay_response_code: null,
+          vnpay_transaction_no: null,
+          vnpay_bank_tran_no: null,
+          vnpay_card_type: null,
+          vnpay_pay_date: null,
+          payment_id: null,
+        },
+        booking.guestId?.toString() || '',
+      );
+
+      // Lấy booking đã được cập nhật
+      const updatedBooking = (await this.bookingRepo.findById(
+        bookingId,
+      )) as Booking;
+      if (!updatedBooking) {
+        throw new NotFoundException(
+          `Không tìm thấy booking với ID ${bookingId} sau khi reset`,
+        );
+      }
     }
 
     // Kiểm tra PAID và PARTIALLY_PAID status - chỉ cho phép thanh toán nếu có outstanding amount
@@ -257,8 +289,15 @@ export class VNPayService extends PaymentServiceInterface {
       // Kiểm tra responseCode, chỉ xử lý khi thành công
       if (callbackData.vnp_ResponseCode !== '00') {
         this.logger.error(
-          `[VNPay RETURN] Giao dịch thất bại (responseCode: ${callbackData.vnp_ResponseCode}), không cập nhật trạng thái booking.`,
+          `[VNPay RETURN] Giao dịch thất bại (responseCode: ${callbackData.vnp_ResponseCode}), cập nhật trạng thái booking thành FAILED.`,
         );
+
+        // Cập nhật trạng thái booking thành FAILED khi thanh toán thất bại
+        await this.bookingRepo.updateById(bookingId, {
+          payment_status: PaymentStatus.FAILED,
+          vnpay_response_code: callbackData.vnp_ResponseCode,
+        });
+
         return {
           success: false,
           paymentMethod: PaymentMethod.VNPAY,
@@ -410,7 +449,8 @@ export class VNPayService extends PaymentServiceInterface {
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.CONFIRMED, // Thay đổi từ PENDING thành CONFIRMED
+          // Giữ nguyên status PENDING để admin xác nhận lại
+          // status: BookingStatus.CONFIRMED, // Commented out - để admin xác nhận
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
@@ -446,7 +486,8 @@ export class VNPayService extends PaymentServiceInterface {
           vnpay_pay_date: this.parseVNPayDate(callbackData.vnp_PayDate),
           vnpay_response_code: callbackData.vnp_ResponseCode,
           payment_id: callbackData.vnp_TransactionNo,
-          status: BookingStatus.CONFIRMED, // Thay đổi từ PENDING thành CONFIRMED
+          // Giữ nguyên status PENDING để admin xác nhận lại
+          // status: BookingStatus.CONFIRMED, // Commented out - để admin xác nhận
         });
         const finalBooking = await this.bookingRepo.findById(bookingId);
         this.logger.log(
@@ -571,6 +612,42 @@ export class VNPayService extends PaymentServiceInterface {
       signature,
       this.vnpHashSecret,
     );
+  }
+
+  /**
+   * Xử lý trường hợp người dùng bấm back từ trang VNPay
+   */
+  async handleUserCancellation(
+    orderId: string,
+  ): Promise<PaymentVerificationResult> {
+    const bookingId = VNPayUtil.extractBookingId(orderId);
+
+    this.logger.log(
+      `[VNPay CANCELLATION] User cancelled payment for bookingId: ${bookingId}`,
+    );
+
+    // Cập nhật trạng thái booking thành FAILED
+    await this.bookingRepo.updateById(
+      bookingId,
+      {
+        payment_status: PaymentStatus.FAILED,
+        vnpay_response_code: 'USER_CANCELLED',
+      },
+      '',
+    );
+
+    return {
+      success: false,
+      paymentMethod: PaymentMethod.VNPAY,
+      bookingId,
+      orderId,
+      amount: 0,
+      transactionId: '',
+      message: 'Người dùng đã hủy giao dịch thanh toán',
+      metadata: {
+        responseCode: 'USER_CANCELLED',
+      },
+    };
   }
 
   /**
