@@ -1,6 +1,29 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsEnum } from 'class-validator';
 
+// Thêm interface cho thông tin chi tiết booking
+export interface BookingDetailDto {
+  _id: string;
+  guest_name: string;
+  guest_email: string;
+  propertyId: string;
+  property_name: string;
+  listingId: string;
+  listing_title: string;
+  listing_images: string[];
+  checkInDate: Date;
+  check_out_date: Date;
+  guests: number;
+  infants: number;
+  nights: number;
+  final_amount: number;
+  status: string;
+  payment_status: string;
+  created_at: Date;
+  note?: string;
+  additionalCost?: number;
+}
+
 export interface BookingOverviewStatistics {
   totalBookings: number;
   totalRevenue: number;
@@ -9,6 +32,8 @@ export interface BookingOverviewStatistics {
   averageBookingValue: number;
   totalGuests: number;
   totalInfants: number;
+  // Thêm danh sách booking chi tiết
+  bookingDetails: BookingDetailDto[];
   // Voucher statistics
   totalVouchersUsed: number;
   totalVoucherDiscount: number;
@@ -276,6 +301,36 @@ export class BookingOverviewResponseDto implements BookingOverviewStatistics {
     required: false,
   })
   chartData?: BookingChartDataPoint[];
+
+  @ApiProperty({
+    description: 'Danh sách chi tiết booking',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        _id: { type: 'string' },
+        guest_name: { type: 'string' },
+        guest_email: { type: 'string' },
+        propertyId: { type: 'string' },
+        property_name: { type: 'string' },
+        listingId: { type: 'string' },
+        listing_title: { type: 'string' },
+        listing_images: { type: 'array', items: { type: 'string' } },
+        checkInDate: { type: 'string', format: 'date-time' },
+        check_out_date: { type: 'string', format: 'date-time' },
+        guests: { type: 'number' },
+        infants: { type: 'number' },
+        nights: { type: 'number' },
+        final_amount: { type: 'number' },
+        status: { type: 'string' },
+        payment_status: { type: 'string' },
+        created_at: { type: 'string', format: 'date-time' },
+        note: { type: 'string' },
+        additionalCost: { type: 'number' },
+      },
+    },
+  })
+  bookingDetails: BookingDetailDto[];
 }
 
 export class BookingFinancialResponseDto implements BookingFinancialStatistics {
