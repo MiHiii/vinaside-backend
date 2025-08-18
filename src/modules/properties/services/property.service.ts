@@ -692,7 +692,9 @@ export class PropertyService {
   /**
    * Get voucher statistics with top vouchers
    */
-  private async getVoucherStats(baseMatch: any): Promise<PropertyVoucherStats> {
+  private async getVoucherStats(
+    baseMatch: FilterQuery<Booking>,
+  ): Promise<PropertyVoucherStats> {
     const voucherResult = await this.bookingModel.aggregate([
       {
         $match: {
@@ -716,7 +718,12 @@ export class PropertyService {
     };
 
     // Get top vouchers
-    const topVouchersResult = await this.bookingModel.aggregate([
+    const topVouchersResult = await this.bookingModel.aggregate<{
+      _id: Types.ObjectId;
+      voucherCode?: string;
+      usageCount: number;
+      totalDiscount?: number;
+    }>([
       {
         $match: {
           ...baseMatch,
@@ -735,7 +742,7 @@ export class PropertyService {
       { $limit: 5 },
     ]);
 
-    const topVouchers = topVouchersResult.map((item: any) => ({
+    const topVouchers = topVouchersResult.map((item) => ({
       voucherId: String(item._id),
       voucherCode: item.voucherCode || 'N/A',
       usageCount: item.usageCount,
@@ -767,7 +774,9 @@ export class PropertyService {
   /**
    * Get service statistics with top services
    */
-  private async getServiceStats(baseMatch: any): Promise<PropertyServiceStats> {
+  private async getServiceStats(
+    baseMatch: FilterQuery<Booking>,
+  ): Promise<PropertyServiceStats> {
     const serviceResult = await this.bookingModel.aggregate([
       {
         $match: {
@@ -793,7 +802,12 @@ export class PropertyService {
     };
 
     // Get top services
-    const topServicesResult = await this.bookingModel.aggregate([
+    const topServicesResult = await this.bookingModel.aggregate<{
+      _id: Types.ObjectId;
+      serviceName?: string;
+      usageCount: number;
+      totalRevenue: number;
+    }>([
       {
         $match: {
           ...baseMatch,
@@ -813,7 +827,7 @@ export class PropertyService {
       { $limit: 5 },
     ]);
 
-    const topServices = topServicesResult.map((item: any) => ({
+    const topServices = topServicesResult.map((item) => ({
       serviceId: String(item._id),
       serviceName: item.serviceName || 'N/A',
       usageCount: item.usageCount,
@@ -907,11 +921,14 @@ export class PropertyService {
    * Get chart data for revenue by date
    */
   private async getChartData(
-    baseMatch: any,
+    baseMatch: FilterQuery<Booking>,
     startDate: Date,
     endDate: Date,
   ): Promise<PropertyChartDataPoint[]> {
-    const chartDataResult = await this.bookingModel.aggregate([
+    const chartDataResult = await this.bookingModel.aggregate<{
+      _id: { year: number; month: number; day: number };
+      totalRevenue: number;
+    }>([
       {
         $match: {
           ...baseMatch,

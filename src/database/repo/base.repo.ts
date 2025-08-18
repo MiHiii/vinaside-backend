@@ -60,14 +60,19 @@ export abstract class BaseRepo<T extends Document> {
     // Apply options
     if (options?.skip) query = query.skip(options.skip);
     if (options?.limit) query = query.limit(options.limit);
-    if (options?.sort) query = query.sort(options.sort);
+    if (options?.sort)
+      query = query.sort(options.sort as Record<string, SortOrder>);
     if (options?.populate) {
       if (Array.isArray(options.populate)) {
-        options.populate.forEach((populateOption) => {
-          query = query.populate(populateOption);
-        });
+        options.populate.forEach(
+          (populateOption: Parameters<typeof query.populate>[0]) => {
+            query = query.populate(populateOption);
+          },
+        );
       } else {
-        query = query.populate(options.populate);
+        query = query.populate(
+          options.populate as Parameters<typeof query.populate>[0],
+        );
       }
     }
 
