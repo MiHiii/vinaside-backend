@@ -465,7 +465,7 @@ export class BookingNotificationStatusService {
       } catch (error) {
         this.logger.warn(
           'Could not fetch property/listing details for payment notification:',
-          error,
+          this.formatError(error),
         );
       }
 

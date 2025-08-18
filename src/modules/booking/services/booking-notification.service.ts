@@ -161,10 +161,7 @@ export class BookingNotificationService {
       const checkOutDate = new Date(booking.check_out_date).toLocaleDateString(
         'vi-VN',
       );
-      const bookingCode = (booking._id as Types.ObjectId)
-        .toString()
-        .slice(-8)
-        .toUpperCase();
+      const bookingCode = String(booking._id).slice(-8).toUpperCase();
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestPhone = guestInfo?.phone || '';
       const propertyName = listing.title || 'Property';
@@ -187,9 +184,7 @@ export class BookingNotificationService {
           const isStaff = await this.isActualStaff(staffObjectId);
 
           if (isStaff) {
-            const staffUser = assignment.staffId as UserInfo & {
-              _id: ObjectIdLike;
-            };
+            const staffUser = assignment.staffId!;
             const staffIdStr = this.idToString(staffUser._id)!;
             allStaffEmails.push(staffUser.email || staffIdStr);
 
@@ -342,7 +337,7 @@ export class BookingNotificationService {
           }
         } else {
           // Send to representative admin only (default behavior)
-          const representativeAdmin = adminUsers[0] as UserInfo;
+          const representativeAdmin = adminUsers[0]!;
           const adminId = this.idToString(representativeAdmin._id)!;
 
           this.logger.log(
