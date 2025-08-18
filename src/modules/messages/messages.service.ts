@@ -1276,7 +1276,6 @@ export class MessagesService {
         if (typeof v === 'string') return v;
         try {
           // Prefer ObjectId hex string when available
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
           const s = (v as { toString: () => string }).toString?.();
           return typeof s === 'string' ? s : '';
         } catch {
@@ -1290,11 +1289,15 @@ export class MessagesService {
         return '';
       }
     }
-    try {
+    if (
+      typeof val === 'number' ||
+      typeof val === 'boolean' ||
+      typeof val === 'bigint' ||
+      typeof val === 'symbol'
+    ) {
       return String(val);
-    } catch {
-      return '';
     }
+    return '';
   }
 
   async toggleReaction(
