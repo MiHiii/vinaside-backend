@@ -176,6 +176,31 @@ export class MessagesGateway
     this.logger.log(`Emitted reaction_update to ${receiverRoom}`);
   }
 
+  // Method public để emit cập nhật tóm tắt cuộc trò chuyện (lastMessage, unreadCounts)
+  emitConversationUpdate(
+    userId: string,
+    payload: {
+      otherUserId: string;
+      lastMessage: {
+        _id: string;
+        content: string;
+        senderId: string;
+        type: string;
+        sent_at: Date | string;
+      } | null;
+      lastMessageAt: Date | string | null;
+      unreadCounts: Record<string, number>;
+    },
+  ): void {
+    try {
+      const userRoom = buildUserRoom(userId);
+      this.server.to(userRoom).emit('conversation_update', payload);
+      this.logger.log(`Emitted conversation_update to ${userRoom}`);
+    } catch (error) {
+      this.logger.error('Failed to emit conversation update:', error);
+    }
+  }
+
   // Method public để emit message recalled event
   emitMessageRecalled(message: Message, userId: string): void {
     try {

@@ -22,7 +22,7 @@ import {
   ReferenceType,
 } from '../../transactions/schemas/transaction.schema';
 import { TransactionsService } from '../../transactions/services/transactions.service';
-import { Document, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { Booking } from '../schemas/booking.schema';
 import {
   PaymentServiceInterface,
