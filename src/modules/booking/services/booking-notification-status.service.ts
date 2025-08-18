@@ -17,6 +17,22 @@ import {
   SentMethod,
 } from '../../notifications/schemas/notification.schema';
 import { BookingRepo } from '../booking.repo';
+import { CreateNotificationDto } from '../../notifications/dto/create-notification.dto';
+
+type ObjectIdLike = Types.ObjectId | string;
+
+interface UserInfo {
+  _id: ObjectIdLike;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+}
+
+interface StaffAssignment {
+  status: AssignmentStatus;
+  staffId?: UserInfo & { _id: ObjectIdLike };
+}
 
 @Injectable()
 export class BookingNotificationStatusService {
@@ -82,7 +98,9 @@ export class BookingNotificationStatusService {
       const roomName = listingTitle || propertyName;
 
       // Tạo thông báo cho khách hàng với tiêu đề và nội dung chuyên nghiệp
-      const statusData = {
+      const statusData: Partial<
+        Record<BookingStatus, { title: string; message: string }>
+      > = {
         [BookingStatus.CONFIRMED]: {
           title: '✅ Đặt phòng được xác nhận',
           message: `Chúc mừng! Đặt phòng tại ${roomName} đã được xác nhận thành công. Chúng tôi rất mong được phục vụ bạn.`,
@@ -101,13 +119,15 @@ export class BookingNotificationStatusService {
         },
       };
 
-      const notificationData = statusData[newStatus] || {
+      const notificationData: { title: string; message: string } = statusData[
+        newStatus
+      ] ?? {
         title: '📋 Cập nhật đặt phòng',
         message: `Trạng thái đặt phòng tại ${roomName} đã được cập nhật thành ${newStatus}.`,
       };
 
       try {
-        await this.notificationsService.create({
+        const dto: CreateNotificationDto = {
           user_id: guestId,
           recipient_type: RecipientType.GUEST,
           title: notificationData.title,
@@ -131,7 +151,8 @@ export class BookingNotificationStatusService {
             finalAmount: booking.final_amount,
             nights: booking.nights,
           },
-        });
+        };
+        await this.notificationsService.create(dto);
       } catch (guestNotificationError) {
         this.logger.error(
           `[GUEST NOTIFICATION] Failed to create status change notification for guest ${guestId}, booking ${bookingId}:`,
@@ -168,7 +189,7 @@ export class BookingNotificationStatusService {
    * Tạo thông báo cho staff khi trạng thái booking thay đổi
    */
   private async createStaffStatusChangeNotification(
-    booking: any,
+    booking: Booking,
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
@@ -180,20 +201,24 @@ export class BookingNotificationStatusService {
 
       // Get staff assigned to this property
       const staffAssignments =
-        await this.propertyStaffAssignmentService.getStaffByProperty(
+        (await this.propertyStaffAssignmentService.getStaffByProperty(
           new Types.ObjectId(propertyId),
-        );
+        )) as unknown as StaffAssignment[];
 
       // Get guest and property information for detailed notification
-      const guestInfo = await this.bookingRepo
+      const guestInfo = (await this.bookingRepo
         .getModel()
         .db.collection('users')
-        .findOne({ _id: booking.guestId });
+        .findOne({
+          _id: booking.guestId,
+        })) as unknown as Partial<UserInfo> | null;
 
-      const propertyInfo = await this.bookingRepo
+      const propertyInfo = (await this.bookingRepo
         .getModel()
         .db.collection('properties')
-        .findOne({ _id: booking.propertyId });
+        .findOne({ _id: booking.propertyId })) as unknown as {
+        name?: string;
+      } | null;
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
@@ -211,7 +236,7 @@ export class BookingNotificationStatusService {
       const statusIcon = statusMessages[newStatus] || `🔄 ${newStatus}`;
 
       // Find first actual staff member to create ONE representative staff notification
-      let representativeStaff: any = null;
+      let representativeStaff: (UserInfo & { _id: ObjectIdLike }) | null = null;
       const allStaffEmails: string[] = [];
 
       for (const assignment of staffAssignments) {
@@ -220,9 +245,20 @@ export class BookingNotificationStatusService {
           assignment.staffId
         ) {
           // Check if this is actual staff, not admin
-          if (await this.isActualStaff(assignment.staffId._id)) {
-            const staffUser = assignment.staffId as any;
-            allStaffEmails.push(staffUser.email || staffUser._id.toString());
+          const rawStaffId = assignment.staffId._id;
+          const staffObjectId =
+            typeof rawStaffId === 'string'
+              ? new Types.ObjectId(rawStaffId)
+              : (rawStaffId as Types.ObjectId);
+          if (await this.isActualStaff(staffObjectId)) {
+            const staffUser = assignment.staffId as UserInfo & {
+              _id: ObjectIdLike;
+            };
+            const staffIdStr =
+              typeof staffUser._id === 'string'
+                ? staffUser._id
+                : (staffUser._id as Types.ObjectId).toString();
+            allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
             if (!representativeStaff) {
@@ -234,8 +270,12 @@ export class BookingNotificationStatusService {
 
       // Create ONE staff status change notification if we found any staff
       if (representativeStaff) {
-        await this.notificationsService.create({
-          user_id: representativeStaff._id.toString(),
+        const staffIdStr =
+          typeof representativeStaff._id === 'string'
+            ? representativeStaff._id
+            : (representativeStaff._id as Types.ObjectId).toString();
+        const dto: CreateNotificationDto = {
+          user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
           title: `${statusIcon} Booking #${bookingCode}`,
           message: `Booking của khách ${guestName} tại ${propertyName} (${checkInDate}) đã chuyển từ "${booking.status}" sang "${newStatus}". Cần xử lý ngay!`,
@@ -260,7 +300,8 @@ export class BookingNotificationStatusService {
             guests: booking.guests,
             checkOutDate: booking.check_out_date,
           },
-        });
+        };
+        await this.notificationsService.create(dto);
       }
     } catch (error) {
       this.logger.error(
@@ -274,7 +315,7 @@ export class BookingNotificationStatusService {
    * Tạo thông báo cho admin khi trạng thái booking thay đổi
    */
   private async createAdminStatusChangeNotification(
-    booking: any,
+    booking: Booking,
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
@@ -282,7 +323,7 @@ export class BookingNotificationStatusService {
       const bookingCode = bookingId.slice(-8).toUpperCase();
 
       // Get guest, property, and booking amount information
-      const [guestInfo, propertyInfo] = await Promise.all([
+      const [guestInfo, propertyInfo] = (await Promise.all([
         this.bookingRepo
           .getModel()
           .db.collection('users')
@@ -291,7 +332,7 @@ export class BookingNotificationStatusService {
           .getModel()
           .db.collection('properties')
           .findOne({ _id: booking.propertyId }),
-      ]);
+      ])) as unknown as [Partial<UserInfo> | null, { name?: string } | null];
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestEmail = guestInfo?.email || '';
@@ -311,18 +352,21 @@ export class BookingNotificationStatusService {
       const statusIcon = statusMessages[newStatus] || `🔄 ${newStatus}`;
 
       // Get all admin users
-      const adminUsers = await this.bookingRepo
+      const adminUsers = (await this.bookingRepo
         .getModel()
         .db.collection('users')
         .find({ role: 'admin' })
-        .toArray();
+        .toArray()) as unknown as UserInfo[];
 
       // Create ONE notification for admin (pick first admin as representative)
       if (adminUsers.length > 0) {
-        const representativeAdmin = adminUsers[0]; // Use first admin as representative
-        const adminId = representativeAdmin._id.toString();
+        const representativeAdmin = adminUsers[0] as UserInfo; // Use first admin as representative
+        const adminId =
+          typeof representativeAdmin._id === 'string'
+            ? representativeAdmin._id
+            : (representativeAdmin._id as Types.ObjectId).toString();
 
-        const notificationData = {
+        const notificationData: CreateNotificationDto = {
           user_id: adminId,
           recipient_type: RecipientType.ADMIN,
           title: `${statusIcon} Booking #${bookingCode} - ${propertyName}`,
@@ -342,7 +386,7 @@ export class BookingNotificationStatusService {
             checkInDate: booking.checkInDate,
             bookingCode,
             amount,
-            allAdminEmails: adminUsers.map((admin) => admin.email).join(', '), // Store all admin emails for reference
+            allAdminEmails: adminUsers.map((a) => a.email).join(', '), // Store all admin emails for reference
             guestPhone: guestInfo?.phone || '',
             nights: booking.nights,
             guests: booking.guests,
@@ -415,7 +459,9 @@ export class BookingNotificationStatusService {
       const roomName = listingTitle || propertyName;
 
       // Payment status messages
-      const paymentStatusData = {
+      const paymentStatusData: Partial<
+        Record<PaymentStatus, { title: string; message: string }>
+      > = {
         [PaymentStatus.PAID]: {
           title: '💳 Thanh toán hoàn tất',
           message: `Thanh toán cho đặt phòng tại ${roomName} đã hoàn tất thành công.`,
@@ -438,14 +484,15 @@ export class BookingNotificationStatusService {
         },
       };
 
-      const notificationData = paymentStatusData[newPaymentStatus] || {
-        title: '📋 Cập nhật thanh toán',
-        message: `Trạng thái thanh toán cho đặt phòng tại ${roomName} đã được cập nhật.`,
-      };
+      const notificationData: { title: string; message: string } =
+        paymentStatusData[newPaymentStatus] ?? {
+          title: '📋 Cập nhật thanh toán',
+          message: `Trạng thái thanh toán cho đặt phòng tại ${roomName} đã được cập nhật.`,
+        };
 
       // Create notification for guest
       try {
-        await this.notificationsService.create({
+        const dto: CreateNotificationDto = {
           user_id: guestId,
           recipient_type: RecipientType.GUEST,
           title: notificationData.title,
@@ -472,7 +519,8 @@ export class BookingNotificationStatusService {
               (booking.final_amount || 0) - (booking.deposit_paid_amount || 0),
             nights: booking.nights,
           },
-        });
+        };
+        await this.notificationsService.create(dto);
       } catch (error) {
         this.logger.error(
           `[PAYMENT NOTIFICATION] Failed to create payment status change notification for guest ${guestId}, booking ${bookingId}:`,
@@ -532,20 +580,24 @@ export class BookingNotificationStatusService {
 
       // Get staff assigned to this property
       const staffAssignments =
-        await this.propertyStaffAssignmentService.getStaffByProperty(
+        (await this.propertyStaffAssignmentService.getStaffByProperty(
           new Types.ObjectId(propertyId),
-        );
+        )) as unknown as StaffAssignment[];
 
       // Get guest and property information
-      const guestInfo = await this.bookingRepo
+      const guestInfo = (await this.bookingRepo
         .getModel()
         .db.collection('users')
-        .findOne({ _id: booking.guestId });
+        .findOne({
+          _id: booking.guestId,
+        })) as unknown as Partial<UserInfo> | null;
 
-      const propertyInfo = await this.bookingRepo
+      const propertyInfo = (await this.bookingRepo
         .getModel()
         .db.collection('properties')
-        .findOne({ _id: booking.propertyId });
+        .findOne({ _id: booking.propertyId })) as unknown as {
+        name?: string;
+      } | null;
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
@@ -565,7 +617,7 @@ export class BookingNotificationStatusService {
         paymentStatusMessages[newPaymentStatus] || `🔄 ${newPaymentStatus}`;
 
       // Find first actual staff member
-      let representativeStaff: any = null;
+      let representativeStaff: (UserInfo & { _id: ObjectIdLike }) | null = null;
       const allStaffEmails: string[] = [];
 
       for (const assignment of staffAssignments) {
@@ -573,9 +625,20 @@ export class BookingNotificationStatusService {
           assignment.status === AssignmentStatus.ACTIVE &&
           assignment.staffId
         ) {
-          if (await this.isActualStaff(assignment.staffId._id)) {
-            const staffUser = assignment.staffId as any;
-            allStaffEmails.push(staffUser.email || staffUser._id.toString());
+          const rawStaffId = assignment.staffId._id;
+          const staffObjectId =
+            typeof rawStaffId === 'string'
+              ? new Types.ObjectId(rawStaffId)
+              : (rawStaffId as Types.ObjectId);
+          if (await this.isActualStaff(staffObjectId)) {
+            const staffUser = assignment.staffId as UserInfo & {
+              _id: ObjectIdLike;
+            };
+            const staffIdStr =
+              typeof staffUser._id === 'string'
+                ? staffUser._id
+                : (staffUser._id as Types.ObjectId).toString();
+            allStaffEmails.push(staffUser.email || staffIdStr);
 
             if (!representativeStaff) {
               representativeStaff = staffUser;
@@ -586,8 +649,12 @@ export class BookingNotificationStatusService {
 
       // Create staff payment notification
       if (representativeStaff) {
-        await this.notificationsService.create({
-          user_id: representativeStaff._id.toString(),
+        const staffIdStr =
+          typeof representativeStaff._id === 'string'
+            ? representativeStaff._id
+            : (representativeStaff._id as Types.ObjectId).toString();
+        const dto: CreateNotificationDto = {
+          user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
           title: `${statusIcon} Payment #${bookingCode}`,
           message: `Thanh toán của khách ${guestName} tại ${propertyName} (${checkInDate}) đã chuyển từ "${oldPaymentStatus}" sang "${newPaymentStatus}".`,
@@ -615,7 +682,8 @@ export class BookingNotificationStatusService {
             guests: booking.guests,
             checkOutDate: booking.check_out_date,
           },
-        });
+        };
+        await this.notificationsService.create(dto);
       }
     } catch (error) {
       this.logger.error(
@@ -638,7 +706,7 @@ export class BookingNotificationStatusService {
       const bookingCode = bookingId.slice(-8);
 
       // Get guest and property information
-      const [guestInfo, propertyInfo] = await Promise.all([
+      const [guestInfo, propertyInfo] = (await Promise.all([
         this.bookingRepo
           .getModel()
           .db.collection('users')
@@ -647,7 +715,7 @@ export class BookingNotificationStatusService {
           .getModel()
           .db.collection('properties')
           .findOne({ _id: booking.propertyId }),
-      ]);
+      ])) as unknown as [Partial<UserInfo> | null, { name?: string } | null];
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestEmail = guestInfo?.email || '';
@@ -669,18 +737,21 @@ export class BookingNotificationStatusService {
         paymentStatusMessages[newPaymentStatus] || `🔄 ${newPaymentStatus}`;
 
       // Get all admin users
-      const adminUsers = await this.bookingRepo
+      const adminUsers = (await this.bookingRepo
         .getModel()
         .db.collection('users')
         .find({ role: 'admin' })
-        .toArray();
+        .toArray()) as unknown as UserInfo[];
 
       // Create notification for admin
       if (adminUsers.length > 0) {
-        const representativeAdmin = adminUsers[0];
-        const adminId = representativeAdmin._id.toString();
+        const representativeAdmin = adminUsers[0] as UserInfo;
+        const adminId =
+          typeof representativeAdmin._id === 'string'
+            ? representativeAdmin._id
+            : (representativeAdmin._id as Types.ObjectId).toString();
 
-        const notificationData = {
+        const notificationData: CreateNotificationDto = {
           user_id: adminId,
           recipient_type: RecipientType.ADMIN,
           title: `${statusIcon} Payment #${bookingCode} - ${propertyName}`,
@@ -700,7 +771,7 @@ export class BookingNotificationStatusService {
             checkInDate: booking.checkInDate,
             amount,
             bookingCode,
-            allAdminEmails: adminUsers.map((admin) => admin.email).join(', '),
+            allAdminEmails: adminUsers.map((a) => a.email).join(', '),
             guestPhone: guestInfo?.phone || '',
             nights: booking.nights,
             guests: booking.guests,
@@ -734,7 +805,7 @@ export class BookingNotificationStatusService {
         .findOne({ _id: userId });
 
       return !!(userInfo && userInfo.role === 'staff');
-    } catch (error) {
+    } catch {
       return false;
     }
   }

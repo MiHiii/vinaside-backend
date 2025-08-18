@@ -51,7 +51,7 @@ export class MailService {
         .exec();
 
       return staffUsers.map((user) => user.email);
-    } catch (error) {
+    } catch {
       return [];
     }
   }

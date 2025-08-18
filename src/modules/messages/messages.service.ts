@@ -7,7 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model, Types, FilterQuery } from 'mongoose';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto, RemoveReactionDto } from './dto/reaction.dto';
@@ -532,12 +532,8 @@ export class MessagesService {
       .exec();
 
     try {
-      const senderId =
-        (updated?.sender_id as any)?._id?.toString?.() ||
-        (updated?.sender_id as any)?.toString?.();
-      const receiverId =
-        (updated?.receiver_id as any)?._id?.toString?.() ||
-        (updated?.receiver_id as any)?.toString?.();
+      const senderId = this.getIdString(updated?.sender_id);
+      const receiverId = this.getIdString(updated?.receiver_id);
       if (senderId && receiverId) {
         const receiverSummary = await this.computeConversationSummary(
           receiverId,
@@ -634,50 +630,40 @@ export class MessagesService {
     const userObjectId = new Types.ObjectId(userId);
     const otherUserObjectId = new Types.ObjectId(otherUserId);
 
-    const matchBetweenUsers = {
+    const matchBetweenUsers: FilterQuery<Message> = {
       $or: [
         // ObjectId format
         { sender_id: userObjectId, receiver_id: otherUserObjectId },
         { sender_id: otherUserObjectId, receiver_id: userObjectId },
         // Legacy string format
-        {
-          sender_id: userId as unknown as any,
-          receiver_id: otherUserId as unknown as any,
-        },
-        {
-          sender_id: otherUserId as unknown as any,
-          receiver_id: userId as unknown as any,
-        },
+        { sender_id: userId, receiver_id: otherUserId },
+        { sender_id: otherUserId, receiver_id: userId },
       ],
-    } as any;
+    };
+
+    interface LeanMessage {
+      _id: Types.ObjectId | string;
+      content?: string;
+      sender_id: Types.ObjectId | string;
+      sent_at: Date;
+    }
 
     const lastMessageDoc = await this.messageModel
       .findOne(matchBetweenUsers)
       .sort({ sent_at: -1 })
       .select({ _id: 1, content: 1, sender_id: 1, sent_at: 1 })
-      .lean();
+      .lean<LeanMessage>();
 
-    const normalizeId = (val: any): string => {
-      if (!val) return '';
-      if (typeof val === 'string') return val;
-      if (val && typeof val === 'object') {
-        if ('_id' in val && (val as any)._id) {
-          const v = (val as any)._id;
-          return typeof v === 'string' ? v : v.toString();
-        }
-        return (val as any).toString?.() || '';
-      }
-      return String(val);
-    };
+    const normalizeId = (val: unknown): string => this.getIdString(val);
 
     const lastMessage = lastMessageDoc
       ? {
-          _id: normalizeId((lastMessageDoc as any)._id),
-          content: (lastMessageDoc as any).content || '',
-          senderId: normalizeId((lastMessageDoc as any).sender_id),
+          _id: normalizeId(lastMessageDoc._id),
+          content: lastMessageDoc.content || '',
+          senderId: normalizeId(lastMessageDoc.sender_id),
           // Hiện tại chưa có phân loại type theo nội dung, default 'text'
           type: 'text',
-          sent_at: (lastMessageDoc as any).sent_at as Date,
+          sent_at: lastMessageDoc.sent_at as Date,
         }
       : null;
 
@@ -687,8 +673,8 @@ export class MessagesService {
     const countUnreadFor = async (
       receiver: { id: string; obj: Types.ObjectId },
       sender: { id: string; obj: Types.ObjectId },
-    ) =>
-      this.messageModel.countDocuments({
+    ): Promise<number> => {
+      const filter: FilterQuery<Message> = {
         $and: [
           {
             $or: [{ receiver_id: receiver.obj }, { receiver_id: receiver.id }],
@@ -696,7 +682,9 @@ export class MessagesService {
           { $or: [{ sender_id: sender.obj }, { sender_id: sender.id }] },
           { is_read: { $ne: MessageStatus.READ } },
         ],
-      });
+      };
+      return this.messageModel.countDocuments(filter);
+    };
 
     const [unreadForUser, unreadForOther] = await Promise.all([
       countUnreadFor(
@@ -950,18 +938,16 @@ export class MessagesService {
   async getConversations(userId: string): Promise<any[]> {
     const base = await this.findUserConversations(userId);
     const enriched = await Promise.all(
-      (base || []).map(async (conv: any) => {
-        const lastMsg = conv?.lastMessage || {};
-        const rawSender = lastMsg?.sender_id;
-        const rawReceiver = lastMsg?.receiver_id;
-        const senderId =
-          typeof rawSender === 'string'
-            ? rawSender
-            : rawSender?._id?.toString?.() || rawSender?.toString?.() || '';
-        const receiverId =
-          typeof rawReceiver === 'string'
-            ? rawReceiver
-            : rawReceiver?._id?.toString?.() || rawReceiver?.toString?.() || '';
+      (base || []).map(async (conv) => {
+        const c = conv as {
+          lastMessage?: { sender_id?: unknown; receiver_id?: unknown };
+          unreadCount?: number;
+          [key: string]: unknown;
+        };
+        const rawSender = c.lastMessage?.sender_id;
+        const rawReceiver = c.lastMessage?.receiver_id;
+        const senderId = this.getIdString(rawSender);
+        const receiverId = this.getIdString(rawReceiver);
         const otherUserId = senderId === userId ? receiverId : senderId;
 
         const summary = otherUserId
@@ -969,11 +955,11 @@ export class MessagesService {
           : { lastMessage: null, lastMessageAt: null, unreadCounts: {} };
 
         return {
-          ...conv,
+          ...(conv as Record<string, unknown>),
           unreadCount:
-            summary?.unreadCounts && userId in summary.unreadCounts
+            summary.unreadCounts && userId in summary.unreadCounts
               ? summary.unreadCounts[userId]
-              : conv?.unreadCount || 0,
+              : c.unreadCount || 0,
           lastMessage: summary.lastMessage,
           lastMessageAt: summary.lastMessageAt,
           unreadCounts: summary.unreadCounts,
@@ -1265,7 +1251,7 @@ export class MessagesService {
     const messageObject = message.toObject() as Record<string, unknown>;
     return {
       ...messageObject,
-      _id: (messageObject._id as Types.ObjectId).toString(),
+      _id: this.getIdString(messageObject._id),
       reactions: formattedReactions,
       reply_to: formattedReply,
       reply_to_message_id: undefined, // Remove this to avoid duplication
@@ -1277,6 +1263,33 @@ export class MessagesService {
    */
   private formatMessagesWithReactions(messages: Message[]): unknown[] {
     return messages.map((message) => this.formatReactionResponse(message));
+  }
+
+  // ==================== ID NORMALIZATION UTILS ====================
+  private getIdString(val: unknown): string {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') {
+      const obj = val as { _id?: unknown; toString?: () => string };
+      if (obj._id) {
+        const v = obj._id;
+        if (typeof v === 'string') return v;
+        if (
+          v &&
+          typeof v === 'object' &&
+          'toString' in (v as object) &&
+          typeof (v as { toString: () => string }).toString === 'function'
+        ) {
+          return (v as { toString: () => string }).toString();
+        }
+      }
+      if (typeof obj.toString === 'function') return obj.toString();
+    }
+    try {
+      return String(val);
+    } catch {
+      return '';
+    }
   }
 
   async toggleReaction(

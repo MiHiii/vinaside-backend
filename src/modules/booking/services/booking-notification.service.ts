@@ -17,6 +17,34 @@ import {
   SentMethod,
 } from '../../notifications/schemas/notification.schema';
 import { BookingRepo } from '../booking.repo';
+import { CreateNotificationDto } from '../../notifications/dto/create-notification.dto';
+
+type ObjectIdLike = Types.ObjectId | string;
+
+interface ListingInfo {
+  _id?: ObjectIdLike;
+  title?: string;
+  images?: string[];
+  propertyId?: { name?: string } | ObjectIdLike;
+}
+
+interface UserInfo {
+  _id: ObjectIdLike;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+}
+
+interface StaffAssignment {
+  status: AssignmentStatus;
+  staffId?: UserInfo & { _id: ObjectIdLike };
+}
+
+interface AdminNotificationOptions {
+  skipAdminNotification?: boolean;
+  adminNotificationType?: 'all' | 'representative' | 'none';
+}
 
 @Injectable()
 export class BookingNotificationService {
@@ -38,17 +66,22 @@ export class BookingNotificationService {
    */
   async createGuestNewBookingNotification(
     booking: Booking,
-    listing: any,
+    listing: ListingInfo,
     finalAmount: number,
-    user: any,
+    user: UserInfo,
   ): Promise<void> {
     try {
       const bookingId = (booking._id as Types.ObjectId).toString();
       const bookingCode = bookingId.slice(-8);
-      const roomName = listing.title || listing.propertyId?.name || 'Căn hộ';
+      const roomName = listing.title || 'Căn hộ';
 
-      await this.notificationsService.create({
-        user_id: user._id,
+      const userIdStr =
+        typeof user._id === 'string'
+          ? user._id
+          : (user._id as Types.ObjectId).toString();
+
+      const createDto: CreateNotificationDto = {
+        user_id: userIdStr,
         recipient_type: RecipientType.GUEST,
         title: '🎉 Đặt phòng thành công',
         message: `Chúc mừng! Bạn đã đặt phòng thành công tại ${roomName}. Tổng thanh toán: ${finalAmount.toLocaleString('vi-VN')} VNĐ. Mã đặt phòng: ${bookingCode.toUpperCase()}`,
@@ -62,11 +95,16 @@ export class BookingNotificationService {
         metadata: {
           bookingId: bookingId,
           propertyId: booking.propertyId?.toString(),
-          listingId: listing._id?.toString(),
+          listingId:
+            typeof listing._id === 'string'
+              ? listing._id
+              : listing._id
+                ? (listing._id as Types.ObjectId).toString()
+                : undefined,
           amount: finalAmount,
           bookingStatus: BookingStatus.PENDING,
           roomName: roomName,
-          propertyName: listing.propertyId?.name,
+          propertyName: listing.title,
           listingTitle: listing.title,
           bookingCode: bookingCode.toUpperCase(),
           checkInDate: booking.checkInDate,
@@ -79,7 +117,9 @@ export class BookingNotificationService {
           taxAmount: booking.tax_amount,
           paymentStatus: PaymentStatus.UNPAID,
         },
-      });
+      };
+
+      await this.notificationsService.create(createDto);
     } catch (error) {
       this.logger.error(
         `Failed to create guest notification for booking ${(booking._id as Types.ObjectId).toString()}:`,
@@ -94,25 +134,27 @@ export class BookingNotificationService {
   async createStaffNewBookingNotification(
     propertyId: string,
     booking: Booking,
-    listing: any,
+    listing: ListingInfo,
     finalAmount: number,
   ): Promise<void> {
     try {
       // Lấy danh sách staff của property từ PropertyStaffAssignmentService
       const staffAssignments =
-        await this.propertyStaffAssignmentService.getStaffByProperty(
+        (await this.propertyStaffAssignmentService.getStaffByProperty(
           new Types.ObjectId(propertyId),
-        );
+        )) as unknown as StaffAssignment[];
 
       if (staffAssignments.length === 0) {
         return;
       }
 
       // Get guest information for detailed notification
-      const guestInfo = await this.bookingRepo
+      const guestInfo = (await this.bookingRepo
         .getModel()
         .db.collection('users')
-        .findOne({ _id: booking.guestId });
+        .findOne({
+          _id: booking.guestId,
+        })) as unknown as Partial<UserInfo> | null;
 
       const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
         'vi-VN',
@@ -129,7 +171,7 @@ export class BookingNotificationService {
       const propertyName = listing.title || 'Property';
 
       // Find first actual staff member to create ONE representative staff notification
-      let representativeStaff: any = null;
+      let representativeStaff: (UserInfo & { _id: ObjectIdLike }) | null = null;
       const allStaffEmails: string[] = [];
 
       for (const assignment of staffAssignments) {
@@ -138,11 +180,22 @@ export class BookingNotificationService {
           assignment.staffId
         ) {
           // Check if this is actual staff, not admin
-          const isStaff = await this.isActualStaff(assignment.staffId._id);
+          const rawStaffId = assignment.staffId._id;
+          const staffObjectId =
+            typeof rawStaffId === 'string'
+              ? new Types.ObjectId(rawStaffId)
+              : (rawStaffId as Types.ObjectId);
+          const isStaff = await this.isActualStaff(staffObjectId);
 
           if (isStaff) {
-            const staffUser = assignment.staffId as any;
-            allStaffEmails.push(staffUser.email || staffUser._id.toString());
+            const staffUser = assignment.staffId as UserInfo & {
+              _id: ObjectIdLike;
+            };
+            const staffIdStr =
+              typeof staffUser._id === 'string'
+                ? staffUser._id
+                : (staffUser._id as Types.ObjectId).toString();
+            allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
             if (!representativeStaff) {
@@ -154,8 +207,13 @@ export class BookingNotificationService {
 
       // Create ONE staff notification if we found any staff
       if (representativeStaff) {
-        const createNotificationDto = {
-          user_id: representativeStaff._id.toString(),
+        const staffIdStr =
+          typeof representativeStaff._id === 'string'
+            ? representativeStaff._id
+            : (representativeStaff._id as Types.ObjectId).toString();
+
+        const createNotificationDto: CreateNotificationDto = {
+          user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
           title: `🏨 Đặt phòng mới - ${propertyName}`,
           message: `Khách hàng ${guestName}${guestPhone ? ` (${guestPhone})` : ''} đã đặt phòng từ ${checkInDate} đến ${checkOutDate}. Số khách: ${booking.guests} người. Tổng tiền: ${finalAmount.toLocaleString('vi-VN')}đ. Mã booking: #${bookingCode}`,
@@ -163,9 +221,14 @@ export class BookingNotificationService {
           status: NotificationStatus.SENT,
           sent_method: [SentMethod.IN_APP],
           metadata: {
-            bookingId: booking._id,
+            bookingId: (booking._id as Types.ObjectId).toString(),
             propertyId: propertyId,
-            listingId: listing._id,
+            listingId:
+              typeof listing._id === 'string'
+                ? listing._id
+                : listing._id
+                  ? (listing._id as Types.ObjectId).toString()
+                  : undefined,
             amount: finalAmount,
             guestName,
             guestPhone,
@@ -197,23 +260,22 @@ export class BookingNotificationService {
    * Tạo thông báo cho admin khi có booking mới
    */
   async createAdminNewBookingNotification(
-    booking: any,
-    listing: any,
+    booking: Booking,
+    listing: ListingInfo,
     finalAmount: number,
-    options?: {
-      skipAdminNotification?: boolean;
-      adminNotificationType?: 'all' | 'representative' | 'none';
-    },
+    options?: AdminNotificationOptions,
   ): Promise<void> {
     try {
       const bookingId = (booking._id as Types.ObjectId).toString();
       const bookingCode = bookingId.slice(-8).toUpperCase();
 
       // Get guest information for detailed notification
-      const guestInfo = await this.bookingRepo
+      const guestInfo = (await this.bookingRepo
         .getModel()
         .db.collection('users')
-        .findOne({ _id: booking.guestId });
+        .findOne({
+          _id: booking.guestId,
+        })) as unknown as Partial<UserInfo> | null;
 
       const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
         'vi-VN',
@@ -238,11 +300,11 @@ export class BookingNotificationService {
       }
 
       // Get all admin users
-      const adminUsers = await this.bookingRepo
+      const adminUsers = (await this.bookingRepo
         .getModel()
         .db.collection('users')
         .find({ role: 'admin' })
-        .toArray();
+        .toArray()) as unknown as UserInfo[];
 
       // Create notification for admin based on type
       if (adminUsers.length > 0) {
@@ -255,8 +317,11 @@ export class BookingNotificationService {
             `[ADMIN NOTIFICATION] Sending to all ${adminUsers.length} admins`,
           );
           for (const admin of adminUsers) {
-            const adminId = admin._id.toString();
-            const notificationData = {
+            const adminId =
+              typeof admin._id === 'string'
+                ? admin._id
+                : (admin._id as Types.ObjectId).toString();
+            const notificationData: CreateNotificationDto = {
               user_id: adminId,
               recipient_type: RecipientType.ADMIN,
               title: `📊 Booking mới hệ thống - ${propertyName}`,
@@ -267,7 +332,12 @@ export class BookingNotificationService {
               metadata: {
                 bookingId: bookingId,
                 propertyId: booking.propertyId?.toString(),
-                listingId: listing._id?.toString(),
+                listingId:
+                  typeof listing._id === 'string'
+                    ? listing._id
+                    : listing._id
+                      ? (listing._id as Types.ObjectId).toString()
+                      : undefined,
                 amount: finalAmount,
                 bookingStatus: BookingStatus.PENDING,
                 guestName,
@@ -278,9 +348,7 @@ export class BookingNotificationService {
                 guests: booking.guests,
                 bookingCode,
                 nights: booking.nights,
-                allAdminEmails: adminUsers
-                  .map((admin) => admin.email)
-                  .join(', '),
+                allAdminEmails: adminUsers.map((a) => a.email).join(', '),
                 propertyName: propertyName,
                 listingTitle: listing.title || '',
                 paymentStatus: booking.payment_status,
@@ -294,14 +362,17 @@ export class BookingNotificationService {
           }
         } else {
           // Send to representative admin only (default behavior)
-          const representativeAdmin = adminUsers[0];
-          const adminId = representativeAdmin._id.toString();
+          const representativeAdmin = adminUsers[0] as UserInfo;
+          const adminId =
+            typeof representativeAdmin._id === 'string'
+              ? representativeAdmin._id
+              : (representativeAdmin._id as Types.ObjectId).toString();
 
           this.logger.log(
             `[ADMIN NOTIFICATION] Sending to representative admin: ${representativeAdmin.email} (${adminId})`,
           );
 
-          const notificationData = {
+          const notificationData: CreateNotificationDto = {
             user_id: adminId,
             recipient_type: RecipientType.ADMIN,
             title: `📊 Booking mới hệ thống - ${propertyName}`,
@@ -312,7 +383,12 @@ export class BookingNotificationService {
             metadata: {
               bookingId: bookingId,
               propertyId: booking.propertyId?.toString(),
-              listingId: listing._id?.toString(),
+              listingId:
+                typeof listing._id === 'string'
+                  ? listing._id
+                  : listing._id
+                    ? (listing._id as Types.ObjectId).toString()
+                    : undefined,
               amount: finalAmount,
               bookingStatus: BookingStatus.PENDING,
               guestName,
@@ -323,7 +399,7 @@ export class BookingNotificationService {
               guests: booking.guests,
               bookingCode,
               nights: booking.nights,
-              allAdminEmails: adminUsers.map((admin) => admin.email).join(', '), // Store all admin emails for reference
+              allAdminEmails: adminUsers.map((a) => a.email).join(', '), // Store all admin emails for reference
               propertyName: propertyName,
               listingTitle: listing.title || '',
               paymentStatus: booking.payment_status,
@@ -356,7 +432,7 @@ export class BookingNotificationService {
   private async createAdminNotificationSafely(
     bookingId: string,
     adminId: string,
-    notificationData: any,
+    notificationData: CreateNotificationDto,
     notificationType: 'new_booking' | 'status_change' | 'summary',
   ): Promise<void> {
     const cacheKey = `${bookingId}-${notificationType}`;
@@ -397,7 +473,7 @@ export class BookingNotificationService {
         .findOne({ _id: userId });
 
       return !!(userInfo && userInfo.role === 'staff');
-    } catch (error) {
+    } catch {
       return false;
     }
   }
