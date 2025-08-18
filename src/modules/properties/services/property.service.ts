@@ -695,7 +695,10 @@ export class PropertyService {
   private async getVoucherStats(
     baseMatch: FilterQuery<Booking>,
   ): Promise<PropertyVoucherStats> {
-    const voucherResult = await this.bookingModel.aggregate([
+    const voucherResult = await this.bookingModel.aggregate<{
+      totalVouchersUsed: number;
+      totalVoucherDiscount: number;
+    }>([
       {
         $match: {
           ...baseMatch,
@@ -777,7 +780,10 @@ export class PropertyService {
   private async getServiceStats(
     baseMatch: FilterQuery<Booking>,
   ): Promise<PropertyServiceStats> {
-    const serviceResult = await this.bookingModel.aggregate([
+    const serviceResult = await this.bookingModel.aggregate<{
+      totalServicesUsed: number;
+      serviceRevenue: number;
+    }>([
       {
         $match: {
           ...baseMatch,
