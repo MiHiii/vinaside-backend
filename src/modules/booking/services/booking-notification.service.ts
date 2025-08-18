@@ -285,7 +285,7 @@ export class BookingNotificationService {
       // Get all admin users
       const adminUsers = await this.bookingRepo
         .getModel()
-        .db.collection('users')
+        .db.collection<UserInfo>('users')
         .find({ role: 'admin' })
         .toArray();
 
@@ -300,7 +300,7 @@ export class BookingNotificationService {
             `[ADMIN NOTIFICATION] Sending to all ${adminUsers.length} admins`,
           );
           for (const admin of adminUsers) {
-            const adminId = this.idToString(admin._id)!;
+            const adminId = this.idToString(admin._id) ?? '';
             const notificationData: CreateNotificationDto = {
               user_id: adminId,
               recipient_type: RecipientType.ADMIN,
@@ -337,9 +337,8 @@ export class BookingNotificationService {
           }
         } else {
           // Send to representative admin only (default behavior)
-          const representativeAdmin = adminUsers[0] as UserInfo;
-          const adminId =
-            this.idToString(representativeAdmin._id as ObjectIdLike) ?? '';
+          const representativeAdmin = adminUsers[0];
+          const adminId = this.idToString(representativeAdmin._id) ?? '';
 
           this.logger.log(
             `[ADMIN NOTIFICATION] Sending to representative admin: ${representativeAdmin.email} (${adminId})`,
