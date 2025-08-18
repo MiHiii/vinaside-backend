@@ -148,12 +148,12 @@ export class BookingNotificationService {
       }
 
       // Get guest information for detailed notification
-      const guestInfo = (await this.bookingRepo
+      const guestInfo = await this.bookingRepo
         .getModel()
-        .db.collection('users')
+        .db.collection<UserInfo>('users')
         .findOne({
           _id: booking.guestId,
-        })) as unknown as Partial<UserInfo> | null;
+        });
 
       const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
         'vi-VN',
@@ -323,7 +323,7 @@ export class BookingNotificationService {
                 guests: booking.guests,
                 bookingCode,
                 nights: booking.nights,
-                allAdminEmails: adminUsers.map((a) => a.email).join(', '),
+                allAdminEmails: adminUsers.map((a) => a.email ?? '').join(', '),
                 propertyName: propertyName,
                 listingTitle: listing.title || '',
                 paymentStatus: booking.payment_status,
@@ -367,7 +367,7 @@ export class BookingNotificationService {
               guests: booking.guests,
               bookingCode,
               nights: booking.nights,
-              allAdminEmails: adminUsers.map((a) => a.email).join(', '), // Store all admin emails for reference
+              allAdminEmails: adminUsers.map((a) => a.email ?? '').join(', '), // Store all admin emails for reference
               propertyName: propertyName,
               listingTitle: listing.title || '',
               paymentStatus: booking.payment_status,

@@ -244,10 +244,10 @@ export class BookingNotificationStatusService {
       );
 
       const guestInfo = await usersCol.findOne({
-        _id: booking.guestId as Types.ObjectId,
+        _id: booking.guestId,
       });
       const propertyInfo = await propsCol.findOne({
-        _id: booking.propertyId as Types.ObjectId,
+        _id: booking.propertyId,
       });
 
       const guestName = guestInfo?.name || 'Khách hàng';
@@ -357,8 +357,8 @@ export class BookingNotificationStatusService {
       );
 
       const [guestInfo, propertyInfo] = await Promise.all([
-        usersCol.findOne({ _id: booking.guestId as Types.ObjectId }),
-        propsCol.findOne({ _id: booking.propertyId as Types.ObjectId }),
+        usersCol.findOne({ _id: booking.guestId }),
+        propsCol.findOne({ _id: booking.propertyId }),
       ]);
 
       const guestName = guestInfo?.name || 'Khách hàng';
@@ -635,10 +635,10 @@ export class BookingNotificationStatusService {
       );
 
       const guestInfo = await usersCol.findOne({
-        _id: booking.guestId as Types.ObjectId,
+        _id: booking.guestId,
       });
       const propertyInfo = await propsCol.findOne({
-        _id: booking.propertyId as Types.ObjectId,
+        _id: booking.propertyId,
       });
 
       const guestName = guestInfo?.name || 'Khách hàng';
@@ -755,8 +755,8 @@ export class BookingNotificationStatusService {
       );
 
       const [guestInfo, propertyInfo] = await Promise.all([
-        usersCol.findOne({ _id: booking.guestId as Types.ObjectId }),
-        propsCol.findOne({ _id: booking.propertyId as Types.ObjectId }),
+        usersCol.findOne({ _id: booking.guestId }),
+        propsCol.findOne({ _id: booking.propertyId }),
       ]);
 
       const guestName = guestInfo?.name || 'Khách hàng';
