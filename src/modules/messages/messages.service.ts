@@ -663,7 +663,7 @@ export class MessagesService {
           senderId: normalizeId(lastMessageDoc.sender_id),
           // Hiện tại chưa có phân loại type theo nội dung, default 'text'
           type: 'text',
-          sent_at: lastMessageDoc.sent_at as Date,
+          sent_at: lastMessageDoc.sent_at,
         }
       : null;
 
@@ -1274,16 +1274,21 @@ export class MessagesService {
       if (obj._id) {
         const v = obj._id;
         if (typeof v === 'string') return v;
-        if (
-          v &&
-          typeof v === 'object' &&
-          'toString' in (v as object) &&
-          typeof (v as { toString: () => string }).toString === 'function'
-        ) {
-          return (v as { toString: () => string }).toString();
+        try {
+          // Prefer ObjectId hex string when available
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+          const s = (v as { toString: () => string }).toString?.();
+          return typeof s === 'string' ? s : '';
+        } catch {
+          return '';
         }
       }
-      if (typeof obj.toString === 'function') return obj.toString();
+      try {
+        const s = obj.toString?.();
+        return typeof s === 'string' ? s : '';
+      } catch {
+        return '';
+      }
     }
     try {
       return String(val);

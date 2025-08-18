@@ -78,14 +78,11 @@ export class BookingNotificationService {
     user: UserInfo,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = String(booking._id);
       const bookingCode = bookingId.slice(-8);
       const roomName = listing.title || 'Căn hộ';
 
-      const userIdStr =
-        typeof user._id === 'string'
-          ? user._id
-          : (user._id as Types.ObjectId).toString();
+      const userIdStr = this.idToString(user._id)!;
 
       const createDto: CreateNotificationDto = {
         user_id: userIdStr,
@@ -124,7 +121,7 @@ export class BookingNotificationService {
       await this.notificationsService.create(createDto);
     } catch (error) {
       this.logger.error(
-        `Failed to create guest notification for booking ${(booking._id as Types.ObjectId).toString()}:`,
+        `Failed to create guest notification for booking ${String(booking._id)}:`,
         error,
       );
     }
@@ -217,7 +214,7 @@ export class BookingNotificationService {
           status: NotificationStatus.SENT,
           sent_method: [SentMethod.IN_APP],
           metadata: {
-            bookingId: (booking._id as Types.ObjectId).toString(),
+            bookingId: String(booking._id),
             propertyId: propertyId,
             listingId: this.idToString(listing._id),
             amount: finalAmount,
@@ -257,7 +254,7 @@ export class BookingNotificationService {
     options?: AdminNotificationOptions,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = String(booking._id);
       const bookingCode = bookingId.slice(-8).toUpperCase();
 
       // Get guest information for detailed notification

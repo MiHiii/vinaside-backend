@@ -62,6 +62,10 @@ export class BookingNotificationStatusService {
     }
   }
 
+  private isObjectId(val: unknown): val is Types.ObjectId {
+    return val instanceof Types.ObjectId;
+  }
+
   /**
    * Tạo thông báo khi trạng thái booking thay đổi
    */
@@ -107,7 +111,7 @@ export class BookingNotificationStatusService {
       } catch (error) {
         this.logger.warn(
           'Could not fetch property/listing details for notification:',
-          error,
+          this.formatError(error),
         );
       }
 
@@ -172,7 +176,7 @@ export class BookingNotificationStatusService {
       } catch (guestNotificationError) {
         this.logger.error(
           `[GUEST NOTIFICATION] Failed to create status change notification for guest ${guestId}, booking ${bookingId}:`,
-          guestNotificationError,
+          this.formatError(guestNotificationError),
         );
         // Don't throw - continue with staff/admin notifications
       }
@@ -183,7 +187,7 @@ export class BookingNotificationStatusService {
       } catch (staffNotificationError) {
         this.logger.error(
           `[STAFF NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
-          staffNotificationError,
+          this.formatError(staffNotificationError),
         );
       }
 
@@ -193,11 +197,14 @@ export class BookingNotificationStatusService {
       } catch (adminNotificationError) {
         this.logger.error(
           `[ADMIN NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
-          adminNotificationError,
+          this.formatError(adminNotificationError),
         );
       }
     } catch (error) {
-      this.logger.error('Error creating status change notification:', error);
+      this.logger.error(
+        'Error creating status change notification:',
+        this.formatError(error),
+      );
     }
   }
 
@@ -262,18 +269,14 @@ export class BookingNotificationStatusService {
         ) {
           // Check if this is actual staff, not admin
           const rawStaffId = assignment.staffId._id;
-          const staffObjectId =
-            typeof rawStaffId === 'string'
-              ? new Types.ObjectId(rawStaffId)
-              : (rawStaffId as Types.ObjectId);
+          const staffObjectId = this.isObjectId(rawStaffId)
+            ? rawStaffId
+            : new Types.ObjectId(rawStaffId as string);
           if (await this.isActualStaff(staffObjectId)) {
             const staffUser = assignment.staffId as UserInfo & {
               _id: ObjectIdLike;
             };
-            const staffIdStr =
-              typeof staffUser._id === 'string'
-                ? staffUser._id
-                : (staffUser._id as Types.ObjectId).toString();
+            const staffIdStr = this.idToString(staffUser._id)!;
             allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
@@ -286,10 +289,7 @@ export class BookingNotificationStatusService {
 
       // Create ONE staff status change notification if we found any staff
       if (representativeStaff) {
-        const staffIdStr =
-          typeof representativeStaff._id === 'string'
-            ? representativeStaff._id
-            : (representativeStaff._id as Types.ObjectId).toString();
+        const staffIdStr = this.idToString(representativeStaff._id)!;
         const dto: CreateNotificationDto = {
           user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
