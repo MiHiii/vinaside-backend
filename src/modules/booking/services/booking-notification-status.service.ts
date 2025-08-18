@@ -46,24 +46,23 @@ export class BookingNotificationStatusService {
     private readonly bookingRepo: BookingRepo,
   ) {}
 
-  private idToString(
-    id: Types.ObjectId | string | undefined | null,
-  ): string | undefined {
-    if (!id) return undefined;
+  private idToString(id: ObjectIdLike): string {
     return typeof id === 'string' ? id : id.toString();
   }
 
+  private idOptToString(id?: ObjectIdLike | null): string | undefined {
+    return id ? this.idToString(id) : undefined;
+  }
+
   private formatError(err: unknown): string {
-    if (err instanceof Error) return err.stack ?? err.message;
+    if (err instanceof Error) {
+      return err.stack ?? err.message;
+    }
     try {
       return JSON.stringify(err);
     } catch {
       return String(err);
     }
-  }
-
-  private isObjectId(val: unknown): val is Types.ObjectId {
-    return val instanceof Types.ObjectId;
   }
 
   /**
@@ -74,9 +73,9 @@ export class BookingNotificationStatusService {
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8);
-      const guestId = (booking.guestId as Types.ObjectId).toString();
+      const guestId = this.idToString(booking.guestId as Types.ObjectId);
 
       // Validate guest ID
       if (!guestId || guestId === 'null' || guestId === 'undefined') {
@@ -110,8 +109,9 @@ export class BookingNotificationStatusService {
         }
       } catch (error) {
         this.logger.warn(
-          'Could not fetch property/listing details for notification:',
-          this.formatError(error),
+          `Could not fetch property/listing details for notification: ${this.formatError(
+            error,
+          )}`,
         );
       }
 
@@ -157,8 +157,12 @@ export class BookingNotificationStatusService {
           sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
           metadata: {
             bookingId: bookingId,
-            propertyId: booking.propertyId?.toString(),
-            listingId: booking.listingId?.toString(),
+            propertyId: this.idOptToString(
+              booking.propertyId as unknown as ObjectIdLike | undefined,
+            ),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             bookingStatus: newStatus,
             previousStatus: booking.status,
             roomName: roomName,
@@ -175,8 +179,9 @@ export class BookingNotificationStatusService {
         await this.notificationsService.create(dto);
       } catch (guestNotificationError) {
         this.logger.error(
-          `[GUEST NOTIFICATION] Failed to create status change notification for guest ${guestId}, booking ${bookingId}:`,
-          this.formatError(guestNotificationError),
+          `[GUEST NOTIFICATION] Failed to create status change notification for guest ${guestId}, booking ${bookingId}: ${this.formatError(
+            guestNotificationError,
+          )}`,
         );
         // Don't throw - continue with staff/admin notifications
       }
@@ -186,8 +191,9 @@ export class BookingNotificationStatusService {
         await this.createStaffStatusChangeNotification(booking, newStatus);
       } catch (staffNotificationError) {
         this.logger.error(
-          `[STAFF NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
-          this.formatError(staffNotificationError),
+          `[STAFF NOTIFICATION] Failed to create status change notification for booking ${bookingId}: ${this.formatError(
+            staffNotificationError,
+          )}`,
         );
       }
 
@@ -196,14 +202,14 @@ export class BookingNotificationStatusService {
         await this.createAdminStatusChangeNotification(booking, newStatus);
       } catch (adminNotificationError) {
         this.logger.error(
-          `[ADMIN NOTIFICATION] Failed to create status change notification for booking ${bookingId}:`,
-          this.formatError(adminNotificationError),
+          `[ADMIN NOTIFICATION] Failed to create status change notification for booking ${bookingId}: ${this.formatError(
+            adminNotificationError,
+          )}`,
         );
       }
     } catch (error) {
       this.logger.error(
-        'Error creating status change notification:',
-        this.formatError(error),
+        `Error creating status change notification: ${this.formatError(error)}`,
       );
     }
   }
@@ -216,9 +222,11 @@ export class BookingNotificationStatusService {
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8);
-      const propertyId = booking.propertyId?.toString();
+      const propertyId = this.idOptToString(
+        booking.propertyId as unknown as ObjectIdLike | undefined,
+      );
 
       if (!propertyId) return;
 
@@ -226,30 +234,30 @@ export class BookingNotificationStatusService {
       const staffAssignments =
         (await this.propertyStaffAssignmentService.getStaffByProperty(
           new Types.ObjectId(propertyId),
-        )) as unknown as StaffAssignment[];
+        )) as StaffAssignment[];
 
       // Get guest and property information for detailed notification
-      const guestInfo = (await this.bookingRepo
-        .getModel()
-        .db.collection('users')
-        .findOne({
-          _id: booking.guestId,
-        })) as unknown as Partial<UserInfo> | null;
+      const db = this.bookingRepo.getModel().db;
+      const usersCol = db.collection<UserInfo>('users');
+      const propsCol = db.collection<{ _id: Types.ObjectId; name?: string }>(
+        'properties',
+      );
 
-      const propertyInfo = (await this.bookingRepo
-        .getModel()
-        .db.collection('properties')
-        .findOne({ _id: booking.propertyId })) as unknown as {
-        name?: string;
-      } | null;
+      const guestInfo = await usersCol.findOne({
+        _id: booking.guestId as Types.ObjectId,
+      });
+      const propertyInfo = await propsCol.findOne({
+        _id: booking.propertyId as Types.ObjectId,
+      });
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
-      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
-        'vi-VN',
-      );
+      const checkInDate = booking.checkInDate
+        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        : '';
 
-      const statusMessages = {
+      const statusMessages: Record<BookingStatus, string> = {
+        [BookingStatus.PENDING]: '⏳ Chờ xử lý',
         [BookingStatus.CONFIRMED]: '✅ Đã xác nhận',
         [BookingStatus.CANCELLED]: '❌ Đã hủy',
         [BookingStatus.COMPLETED]: '✅ Hoàn thành',
@@ -267,16 +275,14 @@ export class BookingNotificationStatusService {
           assignment.status === AssignmentStatus.ACTIVE &&
           assignment.staffId
         ) {
-          // Check if this is actual staff, not admin
           const rawStaffId = assignment.staffId._id;
-          const staffObjectId = this.isObjectId(rawStaffId)
-            ? rawStaffId
-            : new Types.ObjectId(rawStaffId as string);
+          const staffObjectId =
+            typeof rawStaffId === 'string'
+              ? new Types.ObjectId(rawStaffId)
+              : rawStaffId;
           if (await this.isActualStaff(staffObjectId)) {
-            const staffUser = assignment.staffId as UserInfo & {
-              _id: ObjectIdLike;
-            };
-            const staffIdStr = this.idToString(staffUser._id)!;
+            const staffUser = assignment.staffId;
+            const staffIdStr = this.idToString(staffUser._id);
             allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
@@ -289,7 +295,7 @@ export class BookingNotificationStatusService {
 
       // Create ONE staff status change notification if we found any staff
       if (representativeStaff) {
-        const staffIdStr = this.idToString(representativeStaff._id)!;
+        const staffIdStr = this.idToString(representativeStaff._id);
         const dto: CreateNotificationDto = {
           user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
@@ -301,14 +307,16 @@ export class BookingNotificationStatusService {
           metadata: {
             bookingId: bookingId,
             propertyId: propertyId,
-            listingId: booking.listingId?.toString(),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             bookingStatus: newStatus,
             previousStatus: booking.status,
             guestName,
             propertyName,
             checkInDate: booking.checkInDate,
             bookingCode,
-            allStaffEmails: allStaffEmails.join(', '), // Store all staff emails for reference
+            allStaffEmails: allStaffEmails.join(', '),
             guestEmail: guestInfo?.email || '',
             guestPhone: guestInfo?.phone || '',
             finalAmount: booking.final_amount,
@@ -321,8 +329,9 @@ export class BookingNotificationStatusService {
       }
     } catch (error) {
       this.logger.error(
-        'Error creating staff status change notification:',
-        this.formatError(error),
+        `Error creating staff status change notification: ${this.formatError(
+          error,
+        )}`,
       );
     }
   }
@@ -335,30 +344,31 @@ export class BookingNotificationStatusService {
     newStatus: BookingStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8).toUpperCase();
 
       // Get guest, property, and booking amount information
-      const [guestInfo, propertyInfo] = (await Promise.all([
-        this.bookingRepo
-          .getModel()
-          .db.collection('users')
-          .findOne({ _id: booking.guestId }),
-        this.bookingRepo
-          .getModel()
-          .db.collection('properties')
-          .findOne({ _id: booking.propertyId }),
-      ])) as unknown as [Partial<UserInfo> | null, { name?: string } | null];
+      const db = this.bookingRepo.getModel().db;
+      const usersCol = db.collection<UserInfo>('users');
+      const propsCol = db.collection<{ _id: Types.ObjectId; name?: string }>(
+        'properties',
+      );
+
+      const [guestInfo, propertyInfo] = await Promise.all([
+        usersCol.findOne({ _id: booking.guestId as Types.ObjectId }),
+        propsCol.findOne({ _id: booking.propertyId as Types.ObjectId }),
+      ]);
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestEmail = guestInfo?.email || '';
       const propertyName = propertyInfo?.name || 'Property';
-      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
-        'vi-VN',
-      );
+      const checkInDate = booking.checkInDate
+        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        : '';
       const amount = booking.final_amount || booking.total_price || 0;
 
-      const statusMessages = {
+      const statusMessages: Record<BookingStatus, string> = {
+        [BookingStatus.PENDING]: '⏳ Chờ xử lý',
         [BookingStatus.CONFIRMED]: '✅ Xác nhận',
         [BookingStatus.CANCELLED]: '❌ Hủy bỏ',
         [BookingStatus.COMPLETED]: '✅ Hoàn thành',
@@ -368,29 +378,33 @@ export class BookingNotificationStatusService {
       const statusIcon = statusMessages[newStatus] || `🔄 ${newStatus}`;
 
       // Get all admin users
-      const adminUsers = (await this.bookingRepo
-        .getModel()
-        .db.collection('users')
-        .find({ role: 'admin' })
-        .toArray()) as unknown as UserInfo[];
+      const adminUsers = await usersCol.find({ role: 'admin' }).toArray();
 
       // Create ONE notification for admin (pick first admin as representative)
       if (adminUsers.length > 0) {
-        const representativeAdmin = adminUsers[0] as UserInfo; // Use first admin as representative
-        const adminId = this.idToString(representativeAdmin._id)!;
+        const representativeAdmin = adminUsers[0];
+        const adminId = this.idToString(representativeAdmin._id);
 
         const notificationData: CreateNotificationDto = {
           user_id: adminId,
           recipient_type: RecipientType.ADMIN,
           title: `${statusIcon} Booking #${bookingCode} - ${propertyName}`,
-          message: `Booking của ${guestName}${guestEmail ? ` (${guestEmail})` : ''} tại ${propertyName} (${checkInDate}) đã chuyển từ "${booking.status}" → "${newStatus}". Giá trị: ${amount.toLocaleString('vi-VN')}đ`,
+          message: `Booking của ${guestName}${
+            guestEmail ? ` (${guestEmail})` : ''
+          } tại ${propertyName} (${checkInDate}) đã chuyển từ "${
+            booking.status
+          }" → "${newStatus}". Giá trị: ${amount.toLocaleString('vi-VN')}đ`,
           type: NotificationType.BOOKING,
           status: NotificationStatus.SENT,
           sent_method: [SentMethod.IN_APP],
           metadata: {
             bookingId: bookingId,
-            propertyId: booking.propertyId?.toString(),
-            listingId: booking.listingId?.toString(),
+            propertyId: this.idOptToString(
+              booking.propertyId as unknown as ObjectIdLike | undefined,
+            ),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             bookingStatus: newStatus,
             previousStatus: booking.status,
             guestName,
@@ -399,7 +413,7 @@ export class BookingNotificationStatusService {
             checkInDate: booking.checkInDate,
             bookingCode,
             amount,
-            allAdminEmails: adminUsers.map((a) => a.email).join(', '), // Store all admin emails for reference
+            allAdminEmails: adminUsers.map((a) => a.email ?? '').join(', '),
             guestPhone: guestInfo?.phone || '',
             nights: booking.nights,
             guests: booking.guests,
@@ -413,8 +427,9 @@ export class BookingNotificationStatusService {
       }
     } catch (error) {
       this.logger.error(
-        'Error creating admin status change notification:',
-        this.formatError(error),
+        `Error creating admin status change notification: ${this.formatError(
+          error,
+        )}`,
       );
     }
   }
@@ -428,9 +443,9 @@ export class BookingNotificationStatusService {
     newPaymentStatus: PaymentStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8);
-      const guestId = (booking.guestId as Types.ObjectId).toString();
+      const guestId = this.idToString(booking.guestId as Types.ObjectId);
 
       // Validate guest ID
       if (!guestId || guestId === 'null' || guestId === 'undefined') {
@@ -464,8 +479,9 @@ export class BookingNotificationStatusService {
         }
       } catch (error) {
         this.logger.warn(
-          'Could not fetch property/listing details for payment notification:',
-          this.formatError(error),
+          `Could not fetch property/listing details for payment notification: ${this.formatError(
+            error,
+          )}`,
         );
       }
 
@@ -515,8 +531,12 @@ export class BookingNotificationStatusService {
           sent_method: [SentMethod.IN_APP, SentMethod.EMAIL],
           metadata: {
             bookingId: bookingId,
-            propertyId: booking.propertyId?.toString(),
-            listingId: booking.listingId?.toString(),
+            propertyId: this.idOptToString(
+              booking.propertyId as unknown as ObjectIdLike | undefined,
+            ),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             paymentStatus: newPaymentStatus,
             previousPaymentStatus: oldPaymentStatus,
             roomName: roomName,
@@ -536,8 +556,9 @@ export class BookingNotificationStatusService {
         await this.notificationsService.create(dto);
       } catch (error) {
         this.logger.error(
-          `[PAYMENT NOTIFICATION] Failed to create payment status change notification for guest ${guestId}, booking ${bookingId}:`,
-          error,
+          `[PAYMENT NOTIFICATION] Failed to create payment status change notification for guest ${guestId}, booking ${bookingId}: ${this.formatError(
+            error,
+          )}`,
         );
       }
 
@@ -550,8 +571,9 @@ export class BookingNotificationStatusService {
         );
       } catch (error) {
         this.logger.error(
-          `[STAFF PAYMENT NOTIFICATION] Failed to create payment status change notification for booking ${bookingId}:`,
-          error,
+          `[STAFF PAYMENT NOTIFICATION] Failed to create payment status change notification for booking ${bookingId}: ${this.formatError(
+            error,
+          )}`,
         );
       }
 
@@ -564,14 +586,16 @@ export class BookingNotificationStatusService {
         );
       } catch (error) {
         this.logger.error(
-          `[ADMIN PAYMENT NOTIFICATION] Failed to create payment status change notification for booking ${bookingId}:`,
-          error,
+          `[ADMIN PAYMENT NOTIFICATION] Failed to create payment status change notification for booking ${bookingId}: ${this.formatError(
+            error,
+          )}`,
         );
       }
     } catch (error) {
       this.logger.error(
-        'Error creating payment status change notification:',
-        error,
+        `Error creating payment status change notification: ${this.formatError(
+          error,
+        )}`,
       );
     }
   }
@@ -585,9 +609,11 @@ export class BookingNotificationStatusService {
     newPaymentStatus: PaymentStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8);
-      const propertyId = booking.propertyId?.toString();
+      const propertyId = this.idOptToString(
+        booking.propertyId as unknown as ObjectIdLike | undefined,
+      );
 
       if (!propertyId) return;
 
@@ -595,30 +621,30 @@ export class BookingNotificationStatusService {
       const staffAssignments =
         (await this.propertyStaffAssignmentService.getStaffByProperty(
           new Types.ObjectId(propertyId),
-        )) as unknown as StaffAssignment[];
+        )) as StaffAssignment[];
 
       // Get guest and property information
-      const guestInfo = (await this.bookingRepo
-        .getModel()
-        .db.collection('users')
-        .findOne({
-          _id: booking.guestId,
-        })) as unknown as Partial<UserInfo> | null;
+      const db = this.bookingRepo.getModel().db;
+      const usersCol = db.collection<UserInfo>('users');
+      const propsCol = db.collection<{ _id: Types.ObjectId; name?: string }>(
+        'properties',
+      );
 
-      const propertyInfo = (await this.bookingRepo
-        .getModel()
-        .db.collection('properties')
-        .findOne({ _id: booking.propertyId })) as unknown as {
-        name?: string;
-      } | null;
+      const guestInfo = await usersCol.findOne({
+        _id: booking.guestId as Types.ObjectId,
+      });
+      const propertyInfo = await propsCol.findOne({
+        _id: booking.propertyId as Types.ObjectId,
+      });
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
-      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
-        'vi-VN',
-      );
+      const checkInDate = booking.checkInDate
+        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        : '';
 
-      const paymentStatusMessages = {
+      const paymentStatusMessages: Record<PaymentStatus, string> = {
+        [PaymentStatus.UNPAID]: '💤 Chưa thanh toán',
         [PaymentStatus.PAID]: '💳 Đã thanh toán đầy đủ',
         [PaymentStatus.PARTIALLY_PAID]: '💰 Đã thanh toán một phần',
         [PaymentStatus.REFUNDING]: '🔄 Đang hoàn tiền',
@@ -642,15 +668,12 @@ export class BookingNotificationStatusService {
           const staffObjectId =
             typeof rawStaffId === 'string'
               ? new Types.ObjectId(rawStaffId)
-              : (rawStaffId as Types.ObjectId);
+              : rawStaffId;
           if (await this.isActualStaff(staffObjectId)) {
             const staffUser = assignment.staffId as UserInfo & {
               _id: ObjectIdLike;
             };
-            const staffIdStr =
-              typeof staffUser._id === 'string'
-                ? staffUser._id
-                : (staffUser._id as Types.ObjectId).toString();
+            const staffIdStr = this.idToString(staffUser._id);
             allStaffEmails.push(staffUser.email || staffIdStr);
 
             if (!representativeStaff) {
@@ -662,10 +685,7 @@ export class BookingNotificationStatusService {
 
       // Create staff payment notification
       if (representativeStaff) {
-        const staffIdStr =
-          typeof representativeStaff._id === 'string'
-            ? representativeStaff._id
-            : (representativeStaff._id as Types.ObjectId).toString();
+        const staffIdStr = this.idToString(representativeStaff._id);
         const dto: CreateNotificationDto = {
           user_id: staffIdStr,
           recipient_type: RecipientType.STAFF,
@@ -677,7 +697,9 @@ export class BookingNotificationStatusService {
           metadata: {
             bookingId: bookingId,
             propertyId: propertyId,
-            listingId: booking.listingId?.toString(),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             paymentStatus: newPaymentStatus,
             previousPaymentStatus: oldPaymentStatus,
             guestName,
@@ -700,8 +722,9 @@ export class BookingNotificationStatusService {
       }
     } catch (error) {
       this.logger.error(
-        'Error creating staff payment status change notification:',
-        this.formatError(error),
+        `Error creating staff payment status change notification: ${this.formatError(
+          error,
+        )}`,
       );
     }
   }
@@ -715,30 +738,31 @@ export class BookingNotificationStatusService {
     newPaymentStatus: PaymentStatus,
   ): Promise<void> {
     try {
-      const bookingId = (booking._id as Types.ObjectId).toString();
+      const bookingId = this.idToString(booking._id as Types.ObjectId);
       const bookingCode = bookingId.slice(-8);
 
       // Get guest and property information
-      const [guestInfo, propertyInfo] = (await Promise.all([
-        this.bookingRepo
-          .getModel()
-          .db.collection('users')
-          .findOne({ _id: booking.guestId }),
-        this.bookingRepo
-          .getModel()
-          .db.collection('properties')
-          .findOne({ _id: booking.propertyId }),
-      ])) as unknown as [Partial<UserInfo> | null, { name?: string } | null];
+      const db = this.bookingRepo.getModel().db;
+      const usersCol = db.collection<UserInfo>('users');
+      const propsCol = db.collection<{ _id: Types.ObjectId; name?: string }>(
+        'properties',
+      );
+
+      const [guestInfo, propertyInfo] = await Promise.all([
+        usersCol.findOne({ _id: booking.guestId as Types.ObjectId }),
+        propsCol.findOne({ _id: booking.propertyId as Types.ObjectId }),
+      ]);
 
       const guestName = guestInfo?.name || 'Khách hàng';
       const guestEmail = guestInfo?.email || '';
       const propertyName = propertyInfo?.name || 'Property';
-      const checkInDate = new Date(booking.checkInDate).toLocaleDateString(
-        'vi-VN',
-      );
+      const checkInDate = booking.checkInDate
+        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        : '';
       const amount = booking.final_amount || 0;
 
-      const paymentStatusMessages = {
+      const paymentStatusMessages: Record<PaymentStatus, string> = {
+        [PaymentStatus.UNPAID]: '💤 Chưa thanh toán',
         [PaymentStatus.PAID]: '💳 Đã thanh toán đầy đủ',
         [PaymentStatus.PARTIALLY_PAID]: '💰 Đã thanh toán một phần',
         [PaymentStatus.REFUNDING]: '🔄 Đang hoàn tiền',
@@ -750,32 +774,33 @@ export class BookingNotificationStatusService {
         paymentStatusMessages[newPaymentStatus] || `🔄 ${newPaymentStatus}`;
 
       // Get all admin users
-      const adminUsers = (await this.bookingRepo
-        .getModel()
-        .db.collection('users')
-        .find({ role: 'admin' })
-        .toArray()) as unknown as UserInfo[];
+      const adminUsers = await usersCol.find({ role: 'admin' }).toArray();
 
       // Create notification for admin
       if (adminUsers.length > 0) {
-        const representativeAdmin = adminUsers[0] as UserInfo;
-        const adminId =
-          typeof representativeAdmin._id === 'string'
-            ? representativeAdmin._id
-            : (representativeAdmin._id as Types.ObjectId).toString();
+        const representativeAdmin = adminUsers[0];
+        const adminId = this.idToString(representativeAdmin._id);
 
         const notificationData: CreateNotificationDto = {
           user_id: adminId,
           recipient_type: RecipientType.ADMIN,
           title: `${statusIcon} Payment #${bookingCode} - ${propertyName}`,
-          message: `Thanh toán của ${guestName}${guestEmail ? ` (${guestEmail})` : ''} tại ${propertyName} (${checkInDate}) đã chuyển từ "${oldPaymentStatus}" → "${newPaymentStatus}". Giá trị: ${amount.toLocaleString('vi-VN')}đ`,
+          message: `Thanh toán của ${guestName}${
+            guestEmail ? ` (${guestEmail})` : ''
+          } tại ${propertyName} (${checkInDate}) đã chuyển từ "${oldPaymentStatus}" → "${newPaymentStatus}". Giá trị: ${amount.toLocaleString(
+            'vi-VN',
+          )}đ`,
           type: NotificationType.PAYMENT,
           status: NotificationStatus.SENT,
           sent_method: [SentMethod.IN_APP],
           metadata: {
             bookingId: bookingId,
-            propertyId: booking.propertyId?.toString(),
-            listingId: booking.listingId?.toString(),
+            propertyId: this.idOptToString(
+              booking.propertyId as unknown as ObjectIdLike | undefined,
+            ),
+            listingId: this.idOptToString(
+              booking.listingId as unknown as ObjectIdLike | undefined,
+            ),
             paymentStatus: newPaymentStatus,
             previousPaymentStatus: oldPaymentStatus,
             guestName,
@@ -784,7 +809,7 @@ export class BookingNotificationStatusService {
             checkInDate: booking.checkInDate,
             amount,
             bookingCode,
-            allAdminEmails: adminUsers.map((a) => a.email).join(', '),
+            allAdminEmails: adminUsers.map((a) => a.email ?? '').join(', '),
             guestPhone: guestInfo?.phone || '',
             nights: booking.nights,
             guests: booking.guests,
@@ -801,8 +826,9 @@ export class BookingNotificationStatusService {
       }
     } catch (error) {
       this.logger.error(
-        'Error creating admin payment status change notification:',
-        this.formatError(error),
+        `Error creating admin payment status change notification: ${this.formatError(
+          error,
+        )}`,
       );
     }
   }
@@ -814,11 +840,14 @@ export class BookingNotificationStatusService {
     try {
       const userInfo = await this.bookingRepo
         .getModel()
-        .db.collection('users')
+        .db.collection<UserInfo>('users')
         .findOne({ _id: userId });
 
       return !!(userInfo && userInfo.role === 'staff');
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `isActualStaff check failed: ${this.formatError(error)}`,
+      );
       return false;
     }
   }

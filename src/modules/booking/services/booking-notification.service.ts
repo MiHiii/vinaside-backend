@@ -180,7 +180,7 @@ export class BookingNotificationService {
           const staffObjectId =
             typeof rawStaffId === 'string'
               ? new Types.ObjectId(rawStaffId)
-              : (rawStaffId as Types.ObjectId);
+              : rawStaffId;
           const isStaff = await this.isActualStaff(staffObjectId);
 
           if (isStaff) {
@@ -283,11 +283,11 @@ export class BookingNotificationService {
       }
 
       // Get all admin users
-      const adminUsers = (await this.bookingRepo
+      const adminUsers = await this.bookingRepo
         .getModel()
         .db.collection('users')
         .find({ role: 'admin' })
-        .toArray()) as unknown as UserInfo[];
+        .toArray();
 
       // Create notification for admin based on type
       if (adminUsers.length > 0) {
@@ -337,8 +337,10 @@ export class BookingNotificationService {
           }
         } else {
           // Send to representative admin only (default behavior)
-          const representativeAdmin = adminUsers[0]!;
-          const adminId = this.idToString(representativeAdmin._id)!;
+          const representativeAdmin = adminUsers[0] as UserInfo;
+          const adminId = this.idToString(
+            representativeAdmin._id as ObjectIdLike,
+          )!;
 
           this.logger.log(
             `[ADMIN NOTIFICATION] Sending to representative admin: ${representativeAdmin.email} (${adminId})`,
