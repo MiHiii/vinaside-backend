@@ -37,7 +37,7 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { PropertyStaffGuard } from '../../common/guards/property-staff.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { BookingStatus } from './schemas/booking.schema';
+
 import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
@@ -49,6 +49,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { UpdateCancellationDetailsDto } from './dto/update-booking.dto';
+import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { StaffCreateBookingDto } from './dto/staff-create-booking.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { CalendarResponseDto } from './dto/calendar-response.dto';
@@ -258,20 +259,24 @@ export class BookingController {
   @Patch('property/:propertyId/:id/confirm')
   @RequirePermission('booking.confirm')
   @RequirePropertyStaff('propertyId')
-  @ApiOperation({ summary: 'Xác nhận booking' })
-  @ApiResponse({ status: 200, description: 'Booking được xác nhận thành công' })
-  @ResponseMessage('Xác nhận booking thành công')
+  @ApiOperation({
+    summary: 'Cập nhật trạng thái booking (confirm/reject/complete)',
+  })
+  @ApiResponse({ status: 200, description: 'Booking được cập nhật thành công' })
+  @ResponseMessage('Cập nhật trạng thái booking thành công')
   confirm(
     @Param('propertyId') propertyId: string,
     @Param('id') id: string,
+    @Body() updateBookingStatusDto: UpdateBookingStatusDto,
     @Request() req: RequestWithUser,
   ) {
     if (!req.user.role) {
       throw new BadRequestException('Thiếu thông tin vai trò người dùng');
     }
+
     return this.bookingService.updateStatus(
       id,
-      BookingStatus.CONFIRMED,
+      updateBookingStatusDto.status,
       req.user as any as JwtPayload,
     );
   }

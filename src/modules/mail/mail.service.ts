@@ -52,10 +52,6 @@ export class MailService {
 
       return staffUsers.map((user) => user.email);
     } catch (error) {
-      console.error(
-        `Error getting staff emails for property ${propertyId}:`,
-        error,
-      );
       return [];
     }
   }

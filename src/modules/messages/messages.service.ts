@@ -144,6 +144,32 @@ export class MessagesService {
             );
           }
 
+          // Emit cập nhật tóm tắt cuộc trò chuyện cho cả hai phía
+          const senderId = user._id;
+          const receiverId = createMessageDto.receiver_id;
+
+          try {
+            const senderSummary = await this.computeConversationSummary(
+              senderId,
+              receiverId,
+            );
+            this.messagesGateway.emitConversationUpdate(senderId, {
+              otherUserId: receiverId,
+              ...senderSummary,
+            });
+
+            const receiverSummary = await this.computeConversationSummary(
+              receiverId,
+              senderId,
+            );
+            this.messagesGateway.emitConversationUpdate(receiverId, {
+              otherUserId: senderId,
+              ...receiverSummary,
+            });
+          } catch (err) {
+            console.error('Failed to emit conversation summary:', err);
+          }
+
           // Tự động gửi thông báo cho người nhận
           try {
             const sender = populatedMessage.sender_id as {
@@ -495,7 +521,7 @@ export class MessagesService {
       );
     }
 
-    return await this.messageModel
+    const updated = await this.messageModel
       .findByIdAndUpdate(
         messageId,
         { is_read: MessageStatus.READ },
@@ -504,6 +530,41 @@ export class MessagesService {
       .populate('sender_id', 'username email name avatar_url')
       .populate('receiver_id', 'username email name avatar_url')
       .exec();
+
+    try {
+      const senderId =
+        (updated?.sender_id as any)?._id?.toString?.() ||
+        (updated?.sender_id as any)?.toString?.();
+      const receiverId =
+        (updated?.receiver_id as any)?._id?.toString?.() ||
+        (updated?.receiver_id as any)?.toString?.();
+      if (senderId && receiverId) {
+        const receiverSummary = await this.computeConversationSummary(
+          receiverId,
+          senderId,
+        );
+        this.messagesGateway.emitConversationUpdate(receiverId, {
+          otherUserId: senderId,
+          ...receiverSummary,
+        });
+
+        const senderSummary = await this.computeConversationSummary(
+          senderId,
+          receiverId,
+        );
+        this.messagesGateway.emitConversationUpdate(senderId, {
+          otherUserId: receiverId,
+          ...senderSummary,
+        });
+      }
+    } catch (err) {
+      console.error(
+        'Failed to emit conversation summary after markAsRead:',
+        err,
+      );
+    }
+
+    return updated;
   }
 
   async markConversationAsRead(
@@ -525,7 +586,135 @@ export class MessagesService {
       )
       .exec();
 
+    try {
+      const currentUserSummary = await this.computeConversationSummary(
+        userId,
+        otherUserId,
+      );
+      this.messagesGateway.emitConversationUpdate(userId, {
+        otherUserId,
+        ...currentUserSummary,
+      });
+
+      const otherUserSummary = await this.computeConversationSummary(
+        otherUserId,
+        userId,
+      );
+      this.messagesGateway.emitConversationUpdate(otherUserId, {
+        otherUserId: userId,
+        ...otherUserSummary,
+      });
+    } catch (err) {
+      console.error(
+        'Failed to emit conversation summary after markConversationAsRead:',
+        err,
+      );
+    }
+
     return { modifiedCount: result.modifiedCount };
+  }
+
+  /**
+   * Tính toán tóm tắt cuộc trò chuyện giữa 2 user
+   */
+  private async computeConversationSummary(
+    userId: string,
+    otherUserId: string,
+  ): Promise<{
+    lastMessage: {
+      _id: string;
+      content: string;
+      senderId: string;
+      type: string;
+      sent_at: Date;
+    } | null;
+    lastMessageAt: Date | null;
+    unreadCounts: Record<string, number>;
+  }> {
+    const userObjectId = new Types.ObjectId(userId);
+    const otherUserObjectId = new Types.ObjectId(otherUserId);
+
+    const matchBetweenUsers = {
+      $or: [
+        // ObjectId format
+        { sender_id: userObjectId, receiver_id: otherUserObjectId },
+        { sender_id: otherUserObjectId, receiver_id: userObjectId },
+        // Legacy string format
+        {
+          sender_id: userId as unknown as any,
+          receiver_id: otherUserId as unknown as any,
+        },
+        {
+          sender_id: otherUserId as unknown as any,
+          receiver_id: userId as unknown as any,
+        },
+      ],
+    } as any;
+
+    const lastMessageDoc = await this.messageModel
+      .findOne(matchBetweenUsers)
+      .sort({ sent_at: -1 })
+      .select({ _id: 1, content: 1, sender_id: 1, sent_at: 1 })
+      .lean();
+
+    const normalizeId = (val: any): string => {
+      if (!val) return '';
+      if (typeof val === 'string') return val;
+      if (val && typeof val === 'object') {
+        if ('_id' in val && (val as any)._id) {
+          const v = (val as any)._id;
+          return typeof v === 'string' ? v : v.toString();
+        }
+        return (val as any).toString?.() || '';
+      }
+      return String(val);
+    };
+
+    const lastMessage = lastMessageDoc
+      ? {
+          _id: normalizeId((lastMessageDoc as any)._id),
+          content: (lastMessageDoc as any).content || '',
+          senderId: normalizeId((lastMessageDoc as any).sender_id),
+          // Hiện tại chưa có phân loại type theo nội dung, default 'text'
+          type: 'text',
+          sent_at: (lastMessageDoc as any).sent_at as Date,
+        }
+      : null;
+
+    const lastMessageAt = lastMessage ? (lastMessage.sent_at as Date) : null;
+
+    // Đếm unread cho từng user
+    const countUnreadFor = async (
+      receiver: { id: string; obj: Types.ObjectId },
+      sender: { id: string; obj: Types.ObjectId },
+    ) =>
+      this.messageModel.countDocuments({
+        $and: [
+          {
+            $or: [{ receiver_id: receiver.obj }, { receiver_id: receiver.id }],
+          },
+          { $or: [{ sender_id: sender.obj }, { sender_id: sender.id }] },
+          { is_read: { $ne: MessageStatus.READ } },
+        ],
+      });
+
+    const [unreadForUser, unreadForOther] = await Promise.all([
+      countUnreadFor(
+        { id: userId, obj: userObjectId },
+        { id: otherUserId, obj: otherUserObjectId },
+      ),
+      countUnreadFor(
+        { id: otherUserId, obj: otherUserObjectId },
+        { id: userId, obj: userObjectId },
+      ),
+    ]);
+
+    const unreadCounts: Record<string, number> = {
+      [userId]: unreadForUser,
+      [otherUserId]: unreadForOther,
+    };
+
+    return { lastMessage, lastMessageAt, unreadCounts };
   }
 
   async remove(id: string, user: JwtPayload): Promise<Message | null> {
@@ -759,7 +948,39 @@ export class MessagesService {
    * Lấy danh sách cuộc trò chuyện
    */
   async getConversations(userId: string): Promise<any[]> {
-    return await this.findUserConversations(userId);
+    const base = await this.findUserConversations(userId);
+    const enriched = await Promise.all(
+      (base || []).map(async (conv: any) => {
+        const lastMsg = conv?.lastMessage || {};
+        const rawSender = lastMsg?.sender_id;
+        const rawReceiver = lastMsg?.receiver_id;
+        const senderId =
+          typeof rawSender === 'string'
+            ? rawSender
+            : rawSender?._id?.toString?.() || rawSender?.toString?.() || '';
+        const receiverId =
+          typeof rawReceiver === 'string'
+            ? rawReceiver
+            : rawReceiver?._id?.toString?.() || rawReceiver?.toString?.() || '';
+        const otherUserId = senderId === userId ? receiverId : senderId;
+
+        const summary = otherUserId
+          ? await this.computeConversationSummary(userId, otherUserId)
+          : { lastMessage: null, lastMessageAt: null, unreadCounts: {} };
+
+        return {
+          ...conv,
+          unreadCount:
+            summary?.unreadCounts && userId in summary.unreadCounts
+              ? summary.unreadCounts[userId]
+              : conv?.unreadCount || 0,
+          lastMessage: summary.lastMessage,
+          lastMessageAt: summary.lastMessageAt,
+          unreadCounts: summary.unreadCounts,
+        };
+      }),
+    );
+    return enriched;
   }
 
   /**
@@ -1226,6 +1447,29 @@ export class MessagesService {
 
       // Emit đến người gửi (để sync trên các device khác)
       this.messagesGateway.emitMessageRecalled(updatedMessage, senderId);
+
+      // Đồng bộ cập nhật tóm tắt cuộc trò chuyện sau khi thu hồi
+      try {
+        const senderSummary = await this.computeConversationSummary(
+          senderId,
+          receiverId,
+        );
+        this.messagesGateway.emitConversationUpdate(senderId, {
+          otherUserId: receiverId,
+          ...senderSummary,
+        });
+
+        const receiverSummary = await this.computeConversationSummary(
+          receiverId,
+          senderId,
+        );
+        this.messagesGateway.emitConversationUpdate(receiverId, {
+          otherUserId: senderId,
+          ...receiverSummary,
+        });
+      } catch (err) {
+        console.error('Failed to emit conversation summary after recall:', err);
+      }
     } catch (error) {
       console.error('Failed to emit message recall notification:', error);
     }

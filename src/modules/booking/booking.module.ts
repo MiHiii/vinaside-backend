@@ -1,56 +1,53 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
 import { BookingController } from './booking.controller';
-import { Booking, BookingSchema } from './schemas/booking.schema';
 import { BookingService } from './booking.service';
 import { BookingRepo } from './booking.repo';
-import { VNPayService } from './services/vnpay.service';
-import { PaymentFactory } from './services/payment.factory';
-import { ListingModule } from '../listing/listing.module';
+import { Booking, BookingSchema } from './schemas/booking.schema';
 import { Listing, ListingSchema } from '../listing/schemas/listing.schema';
+import { ListingModule } from '../listing/listing.module';
 import { PropertyModule } from '../properties/property.module';
 import { MailModule } from '../mail/mail.module';
 import { VoucherModule } from '../vouchers/voucher.module';
 import { ServicesModule } from '../services/services.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PropertyStaffAssignmentModule } from '../property-staff-assignment/property-staff-assignment.module';
-import { StaffFilterInterceptor } from '../../common/interceptors/staff-filter.interceptor';
-import { forwardRef } from '@nestjs/common';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { TransactionsModule } from '../transactions/transactions.module';
+import { PaymentFactory } from './services/payment.factory';
+import { VNPayService } from './services/vnpay.service';
 import { CashService } from './services/cash.service';
+import { BookingNotificationService } from './services/booking-notification.service';
+import { BookingNotificationStatusService } from './services/booking-notification-status.service';
 
 @Module({
   imports: [
+    ConfigModule,
     MongooseModule.forFeature([
       { name: Booking.name, schema: BookingSchema },
       { name: Listing.name, schema: ListingSchema },
     ]),
-    ConfigModule,
-    ListingModule,
-    PropertyModule,
-    MailModule,
+    forwardRef(() => ListingModule),
+    forwardRef(() => PropertyModule),
+    forwardRef(() => MailModule),
     forwardRef(() => VoucherModule),
     forwardRef(() => ServicesModule),
-    NotificationsModule,
-    PropertyStaffAssignmentModule,
+    forwardRef(() => NotificationsModule),
+    forwardRef(() => PropertyStaffAssignmentModule),
     forwardRef(() => ReviewsModule),
-    TransactionsModule,
+    forwardRef(() => TransactionsModule),
   ],
   controllers: [BookingController],
   providers: [
     BookingService,
     BookingRepo,
+    PaymentFactory,
     VNPayService,
     CashService,
-    PaymentFactory,
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: StaffFilterInterceptor,
-    },
+    BookingNotificationService,
+    BookingNotificationStatusService,
   ],
-  exports: [BookingService],
+  exports: [BookingService, BookingRepo],
 })
 export class BookingModule {}
