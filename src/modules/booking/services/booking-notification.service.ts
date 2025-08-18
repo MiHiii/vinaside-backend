@@ -61,6 +61,13 @@ export class BookingNotificationService {
     private readonly bookingRepo: BookingRepo,
   ) {}
 
+  private idToString(
+    id: Types.ObjectId | string | undefined | null,
+  ): string | undefined {
+    if (!id) return undefined;
+    return typeof id === 'string' ? id : id.toString();
+  }
+
   /**
    * Tạo thông báo cho khách hàng khi có booking mới
    */
@@ -95,12 +102,7 @@ export class BookingNotificationService {
         metadata: {
           bookingId: bookingId,
           propertyId: booking.propertyId?.toString(),
-          listingId:
-            typeof listing._id === 'string'
-              ? listing._id
-              : listing._id
-                ? (listing._id as Types.ObjectId).toString()
-                : undefined,
+          listingId: this.idToString(listing._id),
           amount: finalAmount,
           bookingStatus: BookingStatus.PENDING,
           roomName: roomName,
@@ -191,10 +193,7 @@ export class BookingNotificationService {
             const staffUser = assignment.staffId as UserInfo & {
               _id: ObjectIdLike;
             };
-            const staffIdStr =
-              typeof staffUser._id === 'string'
-                ? staffUser._id
-                : (staffUser._id as Types.ObjectId).toString();
+            const staffIdStr = this.idToString(staffUser._id)!;
             allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
@@ -207,10 +206,7 @@ export class BookingNotificationService {
 
       // Create ONE staff notification if we found any staff
       if (representativeStaff) {
-        const staffIdStr =
-          typeof representativeStaff._id === 'string'
-            ? representativeStaff._id
-            : (representativeStaff._id as Types.ObjectId).toString();
+        const staffIdStr = this.idToString(representativeStaff._id)!;
 
         const createNotificationDto: CreateNotificationDto = {
           user_id: staffIdStr,
@@ -223,12 +219,7 @@ export class BookingNotificationService {
           metadata: {
             bookingId: (booking._id as Types.ObjectId).toString(),
             propertyId: propertyId,
-            listingId:
-              typeof listing._id === 'string'
-                ? listing._id
-                : listing._id
-                  ? (listing._id as Types.ObjectId).toString()
-                  : undefined,
+            listingId: this.idToString(listing._id),
             amount: finalAmount,
             guestName,
             guestPhone,
@@ -317,10 +308,7 @@ export class BookingNotificationService {
             `[ADMIN NOTIFICATION] Sending to all ${adminUsers.length} admins`,
           );
           for (const admin of adminUsers) {
-            const adminId =
-              typeof admin._id === 'string'
-                ? admin._id
-                : (admin._id as Types.ObjectId).toString();
+            const adminId = this.idToString(admin._id)!;
             const notificationData: CreateNotificationDto = {
               user_id: adminId,
               recipient_type: RecipientType.ADMIN,
@@ -332,12 +320,7 @@ export class BookingNotificationService {
               metadata: {
                 bookingId: bookingId,
                 propertyId: booking.propertyId?.toString(),
-                listingId:
-                  typeof listing._id === 'string'
-                    ? listing._id
-                    : listing._id
-                      ? (listing._id as Types.ObjectId).toString()
-                      : undefined,
+                listingId: this.idToString(listing._id),
                 amount: finalAmount,
                 bookingStatus: BookingStatus.PENDING,
                 guestName,
@@ -363,10 +346,7 @@ export class BookingNotificationService {
         } else {
           // Send to representative admin only (default behavior)
           const representativeAdmin = adminUsers[0] as UserInfo;
-          const adminId =
-            typeof representativeAdmin._id === 'string'
-              ? representativeAdmin._id
-              : (representativeAdmin._id as Types.ObjectId).toString();
+          const adminId = this.idToString(representativeAdmin._id)!;
 
           this.logger.log(
             `[ADMIN NOTIFICATION] Sending to representative admin: ${representativeAdmin.email} (${adminId})`,
@@ -383,12 +363,7 @@ export class BookingNotificationService {
             metadata: {
               bookingId: bookingId,
               propertyId: booking.propertyId?.toString(),
-              listingId:
-                typeof listing._id === 'string'
-                  ? listing._id
-                  : listing._id
-                    ? (listing._id as Types.ObjectId).toString()
-                    : undefined,
+              listingId: this.idToString(listing._id),
               amount: finalAmount,
               bookingStatus: BookingStatus.PENDING,
               guestName,

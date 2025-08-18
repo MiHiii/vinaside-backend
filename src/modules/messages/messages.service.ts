@@ -667,7 +667,7 @@ export class MessagesService {
         }
       : null;
 
-    const lastMessageAt = lastMessage ? (lastMessage.sent_at as Date) : null;
+    const lastMessageAt = lastMessage ? lastMessage.sent_at : null;
 
     // Đếm unread cho từng user
     const countUnreadFor = async (

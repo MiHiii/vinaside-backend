@@ -46,6 +46,22 @@ export class BookingNotificationStatusService {
     private readonly bookingRepo: BookingRepo,
   ) {}
 
+  private idToString(
+    id: Types.ObjectId | string | undefined | null,
+  ): string | undefined {
+    if (!id) return undefined;
+    return typeof id === 'string' ? id : id.toString();
+  }
+
+  private formatError(err: unknown): string {
+    if (err instanceof Error) return err.stack ?? err.message;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+
   /**
    * Tạo thông báo khi trạng thái booking thay đổi
    */
@@ -306,7 +322,7 @@ export class BookingNotificationStatusService {
     } catch (error) {
       this.logger.error(
         'Error creating staff status change notification:',
-        error,
+        this.formatError(error),
       );
     }
   }
@@ -361,10 +377,7 @@ export class BookingNotificationStatusService {
       // Create ONE notification for admin (pick first admin as representative)
       if (adminUsers.length > 0) {
         const representativeAdmin = adminUsers[0] as UserInfo; // Use first admin as representative
-        const adminId =
-          typeof representativeAdmin._id === 'string'
-            ? representativeAdmin._id
-            : (representativeAdmin._id as Types.ObjectId).toString();
+        const adminId = this.idToString(representativeAdmin._id)!;
 
         const notificationData: CreateNotificationDto = {
           user_id: adminId,
@@ -401,7 +414,7 @@ export class BookingNotificationStatusService {
     } catch (error) {
       this.logger.error(
         'Error creating admin status change notification:',
-        error,
+        this.formatError(error),
       );
     }
   }
@@ -688,7 +701,7 @@ export class BookingNotificationStatusService {
     } catch (error) {
       this.logger.error(
         'Error creating staff payment status change notification:',
-        error,
+        this.formatError(error),
       );
     }
   }
@@ -789,7 +802,7 @@ export class BookingNotificationStatusService {
     } catch (error) {
       this.logger.error(
         'Error creating admin payment status change notification:',
-        error,
+        this.formatError(error),
       );
     }
   }
