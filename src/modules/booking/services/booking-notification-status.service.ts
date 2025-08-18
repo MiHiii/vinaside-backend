@@ -253,7 +253,9 @@ export class BookingNotificationStatusService {
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
       const checkInDate = booking.checkInDate
-        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        ? new Date(
+            booking.checkInDate as unknown as string | number | Date,
+          ).toLocaleDateString('vi-VN')
         : '';
 
       const statusMessages: Record<BookingStatus, string> = {
@@ -363,7 +365,9 @@ export class BookingNotificationStatusService {
       const guestEmail = guestInfo?.email || '';
       const propertyName = propertyInfo?.name || 'Property';
       const checkInDate = booking.checkInDate
-        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        ? new Date(
+            booking.checkInDate as unknown as string | number | Date,
+          ).toLocaleDateString('vi-VN')
         : '';
       const amount = booking.final_amount || booking.total_price || 0;
 
@@ -640,7 +644,9 @@ export class BookingNotificationStatusService {
       const guestName = guestInfo?.name || 'Khách hàng';
       const propertyName = propertyInfo?.name || 'Property';
       const checkInDate = booking.checkInDate
-        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        ? new Date(
+            booking.checkInDate as unknown as string | number | Date,
+          ).toLocaleDateString('vi-VN')
         : '';
 
       const paymentStatusMessages: Record<PaymentStatus, string> = {
@@ -757,7 +763,9 @@ export class BookingNotificationStatusService {
       const guestEmail = guestInfo?.email || '';
       const propertyName = propertyInfo?.name || 'Property';
       const checkInDate = booking.checkInDate
-        ? new Date(booking.checkInDate).toLocaleDateString('vi-VN')
+        ? new Date(
+            booking.checkInDate as unknown as string | number | Date,
+          ).toLocaleDateString('vi-VN')
         : '';
       const amount = booking.final_amount || 0;
 

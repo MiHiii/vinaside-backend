@@ -184,8 +184,8 @@ export class BookingNotificationService {
           const isStaff = await this.isActualStaff(staffObjectId);
 
           if (isStaff) {
-            const staffUser = assignment.staffId!;
-            const staffIdStr = this.idToString(staffUser._id)!;
+            const staffUser = assignment.staffId;
+            const staffIdStr = this.idToString(staffUser._id) ?? '';
             allStaffEmails.push(staffUser.email || staffIdStr);
 
             // Use first actual staff as representative
@@ -198,7 +198,7 @@ export class BookingNotificationService {
 
       // Create ONE staff notification if we found any staff
       if (representativeStaff) {
-        const staffIdStr = this.idToString(representativeStaff._id)!;
+        const staffIdStr = this.idToString(representativeStaff._id) ?? '';
 
         const createNotificationDto: CreateNotificationDto = {
           user_id: staffIdStr,
@@ -338,9 +338,8 @@ export class BookingNotificationService {
         } else {
           // Send to representative admin only (default behavior)
           const representativeAdmin = adminUsers[0] as UserInfo;
-          const adminId = this.idToString(
-            representativeAdmin._id as ObjectIdLike,
-          )!;
+          const adminId =
+            this.idToString(representativeAdmin._id as ObjectIdLike) ?? '';
 
           this.logger.log(
             `[ADMIN NOTIFICATION] Sending to representative admin: ${representativeAdmin.email} (${adminId})`,
