@@ -1425,12 +1425,13 @@ export class ChatbotGateway {
 
     // Lọc các dịch vụ liên quan đến business
     services.filter((service) => {
-      const name = service.name as string;
+      if (typeof service !== 'object' || service === null) return false;
+      const serviceObj = service as { name?: string };
+      const name = serviceObj.name || '';
       return (
-        name &&
-        (name.toLowerCase().includes('meeting') ||
-          name.toLowerCase().includes('conference') ||
-          name.toLowerCase().includes('business'))
+        name.toLowerCase().includes('meeting') ||
+        name.toLowerCase().includes('conference') ||
+        name.toLowerCase().includes('business')
       );
     });
 
