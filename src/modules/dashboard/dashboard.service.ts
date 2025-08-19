@@ -1235,90 +1235,144 @@ export class DashboardService {
   ): Promise<DashboardPerformanceStatistics> {
     const propertyMatch = this.createPropertyMatch(propertyFilter);
 
-    // Calculate total possible nights for the date range
+    // Calculate total possible nights for the date range (inclusive days)
     const startDate = new Date(dateFilter.created_at.$gte);
     const endDate = new Date(dateFilter.created_at.$lte);
-    const totalDays =
-      Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      ) + 1;
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const endExclusive = new Date(endOfDay.getTime() + dayMs);
+    const totalDays = Math.max(
+      0,
+      Math.floor((endExclusive.getTime() - startOfDay.getTime()) / dayMs),
+    );
 
-    // Get total active listings for the properties
+    // Get total ACTIVE listings for the properties
     const activeListingsCount = await this.listingModel.countDocuments({
-      status: { $in: ['active', 'verified'] },
+      status: 'active',
       ...propertyMatch,
     });
 
     const totalPossibleNights = totalDays * activeListingsCount;
 
-    // Occupancy rates - calculate actual occupancy rate
-    const occupancyStats: BookingStats[] = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyMatch } },
-      {
-        $group: {
-          _id: '$propertyId',
-          totalNights: { $sum: '$nights' },
-          average: { $avg: '$nights' },
-        },
-      },
-    ]);
+    // Occupancy rates - calculate based on overlap within the date range and confirmed/completed bookings
+    const overlapMatch = {
+      ...propertyMatch,
+      isDeleted: false,
+      status: { $in: ['confirmed', 'completed'] },
+      checkInDate: { $lt: endExclusive },
+      check_out_date: { $gt: startOfDay },
+    } as Record<string, unknown>;
 
-    const totalBookedNights = occupancyStats.reduce(
-      (sum, item: BookingStats) => sum + item.totalNights,
-      0,
-    );
+    const occupancyRaw = await this.bookingModel
+      .find(overlapMatch, {
+        propertyId: 1,
+        listingId: 1,
+        checkInDate: 1,
+        check_out_date: 1,
+      })
+      .lean();
 
-    const averageOccupancyRate =
+    // Deduplicate by (listingId, date) to avoid overbooking counting >1 per room-night
+    const uniqueRoomNights = new Set<string>();
+    occupancyRaw.forEach((b: any) => {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(b.check_out_date);
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+      );
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${b.listingId.toString()}::${dateStr}`);
+      }
+    });
+
+    const totalBookedNights = uniqueRoomNights.size;
+
+    const averageOccupancyRate = Math.min(
+      100,
       totalPossibleNights > 0
         ? (totalBookedNights / totalPossibleNights) * 100
-        : 0;
+        : 0,
+    );
 
     // Occupancy by property
-    const occupancyByProperty: PropertyBookingStats[] =
-      await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
-        {
-          $lookup: {
-            from: 'properties',
-            localField: 'propertyId',
-            foreignField: '_id',
-            as: 'propertyInfo',
-          },
-        },
-        { $unwind: '$propertyInfo' },
-        {
-          $group: {
-            _id: '$propertyId',
-            propertyName: { $first: '$propertyInfo.name' },
-            totalNights: { $sum: '$nights' },
-            average: { $avg: '$nights' },
-          },
-        },
-      ]);
+    // Calculate occupancy by property using overlapped nights and ACTIVE listings count per property
+    const propertyIdToNights = new Map<string, number>();
+    const propertyIdToName = new Map<string, string>();
 
-    // Calculate occupancy rate for each property
+    if (occupancyRaw.length > 0) {
+      // Preload property names for involved properties
+      const propertyIds = Array.from(
+        new Set(occupancyRaw.map((b: any) => b.propertyId.toString())),
+      ).map((id) => new Types.ObjectId(id));
+      if (propertyIds.length > 0) {
+        const props = await this.propertyModel
+          .find({ _id: { $in: propertyIds } }, { _id: 1, name: 1 })
+          .lean();
+        props.forEach((p: any) =>
+          propertyIdToName.set(p._id.toString(), p.name),
+        );
+      }
+
+      // Deduplicate per property using (listingId, date)
+      const propertyIdToSet = new Map<string, Set<string>>();
+      occupancyRaw.forEach((b: any) => {
+        const pid = b.propertyId.toString();
+        const set = propertyIdToSet.get(pid) || new Set<string>();
+        const bStart = new Date(b.checkInDate);
+        const bEndExclusive = new Date(b.check_out_date);
+        const overlapStart = new Date(
+          Math.max(bStart.getTime(), startOfDay.getTime()),
+        );
+        const overlapEndExclusive = new Date(
+          Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+        );
+        for (
+          let d = new Date(overlapStart);
+          d < overlapEndExclusive;
+          d = new Date(d.getTime() + dayMs)
+        ) {
+          const dateStr = d.toISOString().split('T')[0];
+          set.add(`${b.listingId.toString()}::${dateStr}`);
+        }
+        propertyIdToSet.set(pid, set);
+      });
+      propertyIdToSet.forEach((set, pid) => {
+        propertyIdToNights.set(pid, set.size);
+      });
+    }
+
     const formattedOccupancyByProperty: Array<{
       propertyId: string;
       propertyName: string;
       occupancyRate: number;
     }> = await Promise.all(
-      occupancyByProperty.map(async (item: PropertyBookingStats) => {
-        // Get active listings count for this property
+      Array.from(propertyIdToNights.entries()).map(async ([pid, nights]) => {
         const propertyListingsCount = await this.listingModel.countDocuments({
-          propertyId: item._id,
-          status: { $in: ['active', 'verified'] },
+          propertyId: new Types.ObjectId(pid),
+          status: 'active',
         });
-
         const propertyPossibleNights = totalDays * propertyListingsCount;
-        const propertyOccupancyRate =
+        const propertyOccupancyRate = Math.min(
+          100,
           propertyPossibleNights > 0
-            ? (item.totalNights / propertyPossibleNights) * 100
-            : 0;
-
+            ? (nights / propertyPossibleNights) * 100
+            : 0,
+        );
         return {
-          propertyId: item._id.toString(),
-          propertyName: item.propertyName,
-          occupancyRate: Math.round(propertyOccupancyRate * 100) / 100, // Round to 2 decimal places
+          propertyId: pid,
+          propertyName: propertyIdToName.get(pid) || 'N/A',
+          occupancyRate: Math.round(propertyOccupancyRate * 100) / 100,
         };
       }),
     );

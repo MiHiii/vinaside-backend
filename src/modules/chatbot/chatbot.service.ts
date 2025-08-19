@@ -71,12 +71,26 @@ export class ChatbotService {
   // Gửi yêu cầu tới Gemini API và nhận phản hồi
   async generateResponse(prompt: string): Promise<string> {
     try {
-      const guide =
-        'Bạn là trợ lý AI thông minh chuyên về du lịch và đặt phòng tại Vinaside. Trả lời ngắn gọn, chính xác, thân thiện và hữu ích. Chỉ sử dụng thông tin từ dữ liệu được cung cấp. Nếu không có thông tin phù hợp, hãy gợi ý các tùy chọn khác hoặc yêu cầu thông tin thêm. Sử dụng emoji phù hợp để làm cho câu trả lời sinh động. Luôn cố gắng tìm thông tin liên quan, ngay cả khi câu hỏi không hoàn toàn khớp.';
-      return await this.askGemini(`${guide}\n${prompt}`);
+      // Kiểm tra nếu prompt quá ngắn hoặc không có dữ liệu
+      if (prompt.length < 50 || !prompt.includes('DỮ LIỆU THỰC TẾ')) {
+        this.logger.warn(
+          `Prompt không đủ thông tin: ${prompt.substring(0, 100)}...`,
+        );
+        return 'Hiện tại chưa có đủ thông tin để trả lời. Bạn có thể hỏi về phòng hoặc dịch vụ cụ thể không?';
+      }
+
+      const response = await this.askGemini(prompt);
+
+      // Kiểm tra và xử lý phản hồi
+      if (!response || response.trim().length === 0) {
+        return 'Xin lỗi, tôi không tìm được thông tin phù hợp. Hãy thử hỏi về phòng hoặc dịch vụ có trong hệ thống.';
+      }
+
+      return response;
     } catch (error) {
       this.logger.error('Error generating response:', error);
-      return 'Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn. Hãy thử lại sau nhé!';
+      // Cung cấp phản hồi thân thiện khi có lỗi
+      return 'Xin lỗi, hiện tại tôi đang gặp vấn đề kỹ thuật. Hãy liên hệ 0909.123.456 để được hỗ trợ trực tiếp!';
     }
   }
 
@@ -113,15 +127,26 @@ export class ChatbotService {
   // Gọi Gemini API
   async askGemini(prompt: string): Promise<string> {
     if (!this.apiKey || !this.apiUrl) {
-      throw new Error('Gemini API key or URL is not set');
+      this.logger.error('Gemini API key or URL is not set');
+      return 'Xin lỗi, hệ thống chưa được cấu hình đúng. Vui lòng liên hệ 0909.123.456 để được hỗ trợ.';
     }
+
+    // Đảm bảo prompt không quá lớn
+    const maxPromptLength = 8000;
+    if (prompt.length > maxPromptLength) {
+      prompt = prompt.substring(0, maxPromptLength) + '...';
+      this.logger.warn(
+        `Prompt quá dài (${prompt.length} ký tự), đã cắt ngắn xuống ${maxPromptLength} ký tự.`,
+      );
+    }
+
     try {
       const response = await axios.post(
         `${this.apiUrl}?key=${this.apiKey}`,
         { contents: [{ parts: [{ text: prompt }] }] },
         {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 10000,
+          timeout: 15000, // Tăng timeout lên 15s
         },
       );
 
@@ -129,13 +154,28 @@ export class ChatbotService {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       };
 
-      return (
-        responseData?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        'Không có phản hồi từ Gemini API'
-      );
-    } catch (error) {
-      this.logger.error('Gemini API error:', error);
-      throw new Error('Gemini API request failed');
+      const result = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!result) {
+        this.logger.warn('Gemini API trả về kết quả rỗng');
+        return 'Xin lỗi, tôi không tìm thấy thông tin phù hợp. Hãy thử hỏi về phòng hoặc dịch vụ có trong hệ thống.';
+      }
+
+      return result;
+    } catch (error: any) {
+      // Log chi tiết lỗi để debug
+      if (error.response) {
+        this.logger.error(
+          `Gemini API error (${error.response.status}):`,
+          error.response.data,
+        );
+      } else if (error.request) {
+        this.logger.error('Gemini API no response:', error.message);
+      } else {
+        this.logger.error('Gemini API error:', error.message);
+      }
+
+      // Trả về thông báo thân thiện hơn
+      return 'Xin lỗi, tôi đang gặp vấn đề kết nối. Vui lòng hỏi lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!';
     }
   }
 

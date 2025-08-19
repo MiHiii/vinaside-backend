@@ -744,8 +744,8 @@ export class ListingService {
     queryDto: ListingStatisticsDto,
     user?: JwtPayload,
   ): Promise<ListingStatisticsResponseDto> {
-    // Validate listing exists
-    const listing = await this.findOne(listingId);
+    // Validate listing exists - use findOneForStaff to allow viewing inactive listings
+    const listing = await this.findOneForStaff(listingId);
     if (!listing) {
       throw new NotFoundException(`Listing with ID ${listingId} not found.`);
     }
@@ -848,18 +848,60 @@ export class ListingService {
       totalNights: 0,
     };
 
-    // 2. Calculate occupancy rate (corrected logic similar to dashboard)
-    const totalDays =
-      Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      ) + 1;
+    // 2. Calculate occupancy rate using overlapped unique room-nights (checkOut exclusive)
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const endExclusive = new Date(endOfDay.getTime() + dayMs);
+    const totalDays = Math.max(
+      0,
+      Math.floor((endExclusive.getTime() - startOfDay.getTime()) / dayMs),
+    );
 
-    // For a single listing, totalPossibleNights = totalDays * 1 (only 1 room)
+    // For a single listing, denominator = totalDays * 1
     const totalPossibleNights = totalDays * 1;
-    const occupancyRate =
+
+    const bookingNights = await this.bookingModel
+      .find(
+        {
+          listingId: listingIdObj,
+          isDeleted: false,
+          status: { $in: ['confirmed', 'completed'] },
+          checkInDate: { $lt: endExclusive },
+          check_out_date: { $gt: startOfDay },
+        },
+        { checkInDate: 1, check_out_date: 1 },
+      )
+      .lean();
+
+    const uniqueNights = new Set<string>();
+    bookingNights.forEach((b: any) => {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(b.check_out_date);
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+      );
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueNights.add(dateStr);
+      }
+    });
+
+    const occupancyRate = Math.min(
+      100,
       totalPossibleNights > 0
-        ? (stats.totalNights / totalPossibleNights) * 100
-        : 0;
+        ? (uniqueNights.size / totalPossibleNights) * 100
+        : 0,
+    );
 
     // 3. Review statistics
     const reviewStats = await this.reviewModel.aggregate([
