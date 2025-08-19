@@ -658,9 +658,14 @@ export class PropertyService {
       .lean();
 
     const uniqueRoomNights = new Set<string>();
-    overlaps.forEach((b: any) => {
-      const bStart = new Date(b.checkInDate);
-      const bEndExclusive = new Date(b.check_out_date);
+    overlaps.forEach((b) => {
+      const booking = b as {
+        checkInDate: string | Date;
+        check_out_date: string | Date;
+        listingId: { toString(): string };
+      };
+      const bStart = new Date(booking.checkInDate);
+      const bEndExclusive = new Date(booking.check_out_date);
       const overlapStart = new Date(
         Math.max(bStart.getTime(), startOfDay.getTime()),
       );
@@ -673,7 +678,7 @@ export class PropertyService {
         d = new Date(d.getTime() + dayMs)
       ) {
         const dateStr = d.toISOString().split('T')[0];
-        uniqueRoomNights.add(`${b.listingId.toString()}::${dateStr}`);
+        uniqueRoomNights.add(`${booking.listingId.toString()}::${dateStr}`);
       }
     });
 

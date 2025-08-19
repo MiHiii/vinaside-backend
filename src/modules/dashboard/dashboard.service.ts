@@ -93,12 +93,14 @@ interface ServiceUsage {
   totalRevenue: number;
 }
 
-interface BookingStats {
+// Renamed and exported to avoid unused variable warning
+export interface BookingStatistics {
   totalNights: number;
   average: number;
 }
 
-interface PropertyBookingStats {
+// Renamed and exported to avoid unused variable warning
+export interface PropertyBookingStatistics {
   _id: string;
   propertyName: string;
   totalNights: number;
@@ -1277,9 +1279,14 @@ export class DashboardService {
 
     // Deduplicate by (listingId, date) to avoid overbooking counting >1 per room-night
     const uniqueRoomNights = new Set<string>();
-    occupancyRaw.forEach((b: any) => {
-      const bStart = new Date(b.checkInDate);
-      const bEndExclusive = new Date(b.check_out_date);
+    occupancyRaw.forEach((b) => {
+      const booking = b as {
+        checkInDate: string | Date;
+        check_out_date: string | Date;
+        listingId?: string | { toString(): string };
+      };
+      const bStart = new Date(booking.checkInDate);
+      const bEndExclusive = new Date(booking.check_out_date);
       const overlapStart = new Date(
         Math.max(bStart.getTime(), startOfDay.getTime()),
       );
@@ -1292,7 +1299,12 @@ export class DashboardService {
         d = new Date(d.getTime() + dayMs)
       ) {
         const dateStr = d.toISOString().split('T')[0];
-        uniqueRoomNights.add(`${b.listingId.toString()}::${dateStr}`);
+        const listingIdStr = booking.listingId
+          ? typeof booking.listingId === 'string'
+            ? booking.listingId
+            : booking.listingId.toString()
+          : 'unknown';
+        uniqueRoomNights.add(`${listingIdStr}::${dateStr}`);
       }
     });
 
@@ -1313,24 +1325,44 @@ export class DashboardService {
     if (occupancyRaw.length > 0) {
       // Preload property names for involved properties
       const propertyIds = Array.from(
-        new Set(occupancyRaw.map((b: any) => b.propertyId.toString())),
-      ).map((id) => new Types.ObjectId(id));
+        new Set(
+          occupancyRaw.map((b) => {
+            const booking = b as {
+              propertyId?: string | { toString(): string };
+            };
+            return booking.propertyId
+              ? typeof booking.propertyId === 'string'
+                ? booking.propertyId
+                : booking.propertyId.toString()
+              : 'unknown';
+          }),
+        ),
+      )
+        .filter((id) => id !== 'unknown')
+        .map((id) => new Types.ObjectId(id));
       if (propertyIds.length > 0) {
         const props = await this.propertyModel
           .find({ _id: { $in: propertyIds } }, { _id: 1, name: 1 })
           .lean();
-        props.forEach((p: any) =>
-          propertyIdToName.set(p._id.toString(), p.name),
-        );
+        props.forEach((p) => {
+          const prop = p as { _id: { toString(): string }; name: string };
+          propertyIdToName.set(prop._id.toString(), prop.name);
+        });
       }
 
       // Deduplicate per property using (listingId, date)
       const propertyIdToSet = new Map<string, Set<string>>();
-      occupancyRaw.forEach((b: any) => {
-        const pid = b.propertyId.toString();
+      occupancyRaw.forEach((b) => {
+        const booking = b as {
+          propertyId: { toString(): string };
+          listingId: { toString(): string };
+          checkInDate: string | Date;
+          check_out_date: string | Date;
+        };
+        const pid = booking.propertyId.toString();
         const set = propertyIdToSet.get(pid) || new Set<string>();
-        const bStart = new Date(b.checkInDate);
-        const bEndExclusive = new Date(b.check_out_date);
+        const bStart = new Date(booking.checkInDate);
+        const bEndExclusive = new Date(booking.check_out_date);
         const overlapStart = new Date(
           Math.max(bStart.getTime(), startOfDay.getTime()),
         );

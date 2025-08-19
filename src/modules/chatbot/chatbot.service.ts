@@ -161,17 +161,23 @@ export class ChatbotService {
       }
 
       return result;
-    } catch (error: any) {
+    } catch (error) {
       // Log chi tiết lỗi để debug
-      if (error.response) {
+      const err = error as {
+        response?: { status: string; data: any };
+        request?: any;
+        message?: string;
+      };
+
+      if (err.response) {
         this.logger.error(
-          `Gemini API error (${error.response.status}):`,
-          error.response.data,
+          `Gemini API error (${err.response.status}):`,
+          err.response.data,
         );
-      } else if (error.request) {
-        this.logger.error('Gemini API no response:', error.message);
+      } else if (err.request) {
+        this.logger.error('Gemini API no response:', err.message);
       } else {
-        this.logger.error('Gemini API error:', error.message);
+        this.logger.error('Gemini API error:', err.message);
       }
 
       // Trả về thông báo thân thiện hơn

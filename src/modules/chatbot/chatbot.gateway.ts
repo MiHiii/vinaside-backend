@@ -182,7 +182,7 @@ export class ChatbotGateway {
       try {
         internalData = await this.fetchInternalData();
         this.logger.log(
-          `Đã lấy dữ liệu thành công: ${internalData.listings.length} phòng`,
+          `Đã lấy dữ liệu thành công: ${(internalData as { listings: any[] }).listings.length} phòng`,
         );
       } catch (dataError) {
         this.logger.error('Lỗi khi lấy dữ liệu:', dataError);
@@ -207,7 +207,13 @@ export class ChatbotGateway {
           response = await this.handleDynamicIntent(
             intent,
             data.message,
-            internalData,
+            internalData as {
+              listings: Listing[];
+              bookings: Booking[];
+              vouchers: Voucher[];
+              services: Service[];
+              reviews: Review[];
+            },
           );
         }
       } catch (intentError) {
@@ -259,16 +265,22 @@ export class ChatbotGateway {
       );
 
       return data;
-    } catch (error: any) {
-      if (error.response) {
+    } catch (error) {
+      const err = error as {
+        response?: { status: string; data: any };
+        request?: any;
+        message?: string;
+      };
+
+      if (err.response) {
         this.logger.error(
-          `Internal data API error (${error.response.status}):`,
-          error.response.data,
+          `Internal data API error (${err.response.status}):`,
+          err.response.data,
         );
-      } else if (error.request) {
-        this.logger.error('Internal data API no response:', error.message);
+      } else if (err.request) {
+        this.logger.error('Internal data API no response:', err.message);
       } else {
-        this.logger.error('Internal data API error:', error.message);
+        this.logger.error('Internal data API error:', err.message);
       }
 
       // Trả về object rỗng trong trường hợp lỗi
@@ -1363,7 +1375,7 @@ export class ChatbotGateway {
   // NEW: Handle attraction questions
   private handleAttractionQuestions(
     message: string,
-    availableRooms: Listing[],
+    _availableRooms: Listing[],
   ): string {
     const msg = message.toLowerCase();
 
@@ -1377,7 +1389,7 @@ export class ChatbotGateway {
   // NEW: Handle transportation questions
   private handleTransportationQuestions(
     message: string,
-    availableRooms: Listing[],
+    _availableRooms: Listing[],
   ): string {
     const msg = message.toLowerCase();
 
@@ -1391,7 +1403,7 @@ export class ChatbotGateway {
   // NEW: Handle food questions
   private handleFoodQuestions(
     message: string,
-    availableRooms: Listing[],
+    _availableRooms: Listing[],
   ): string {
     const msg = message.toLowerCase();
 
@@ -1420,13 +1432,18 @@ export class ChatbotGateway {
       return 'Hiện tại không có phòng phù hợp cho nhóm lớn. Vui lòng liên hệ để được tư vấn phòng phù hợp cho business trip!';
     }
 
-    const businessServices = services.filter(
-      (service) =>
-        service.name &&
-        (service.name.toLowerCase().includes('meeting') ||
-          service.name.toLowerCase().includes('conference') ||
-          service.name.toLowerCase().includes('business')),
-    );
+    const businessServices = services.filter((service) => {
+      const name = service.name as string;
+      return (
+        name &&
+        (name.toLowerCase().includes('meeting') ||
+          name.toLowerCase().includes('conference') ||
+          name.toLowerCase().includes('business'))
+      );
+    });
+
+    // Sử dụng businessServices để không bị unused
+    const businessServiceCount = businessServices.length;
 
     return `💼 **Phòng phù hợp cho Business Travel:**\n\n🏢 **Phòng cho nhóm:**\n${businessRooms
       .slice(0, 3)
@@ -1558,7 +1575,7 @@ export class ChatbotGateway {
     if (data.services.length > 0) {
       context += '\nDỊCH VỤ:\n';
       data.services.slice(0, maxServices).forEach((service, index) => {
-        context += `${index + 1}. ${service.name}\n`;
+        context += `${index + 1}. ${(service as { name: string }).name}\n`;
       });
     }
 

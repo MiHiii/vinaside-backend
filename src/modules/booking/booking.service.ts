@@ -3916,23 +3916,28 @@ export class BookingService {
 
     // Áp dụng tìm kiếm theo tên nếu có
     const searchedBookings = (() => {
-      const { keyword, guestName, listingTitle, propertyName } =
-        queryDto as any;
+      const { keyword, guestName, listingTitle, propertyName } = queryDto as {
+        keyword?: string;
+        guestName?: string;
+        listingTitle?: string;
+        propertyName?: string;
+      };
       const hasNameFilters = Boolean(
         keyword || guestName || listingTitle || propertyName,
       );
       if (!hasNameFilters) return bookings;
 
-      const toRegex = (v: any) => new RegExp(String(v), 'i');
+      const toRegex = (v: string) => new RegExp(String(v), 'i');
       const kw = keyword ? toRegex(keyword) : null;
       const gRe = guestName ? toRegex(guestName) : null;
       const lRe = listingTitle ? toRegex(listingTitle) : null;
       const pRe = propertyName ? toRegex(propertyName) : null;
 
-      return bookings.filter((b: any) => {
-        const bGuestName = b.guestId?.name || b.guest_name || '';
-        const bListingTitle = (b.listingId as any)?.title || '';
-        const bPropertyName = (b.propertyId as any)?.name || '';
+      return bookings.filter((b) => {
+        const booking = b as any;
+        const bGuestName = booking.guestId?.name || booking.guest_name || '';
+        const bListingTitle = booking.listingId?.title || '';
+        const bPropertyName = booking.propertyId?.name || '';
 
         const matchKw = kw
           ? kw.test(bGuestName) ||
