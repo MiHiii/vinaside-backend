@@ -682,7 +682,7 @@ export class ChatbotGateway {
 
       // NEW: Handle attraction and activity questions
       case 'ask_nearby_attractions': {
-        return this.handleAttractionQuestions(message, availableRooms);
+        return this.handleAttractionQuestions(message);
       }
 
       case 'ask_beach_activities': {
@@ -699,12 +699,12 @@ export class ChatbotGateway {
 
       // NEW: Handle transportation questions
       case 'ask_transportation': {
-        return this.handleTransportationQuestions(message, availableRooms);
+        return this.handleTransportationQuestions(message);
       }
 
       // NEW: Handle food and restaurant questions
       case 'ask_food_restaurant': {
-        return this.handleFoodQuestions(message, availableRooms);
+        return this.handleFoodQuestions(message);
       }
 
       // NEW: Handle weather questions
@@ -1373,10 +1373,7 @@ export class ChatbotGateway {
   }
 
   // NEW: Handle attraction questions
-  private handleAttractionQuestions(
-    message: string,
-    _availableRooms: Listing[],
-  ): string {
+  private handleAttractionQuestions(message: string): string {
     const msg = message.toLowerCase();
 
     if (msg.includes('gần') || msg.includes('nearby')) {
@@ -1387,10 +1384,7 @@ export class ChatbotGateway {
   }
 
   // NEW: Handle transportation questions
-  private handleTransportationQuestions(
-    message: string,
-    _availableRooms: Listing[],
-  ): string {
+  private handleTransportationQuestions(message: string): string {
     const msg = message.toLowerCase();
 
     if (msg.includes('sân bay') || msg.includes('airport')) {
@@ -1401,10 +1395,7 @@ export class ChatbotGateway {
   }
 
   // NEW: Handle food questions
-  private handleFoodQuestions(
-    message: string,
-    _availableRooms: Listing[],
-  ): string {
+  private handleFoodQuestions(message: string): string {
     const msg = message.toLowerCase();
 
     if (
@@ -1432,7 +1423,8 @@ export class ChatbotGateway {
       return 'Hiện tại không có phòng phù hợp cho nhóm lớn. Vui lòng liên hệ để được tư vấn phòng phù hợp cho business trip!';
     }
 
-    const businessServices = services.filter((service) => {
+    // Lọc các dịch vụ liên quan đến business
+    services.filter((service) => {
       const name = service.name as string;
       return (
         name &&
@@ -1441,9 +1433,6 @@ export class ChatbotGateway {
           name.toLowerCase().includes('business'))
       );
     });
-
-    // Sử dụng businessServices để không bị unused
-    const businessServiceCount = businessServices.length;
 
     return `💼 **Phòng phù hợp cho Business Travel:**\n\n🏢 **Phòng cho nhóm:**\n${businessRooms
       .slice(0, 3)

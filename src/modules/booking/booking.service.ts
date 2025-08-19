@@ -3811,8 +3811,7 @@ export class BookingService {
     const endDate = queryDto.endDate ? new Date(queryDto.endDate) : new Date();
 
     // Normalize viewType (support aliases)
-    const vt = (queryDto.viewType ||
-      CalendarViewType.MONTHLY) as CalendarViewType;
+    const vt = queryDto.viewType || CalendarViewType.MONTHLY;
     const viewType =
       vt === CalendarViewType.DAY
         ? CalendarViewType.DAILY
