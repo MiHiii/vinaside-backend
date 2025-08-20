@@ -853,26 +853,185 @@ export class BookingService {
     const filteredQuery = applyStaffFilter(query, request, 'propertyId');
 
     const sort: Record<string, SortOrder> = {
-      [sortBy || 'createdAt']: sortOrder === 'asc' ? 1 : -1,
+      [sortBy || 'created_at']: sortOrder === 'asc' ? 1 : -1,
     };
 
-    const { data, total } = await this.bookingRepo.findAll(filteredQuery, {
-      sort,
-      skip,
-      limit,
-      populate: [
-        { path: 'propertyId', select: '_id name location' },
-        {
-          path: 'listingId',
-          select: 'title address images price_per_night cancel_policy',
+    const hasNameFilters = Boolean(
+      (filters as any).keyword ||
+        (filters as any).guestName ||
+        (filters as any).listingTitle ||
+        (filters as any).propertyName,
+    );
+
+    if (!hasNameFilters) {
+      const { data, total } = await this.bookingRepo.findAll(filteredQuery, {
+        sort,
+        skip,
+        limit,
+        populate: [
+          { path: 'propertyId', select: '_id name location' },
+          {
+            path: 'listingId',
+            select: 'title address images price_per_night cancel_policy',
+          },
+          { path: 'guestId', select: 'name avatar email phone' },
+          { path: 'voucher_id', select: 'code discount_percent' },
+        ],
+      });
+
+      return {
+        data: data.map((booking) => this.transformBookingToResponse(booking)),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+      };
+    }
+
+    // Name-based search via aggregation (guest, listing, property)
+    const pipeline: any[] = [
+      { $match: filteredQuery },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'property',
         },
-        { path: 'guestId', select: 'name avatar email phone' },
-        { path: 'voucher_id', select: 'code discount_percent' },
-      ],
-    });
+      },
+      { $unwind: '$property' },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'listingId',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      { $unwind: '$listing' },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'guestId',
+          foreignField: '_id',
+          as: 'guest',
+        },
+      },
+      { $unwind: { path: '$guest', preserveNullAndEmptyArrays: true } },
+    ];
+
+    const andConditions: any[] = [];
+    if (
+      (filters as any).keyword &&
+      typeof (filters as any).keyword === 'string'
+    ) {
+      const regex = new RegExp((filters as any).keyword, 'i');
+      andConditions.push({
+        $or: [
+          { guest_name: regex },
+          { 'guest.name': regex },
+          { 'listing.title': regex },
+          { 'property.name': regex },
+        ],
+      });
+    }
+    if ((filters as any).guestName) {
+      const regex = new RegExp(String((filters as any).guestName), 'i');
+      andConditions.push({
+        $or: [{ guest_name: regex }, { 'guest.name': regex }],
+      });
+    }
+    if ((filters as any).listingTitle) {
+      const regex = new RegExp(String((filters as any).listingTitle), 'i');
+      andConditions.push({ 'listing.title': regex });
+    }
+    if ((filters as any).propertyName) {
+      const regex = new RegExp(String((filters as any).propertyName), 'i');
+      andConditions.push({ 'property.name': regex });
+    }
+
+    if (andConditions.length > 0) {
+      pipeline.push({ $match: { $and: andConditions } });
+    }
+
+    const countPipeline = [
+      ...pipeline.filter(
+        (stg) => !('$skip' in stg || '$limit' in stg || '$sort' in stg),
+      ),
+      { $count: 'total' },
+    ];
+
+    pipeline.push(
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 1,
+          propertyId: {
+            _id: '$property._id',
+            name: '$property.name',
+            location: '$property.location',
+          },
+          listingId: {
+            _id: '$listing._id',
+            title: '$listing.title',
+            images: '$listing.images',
+            address: '$listing.address',
+            price_per_night: '$listing.price_per_night',
+            cancel_policy: '$listing.cancel_policy',
+          },
+          guestId: 1,
+          checkInDate: 1,
+          check_out_date: 1,
+          guests: 1,
+          infants: 1,
+          nights: 1,
+          price_per_night: 1,
+          total_price: 1,
+          selected_services: 1,
+          services_total_amount: 1,
+          subtotal_amount: 1,
+          voucher_id: 1,
+          voucher_code: 1,
+          voucher_discount_amount: 1,
+          voucher_discount_percent: 1,
+          discount_amount: 1,
+          amount_after_discount: 1,
+          service_fee: 1,
+          tax_amount: 1,
+          final_amount: 1,
+          commissionRate: 1,
+          finalPayoutAmount: 1,
+          status: 1,
+          payment_status: 1,
+          payment_method: 1,
+          vnpay_order_id: 1,
+          momo_order_id: 1,
+          guest_name: { $ifNull: ['$guest.name', '$guest_name'] },
+          guest_email: { $ifNull: ['$guest.email', '$guest_email'] },
+          guest_phone: { $ifNull: ['$guest.phone', '$guest_phone'] },
+          special_requests: 1,
+          created_at: 1,
+          updated_at: 1,
+          note: 1,
+          additionalCost: 1,
+          additionalCostReason: 1,
+        },
+      },
+    );
+
+    const [items, countArr] = await Promise.all([
+      this.bookingRepo.getModel().aggregate(pipeline),
+      this.bookingRepo.getModel().aggregate(countPipeline),
+    ]);
+
+    const total = countArr?.[0]?.total || 0;
 
     return {
-      data: data.map((booking) => this.transformBookingToResponse(booking)),
+      data: items.map((booking: any) =>
+        this.transformBookingToResponse(booking),
+      ),
       total,
       page,
       limit,
@@ -1935,10 +2094,67 @@ export class BookingService {
       { $limit: 10 },
     ]);
 
-    // Tính tỉ lệ lấp đầy trung bình toàn hệ
+    // Tính tỉ lệ lấp đầy theo unique room-night, checkOut exclusive, chỉ tính confirmed/completed
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const endExclusive = new Date(endOfDay.getTime() + dayMs);
+
+    const occupancyMatch: any = {
+      isDeleted: false,
+      status: { $in: ['confirmed', 'completed'] },
+      checkInDate: { $lt: endExclusive },
+      check_out_date: { $gt: startOfDay },
+    };
+    if (queryDto.listingId) {
+      occupancyMatch.listingId = new Types.ObjectId(queryDto.listingId);
+    } else if (queryDto.propertyId) {
+      if (queryDto.propertyId.includes(',')) {
+        occupancyMatch.propertyId = {
+          $in: queryDto.propertyId
+            .split(',')
+            .map((id) => new Types.ObjectId(id.trim())),
+        };
+      } else {
+        occupancyMatch.propertyId = new Types.ObjectId(queryDto.propertyId);
+      }
+    }
+
+    const occupancyDocs = await this.bookingRepo
+      .getModel()
+      .find(occupancyMatch, {
+        listingId: 1,
+        checkInDate: 1,
+        check_out_date: 1,
+      })
+      .lean();
+
+    const uniqueRoomNights = new Set<string>();
+    occupancyDocs.forEach((b: any) => {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(b.check_out_date);
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+      );
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${b.listingId.toString()}::${dateStr}`);
+      }
+    });
+
+    const totalRoomNightsBooked = uniqueRoomNights.size;
     const averageOccupancyRate =
       totalPossibleNights > 0
-        ? (Number(overview.totalNights || 0) / totalPossibleNights) * 100
+        ? Math.min(100, (totalRoomNightsBooked / totalPossibleNights) * 100)
         : 0;
 
     return {
@@ -3687,7 +3903,18 @@ export class BookingService {
       : new Date();
     const endDate = queryDto.endDate ? new Date(queryDto.endDate) : new Date();
 
-    if (queryDto.viewType === CalendarViewType.MONTHLY) {
+    // Normalize viewType (support aliases)
+    const vt = queryDto.viewType || CalendarViewType.MONTHLY;
+    const viewType =
+      vt === CalendarViewType.DAY
+        ? CalendarViewType.DAILY
+        : vt === CalendarViewType.WEEK
+          ? CalendarViewType.WEEKLY
+          : vt === CalendarViewType.MONTH
+            ? CalendarViewType.MONTHLY
+            : vt;
+
+    if (viewType === CalendarViewType.MONTHLY) {
       // Nếu không có startDate, lấy tháng hiện tại
       if (!queryDto.startDate) {
         startDate.setDate(1);
@@ -3699,7 +3926,7 @@ export class BookingService {
         endDate.setDate(0);
         endDate.setHours(23, 59, 59, 999);
       }
-    } else if (queryDto.viewType === CalendarViewType.WEEKLY) {
+    } else if (viewType === CalendarViewType.WEEKLY) {
       // Nếu không có startDate, lấy tuần hiện tại
       if (!queryDto.startDate) {
         const today = new Date();
@@ -3713,14 +3940,24 @@ export class BookingService {
         endDate.setDate(startDate.getDate() + 6);
         endDate.setHours(23, 59, 59, 999);
       }
-    } else {
-      // DAILY view
+    } else if (viewType === CalendarViewType.DAILY) {
       if (!queryDto.startDate) {
         startDate.setHours(0, 0, 0, 0);
       }
       if (!queryDto.endDate) {
         endDate.setHours(23, 59, 59, 999);
       }
+    } else if (viewType === CalendarViewType.TODAY) {
+      // TODAY view
+      const today = new Date();
+      startDate.setUTCFullYear(today.getUTCFullYear());
+      startDate.setUTCMonth(today.getUTCMonth());
+      startDate.setUTCDate(today.getUTCDate());
+      startDate.setUTCHours(0, 0, 0, 0);
+      endDate.setUTCFullYear(today.getUTCFullYear());
+      endDate.setUTCMonth(today.getUTCMonth());
+      endDate.setUTCDate(today.getUTCDate());
+      endDate.setUTCHours(23, 59, 59, 999);
     }
 
     // Tạo filter cho booking
@@ -3765,8 +4002,47 @@ export class BookingService {
       populate: [
         { path: 'listingId', select: 'title' },
         { path: 'propertyId', select: 'name' },
+        { path: 'guestId', select: 'name email' },
       ],
     });
+
+    // Áp dụng tìm kiếm theo tên nếu có
+    const searchedBookings = (() => {
+      const { keyword, guestName, listingTitle, propertyName } = queryDto as {
+        keyword?: string;
+        guestName?: string;
+        listingTitle?: string;
+        propertyName?: string;
+      };
+      const hasNameFilters = Boolean(
+        keyword || guestName || listingTitle || propertyName,
+      );
+      if (!hasNameFilters) return bookings;
+
+      const toRegex = (v: string) => new RegExp(String(v), 'i');
+      const kw = keyword ? toRegex(keyword) : null;
+      const gRe = guestName ? toRegex(guestName) : null;
+      const lRe = listingTitle ? toRegex(listingTitle) : null;
+      const pRe = propertyName ? toRegex(propertyName) : null;
+
+      return bookings.filter((b) => {
+        const booking = b as any;
+        const bGuestName = booking.guestId?.name || booking.guest_name || '';
+        const bListingTitle = booking.listingId?.title || '';
+        const bPropertyName = booking.propertyId?.name || '';
+
+        const matchKw = kw
+          ? kw.test(bGuestName) ||
+            kw.test(bListingTitle) ||
+            kw.test(bPropertyName)
+          : true;
+        const matchG = gRe ? gRe.test(bGuestName) : true;
+        const matchL = lRe ? lRe.test(bListingTitle) : true;
+        const matchP = pRe ? pRe.test(bPropertyName) : true;
+
+        return matchKw && matchG && matchL && matchP;
+      });
+    })();
 
     // Tạo calendar days
     const days: CalendarDayDto[] = [];
@@ -3784,7 +4060,7 @@ export class BookingService {
         currentDate.getDay() === 0 || currentDate.getDay() === 6;
 
       // Tìm bookings cho ngày này
-      const dayBookings: CalendarBookingDto[] = bookings
+      const dayBookings: CalendarBookingDto[] = searchedBookings
         .filter((booking) => {
           const bookingStart = new Date(booking.checkInDate);
           const bookingEnd = new Date(booking.check_out_date);
@@ -3831,21 +4107,102 @@ export class BookingService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Tính toán tổng quan
-    const totalBookings = bookings.length;
-    const totalRevenue = bookings.reduce(
-      (sum, booking) => sum + (booking.final_amount || 0),
+    // Tính toán tổng quan (căn chỉnh với statistics/overview)
+    const totalBookings = searchedBookings.length;
+
+    // Chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
+    const revenueBookings = searchedBookings.filter((b: any) =>
+      ['confirmed', 'completed'].includes(b.status),
+    );
+    const totalRevenue = revenueBookings.reduce(
+      (sum: number, b: any) => sum + (b.final_amount || 0),
       0,
     );
+
+    // Tính tỉ lệ lấp đầy = (tổng số đêm đã đặt trong kỳ) / (số ngày trong kỳ x số listing ACTIVE trong phạm vi) x 100
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const periodEndExclusive = new Date(
+      endOfDay.getTime() + 24 * 60 * 60 * 1000,
+    );
+    const daysInPeriod = Math.floor(
+      (periodEndExclusive.getTime() - startOfDay.getTime()) /
+        (24 * 60 * 60 * 1000),
+    );
+
+    // Đếm số listing ACTIVE trong phạm vi
+    let activeListingsCount = 0;
+    if (queryDto.listingId) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        _id: new Types.ObjectId(queryDto.listingId),
+        status: ListingStatus.ACTIVE,
+      });
+    } else if (queryDto.propertyId) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        propertyId: new Types.ObjectId(queryDto.propertyId),
+        status: ListingStatus.ACTIVE,
+      });
+    } else if (user?.role === 'staff' && request?.staffPropertyIds?.length) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        propertyId: {
+          $in: request.staffPropertyIds.map(
+            (id: string) => new Types.ObjectId(id),
+          ),
+        },
+        status: ListingStatus.ACTIVE,
+      });
+    } else {
+      activeListingsCount = await this.listingModel.countDocuments({
+        status: ListingStatus.ACTIVE,
+      });
+    }
+
+    const totalPossibleNights = daysInPeriod * activeListingsCount;
+
+    // Tổng số room-night duy nhất (dedup overbooking) trong khoảng ngày hiển thị, checkOut exclusive
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uniqueRoomNights = new Set<string>();
+    for (const b of revenueBookings as any[]) {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(new Date(b.check_out_date).getTime());
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), periodEndExclusive.getTime()),
+      );
+      // Build listing id string
+      const listingKey =
+        b?.listingId && typeof b.listingId === 'object' && b.listingId._id
+          ? String(b.listingId._id)
+          : String(b.listingId || '');
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${listingKey}::${dateStr}`);
+      }
+    }
+
+    const totalRoomNightsBooked = uniqueRoomNights.size;
     const averageOccupancy =
-      days.length > 0
-        ? days.reduce((sum, day) => sum + day.totalBookings, 0) / days.length
+      totalPossibleNights > 0
+        ? Math.min(
+            100,
+            Math.round(
+              (totalRoomNightsBooked / totalPossibleNights) * 100 * 100,
+            ) / 100,
+          )
         : 0;
 
     return {
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
-      viewType: queryDto.viewType || CalendarViewType.MONTHLY,
+      viewType,
       days,
       totalBookings,
       totalRevenue,

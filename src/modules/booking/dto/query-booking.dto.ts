@@ -65,4 +65,22 @@ export class QueryBookingDto {
   @IsOptional()
   @IsBoolean()
   includeDeleted?: boolean = false;
+
+  // Keyword search across guest name, listing title, property name
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  // Specific field-based searches
+  @IsOptional()
+  @IsString()
+  guestName?: string;
+
+  @IsOptional()
+  @IsString()
+  listingTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  propertyName?: string;
 }
