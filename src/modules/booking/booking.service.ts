@@ -122,18 +122,26 @@ export class BookingService {
     let guest_name: string | undefined = undefined;
     let guest_email: string | undefined = undefined;
     let guest_phone: string | undefined = undefined;
+
     if (booking.guestId) {
       if (typeof booking.guestId === 'object' && booking.guestId._id) {
+        // Nếu có guestId object (populated) → lấy từ guest object
         guestId = booking.guestId._id.toString();
         guest_name = booking.guestId.name;
         guest_email = booking.guestId.email;
         guest_phone = booking.guestId.phone;
       } else {
+        // Nếu có guestId string → lấy từ booking fields
         guestId = booking.guestId.toString();
         guest_name = booking.guest_name;
         guest_email = booking.guest_email;
         guest_phone = booking.guest_phone;
       }
+    } else {
+      // Nếu không có guestId (null/undefined) → lấy từ booking fields
+      guest_name = booking.guest_name;
+      guest_email = booking.guest_email;
+      guest_phone = booking.guest_phone;
     }
     return {
       _id: booking._id ? booking._id.toString() : null,
@@ -974,6 +982,68 @@ export class BookingService {
 
     return {
       bookedDates: [...new Set(bookedDates)].sort(),
+    };
+  }
+
+  /**
+   * Kiểm tra xem có booking nào khác đã thanh toán cho cùng khoảng thời gian không
+   */
+  async checkBookingConflictForDates(
+    listingId: string,
+    checkInDate: string,
+    checkOutDate: string,
+    excludeBookingId?: string,
+  ) {
+    const query: FilterQuery<Booking> = {
+      listingId: new Types.ObjectId(listingId),
+      payment_status: { $in: ['paid', 'partially_paid'] },
+      isDeleted: false,
+      $and: [
+        {
+          checkInDate: { $lt: new Date(checkOutDate) },
+        },
+        {
+          check_out_date: { $gt: new Date(checkInDate) },
+        },
+      ],
+    };
+
+    // Loại trừ booking hiện tại nếu có
+    if (excludeBookingId) {
+      query._id = { $ne: new Types.ObjectId(excludeBookingId) };
+    }
+
+    console.log('🔍 checkBookingConflictForDates query:', {
+      listingId,
+      checkInDate,
+      checkOutDate,
+      excludeBookingId,
+      query: JSON.stringify(query, null, 2),
+    });
+
+    const { data } = await this.bookingRepo.findAll(query);
+
+    console.log('🔍 checkBookingConflictForDates result:', {
+      hasConflict: data.length > 0,
+      conflictingBookingsCount: data.length,
+      conflictingBookings: data.map((booking) => ({
+        _id: booking._id,
+        checkInDate: booking.checkInDate,
+        check_out_date: booking.check_out_date,
+        payment_status: booking.payment_status,
+        status: booking.status,
+      })),
+    });
+
+    return {
+      hasConflict: data.length > 0,
+      conflictingBookings: data.map((booking) => ({
+        _id: booking._id,
+        checkInDate: booking.checkInDate,
+        check_out_date: booking.check_out_date,
+        payment_status: booking.payment_status,
+        status: booking.status,
+      })),
     };
   }
 
@@ -3258,6 +3328,27 @@ export class BookingService {
       const commissionRate = 0.1; // 10%
       const finalPayoutAmount = finalAmount * (1 - commissionRate);
 
+      // Xử lý payment_method và deposit_paid_amount
+      let paymentMethod = createBookingDto.payment_method || 'cash';
+      let depositPaidAmount = createBookingDto.deposit_paid_amount || 0;
+      let paymentStatus =
+        createBookingDto.payment_status || PaymentStatus.UNPAID;
+
+      // Tự động set deposit_paid_amount dựa trên payment_status từ frontend
+      if (createBookingDto.payment_status === 'paid') {
+        depositPaidAmount = finalAmount;
+        paymentStatus = PaymentStatus.PAID;
+      } else if (createBookingDto.payment_status === 'partially_paid') {
+        // Sử dụng deposit_paid_amount từ frontend hoặc tính 50% mặc định
+        depositPaidAmount =
+          createBookingDto.deposit_paid_amount || Math.round(finalAmount * 0.5);
+        paymentStatus = PaymentStatus.PARTIALLY_PAID;
+      } else {
+        // unpaid hoặc các trạng thái khác
+        depositPaidAmount = createBookingDto.deposit_paid_amount || 0;
+        paymentStatus = createBookingDto.payment_status || PaymentStatus.UNPAID;
+      }
+
       // Tạo booking data
       const bookingData = {
         propertyId: new Types.ObjectId(createBookingDto.propertyId),
@@ -3278,7 +3369,9 @@ export class BookingService {
         commissionRate,
         finalPayoutAmount,
         status: createBookingDto.status || BookingStatus.PENDING,
-        payment_status: createBookingDto.payment_status || PaymentStatus.UNPAID,
+        payment_status: paymentStatus,
+        payment_method: paymentMethod,
+        deposit_paid_amount: depositPaidAmount,
         guest_name: createBookingDto.guest_name,
         guest_email: createBookingDto.guest_email,
         guest_phone: createBookingDto.guest_phone,
