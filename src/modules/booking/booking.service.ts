@@ -3329,7 +3329,7 @@ export class BookingService {
       const finalPayoutAmount = finalAmount * (1 - commissionRate);
 
       // Xử lý payment_method và deposit_paid_amount
-      let paymentMethod = createBookingDto.payment_method || 'cash';
+      const paymentMethod = createBookingDto.payment_method || 'cash';
       let depositPaidAmount = createBookingDto.deposit_paid_amount || 0;
       let paymentStatus =
         createBookingDto.payment_status || PaymentStatus.UNPAID;
