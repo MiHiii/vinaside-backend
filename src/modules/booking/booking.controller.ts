@@ -209,6 +209,27 @@ export class BookingController {
     return this.bookingService.getBookedDates(listingId);
   }
 
+  @Get('check-booking-conflict/:listingId')
+  @ApiOperation({
+    summary:
+      'Kiểm tra xem có booking nào khác đã thanh toán cho cùng khoảng thời gian không',
+  })
+  @ApiResponse({ status: 200, description: 'Kết quả kiểm tra conflict' })
+  @ResponseMessage('Kiểm tra conflict thành công')
+  checkBookingConflict(
+    @Param('listingId') listingId: string,
+    @Query('checkInDate') checkInDate: string,
+    @Query('checkOutDate') checkOutDate: string,
+    @Query('excludeBookingId') excludeBookingId?: string,
+  ) {
+    return this.bookingService.checkBookingConflictForDates(
+      listingId,
+      checkInDate,
+      checkOutDate,
+      excludeBookingId,
+    );
+  }
+
   // =================== EXPORT ENDPOINTS ===================
   @Get('export/csv')
   @RequirePermission('booking.view')
@@ -236,6 +257,7 @@ export class BookingController {
 
   @Get('property/:propertyId/:id')
   @Roles('guest', 'staff', 'admin')
+  @RequirePermission('booking.view')
   @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết booking' })
   @ApiResponse({ status: 200, description: 'Thông tin booking' })
