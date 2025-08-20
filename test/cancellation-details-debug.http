@@ -1,0 +1,28 @@
+### Test Cancellation Details API Debug
+
+### 1. Test với ID hợp lệ
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 2. Test với Property ID không hợp lệ
+GET {{baseUrl}}/bookings/invalid-property-id/{{bookingId}}/cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 3. Test với Booking ID không hợp lệ
+GET {{baseUrl}}/bookings/{{propertyId}}/invalid-booking-id/cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 4. Test không có token
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}/cancellation-details
+
+### 5. Test với ID rỗng
+GET {{baseUrl}}/bookings//{{bookingId}}/cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 6. Test với booking ID rỗng
+GET {{baseUrl}}/bookings/{{propertyId}}//cancellation-details
+Authorization: Bearer {{authToken}}
+
+### 7. Test với MongoDB ObjectId hợp lệ (24 ký tự hex)
+GET {{baseUrl}}/bookings/507f1f77bcf86cd799439011/507f1f77bcf86cd799439012/cancellation-details
+Authorization: Bearer {{authToken}}

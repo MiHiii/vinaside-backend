@@ -1,0 +1,101 @@
+### Test Admin Cancel Booking - Route mới với propertyId
+### Endpoint: PATCH /api/v1/bookings/admin/:propertyId/:id/cancel
+
+### 1. Test với token hợp lệ và propertyId hợp lệ
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Guest yêu cầu hủy",
+  "refundMethod": "bank_transfer",
+  "bankName": "Vietcombank",
+  "accountName": "Nguyen Van A",
+  "accountNumber": "1234567890",
+  "refundNote": "Hoàn tiền qua chuyển khoản ngân hàng"
+}
+
+### 2. Test với token hợp lệ nhưng propertyId không hợp lệ
+PATCH {{baseUrl}}/api/v1/bookings/admin/invalid-property-id/{{bookingId}}/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Test với propertyId không hợp lệ"
+}
+
+### 3. Test với token hợp lệ nhưng bookingId không hợp lệ
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/invalid-booking-id/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Test với bookingId không hợp lệ"
+}
+
+### 4. Test với token không hợp lệ
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer invalid-token
+Content-Type: application/json
+
+{
+  "cancellationReason": "Test với token không hợp lệ"
+}
+
+### 5. Test không có token
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Content-Type: application/json
+
+{
+  "cancellationReason": "Test không có token"
+}
+
+### 6. Test với staff token (có quyền hủy booking)
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Staff hủy theo yêu cầu của guest",
+  "refundMethod": "cash",
+  "refundNote": "Hoàn tiền mặt"
+}
+
+### 7. Test với guest token (không có quyền)
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{guestToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Guest không có quyền hủy"
+}
+
+### 8. Test với body rỗng
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{}
+
+### 9. Test với cancellationDetails tối thiểu
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Lý do hủy đơn giản"
+}
+
+### 10. Test với cancellationDetails đầy đủ
+PATCH {{baseUrl}}/api/v1/bookings/admin/{{propertyId}}/{{bookingId}}/cancel
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "cancellationReason": "Guest thay đổi kế hoạch du lịch",
+  "refundMethod": "bank_transfer",
+  "bankName": "Techcombank",
+  "accountName": "Tran Thi B",
+  "accountNumber": "9876543210",
+  "refundNote": "Hoàn tiền đặt cọc về tài khoản ngân hàng của guest"
+}
