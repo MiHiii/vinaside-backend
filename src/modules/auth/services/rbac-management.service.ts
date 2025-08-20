@@ -47,6 +47,17 @@ export class RbacManagementService {
     }
   }
 
+  async getAllPermissionsForAdmin(): Promise<Permission[]> {
+    try {
+      return await this.rbacService.getAllPermissionsForAdmin();
+    } catch {
+      throw new HttpException(
+        'Failed to fetch admin permissions',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   async getRolePermissions(roleKey: string): Promise<string[]> {
     try {
       return await this.rbacService.getRolePermissions(roleKey);
@@ -237,9 +248,15 @@ export class RbacManagementService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
+      
       if (errorMessage.includes('not found')) {
         throw new HttpException(errorMessage, HttpStatus.NOT_FOUND);
       }
+      
+      if (errorMessage.includes('forbidden')) {
+        throw new HttpException(errorMessage, HttpStatus.FORBIDDEN);
+      }
+      
       throw new HttpException(
         'Failed to remove permission from role',
         HttpStatus.INTERNAL_SERVER_ERROR,

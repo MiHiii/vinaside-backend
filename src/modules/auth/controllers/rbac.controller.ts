@@ -58,6 +58,15 @@ export class RbacController {
     return this.rbacManagementService.getAllPermissions();
   }
 
+  @Get('permissions/admin')
+  @RequirePermission('system.manage')
+  @ApiOperation({ summary: 'Lấy tất cả quyền (bao gồm quyền hệ thống) - chỉ dành cho admin' })
+  @ApiResponse({ status: 200, description: 'Danh sách quyền đầy đủ' })
+  @ResponseMessage('Lấy danh sách quyền đầy đủ thành công.')
+  async getAllPermissionsForAdmin() {
+    return this.rbacManagementService.getAllPermissionsForAdmin();
+  }
+
   @Get('roles/:roleId/permissions')
   @RequirePermission('system.manage')
   @ApiOperation({ summary: 'Lấy quyền cho một vai trò cụ thể' })
