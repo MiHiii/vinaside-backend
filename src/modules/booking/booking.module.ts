@@ -20,6 +20,7 @@ import { VNPayService } from './services/vnpay.service';
 import { CashService } from './services/cash.service';
 import { BookingNotificationService } from './services/booking-notification.service';
 import { BookingNotificationStatusService } from './services/booking-notification-status.service';
+import { BookingExportService } from './services/booking-export.service';
 
 @Module({
   imports: [
@@ -47,7 +48,8 @@ import { BookingNotificationStatusService } from './services/booking-notificatio
     CashService,
     BookingNotificationService,
     BookingNotificationStatusService,
+    BookingExportService,
   ],
-  exports: [BookingService, BookingRepo],
+  exports: [BookingService, BookingRepo, BookingExportService],
 })
 export class BookingModule {}
