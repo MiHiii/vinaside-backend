@@ -1412,6 +1412,95 @@ export class BookingService {
     };
   }
 
+  async cancelBookingAsAdmin(
+    id: string,
+    adminUser: JwtPayload,
+    cancellationDetails?: {
+      accountName?: string;
+      bankName?: string;
+      accountNumber?: string;
+      cancellationReason?: string;
+      refundMethod?: string;
+      refundNote?: string;
+    },
+  ) {
+    // 1. Xác thực quyền
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Booking đã bị huỷ trước đó');
+    }
+
+    // 2. Cập nhật trạng thái
+    booking.status = BookingStatus.CANCELLED;
+    if ((booking.deposit_paid_amount || 0) > 0) {
+      booking.payment_status = PaymentStatus.REFUNDING;
+    } else {
+      booking.payment_status = PaymentStatus.UNPAID;
+    }
+    booking.cancelled_at = new Date();
+
+    // 3. Lưu thông tin hủy chi tiết nếu có
+    if (cancellationDetails) {
+      booking.cancellationDetails = {
+        accountName: cancellationDetails.accountName,
+        bankName: cancellationDetails.bankName,
+        accountNumber: cancellationDetails.accountNumber,
+        cancellationReason: cancellationDetails.cancellationReason,
+        refundMethod: cancellationDetails.refundMethod,
+        refundNote: cancellationDetails.refundNote,
+      };
+      booking.cancellationDetailsUpdatedAt = new Date();
+      booking.cancellationDetailsUpdatedBy = new Types.ObjectId(adminUser._id);
+    } else {
+      booking.cancellation_reason = `Admin ${adminUser.email} cancelled`;
+    }
+
+    // 4. Tính toán hoàn tiền theo chính sách
+    const listing = await this.listingService.findOneForStaff(
+      booking.listingId.toString(),
+    );
+    const cancel_policy = listing?.cancel_policy || CancelPolicy.FLEXIBLE;
+    const now = new Date();
+    const checkInDate = new Date(booking.checkInDate);
+    const daysBeforeCheckIn =
+      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    let refundPercent = 0;
+    switch (cancel_policy) {
+      case CancelPolicy.FLEXIBLE:
+        if (now < checkInDate) refundPercent = 100;
+        break;
+      case CancelPolicy.MODERATE:
+        if (daysBeforeCheckIn > 7) refundPercent = 100;
+        else if (daysBeforeCheckIn >= 0) refundPercent = 50;
+        break;
+      case CancelPolicy.STRICT:
+        refundPercent = 0;
+        break;
+    }
+    const deposit_paid_amount = booking.deposit_paid_amount || 0;
+    const refund_amount = Math.round(
+      (deposit_paid_amount * refundPercent) / 100,
+    );
+    (booking as any).refund_amount = refund_amount;
+    await booking.save();
+
+    // 5. Create status change notifications
+    await this.bookingNotificationStatusService.createStatusChangeNotification(
+      booking,
+      BookingStatus.CANCELLED,
+    );
+
+    return {
+      success: true,
+      message: `Admin hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
+      refund_amount,
+      cancellationDetails: booking.cancellationDetails,
+    };
+  }
+
   // ====================== INTERNAL METHODS ======================
 
   /**

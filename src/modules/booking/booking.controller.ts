@@ -368,6 +368,25 @@ export class BookingController {
     );
   }
 
+  @Patch('admin/:id/cancel')
+  @Roles('staff', 'admin')
+  @RequirePropertyStaff('propertyId')
+  @RequirePermission('booking.cancel')
+  @ApiOperation({ summary: 'Admin/Staff hủy booking trực tiếp' })
+  @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
+  @ResponseMessage('Hủy booking thành công')
+  async cancelBookingAsAdmin(
+    @Param('id') id: string,
+    @Body() cancellationDetails: UpdateCancellationDetailsDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.cancelBookingAsAdmin(
+      id,
+      req.user,
+      cancellationDetails,
+    );
+  }
+
   // =================== GENERIC PAYMENT ENDPOINTS ===================
 
   @Post(':id/payment')
