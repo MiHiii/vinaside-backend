@@ -105,6 +105,16 @@ export class StaffCreateBookingDto {
   @IsOptional()
   payment_status?: string = 'unpaid';
 
+  @IsString()
+  @IsOptional()
+  payment_method?: string = 'cash';
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  deposit_paid_amount?: number = 0;
+
   @IsNumber()
   @Min(0)
   @IsOptional()
