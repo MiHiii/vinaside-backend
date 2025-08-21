@@ -630,31 +630,67 @@ export class PropertyService {
     endDate: Date,
     baseMatch: any,
   ): Promise<PropertyOccupancyStats> {
-    // Calculate total possible nights
-    const totalDays =
-      Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
-      ) + 1;
+    // Calculate total possible nights with inclusive days
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const endExclusive = new Date(endOfDay.getTime() + dayMs);
+    const totalDays = Math.max(
+      0,
+      Math.floor((endExclusive.getTime() - startOfDay.getTime()) / dayMs),
+    );
     const totalPossibleNights = totalDays * activeListings;
 
-    // Get total booked nights (consistent with dashboard logic - no status filter)
-    const bookedNightsResult = await this.bookingModel.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: null,
-          totalBookedNights: { $sum: '$nights' },
+    // Count unique room-nights overlapped within range for this property, confirmed/completed, checkOut exclusive
+    const overlaps = await this.bookingModel
+      .find(
+        {
+          propertyId: new Types.ObjectId(propertyId),
+          isDeleted: false,
+          status: { $in: ['confirmed', 'completed'] },
+          checkInDate: { $lt: endExclusive },
+          check_out_date: { $gt: startOfDay },
         },
-      },
-    ]);
+        { listingId: 1, checkInDate: 1, check_out_date: 1 },
+      )
+      .lean();
 
-    const totalBookedNights = bookedNightsResult[0]?.totalBookedNights || 0;
+    const uniqueRoomNights = new Set<string>();
+    overlaps.forEach((b) => {
+      const booking = b as {
+        checkInDate: string | Date;
+        check_out_date: string | Date;
+        listingId: { toString(): string };
+      };
+      const bStart = new Date(booking.checkInDate);
+      const bEndExclusive = new Date(booking.check_out_date);
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+      );
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${booking.listingId.toString()}::${dateStr}`);
+      }
+    });
 
-    // Calculate occupancy rate
-    const occupancyRate =
+    const totalBookedNights = uniqueRoomNights.size;
+
+    // Calculate occupancy rate with cap at 100%
+    const occupancyRate = Math.min(
+      100,
       totalPossibleNights > 0
         ? (totalBookedNights / totalPossibleNights) * 100
-        : 0;
+        : 0,
+    );
 
     // Calculate average advance booking days
     const advanceBookingResult = await this.bookingModel.aggregate([

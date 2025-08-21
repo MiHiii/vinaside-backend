@@ -124,18 +124,26 @@ export class BookingService {
     let guest_name: string | undefined = undefined;
     let guest_email: string | undefined = undefined;
     let guest_phone: string | undefined = undefined;
+
     if (booking.guestId) {
       if (typeof booking.guestId === 'object' && booking.guestId._id) {
+        // Nếu có guestId object (populated) → lấy từ guest object
         guestId = booking.guestId._id.toString();
         guest_name = booking.guestId.name;
         guest_email = booking.guestId.email;
         guest_phone = booking.guestId.phone;
       } else {
+        // Nếu có guestId string → lấy từ booking fields
         guestId = booking.guestId.toString();
         guest_name = booking.guest_name;
         guest_email = booking.guest_email;
         guest_phone = booking.guest_phone;
       }
+    } else {
+      // Nếu không có guestId (null/undefined) → lấy từ booking fields
+      guest_name = booking.guest_name;
+      guest_email = booking.guest_email;
+      guest_phone = booking.guest_phone;
     }
     return {
       _id: booking._id ? booking._id.toString() : null,
@@ -890,27 +898,186 @@ export class BookingService {
     const filteredQuery = applyStaffFilter(query, request, 'propertyId');
 
     const sort: Record<string, SortOrder> = {
-      [sortBy || 'createdAt']: sortOrder === 'asc' ? 1 : -1,
+      [sortBy || 'created_at']: sortOrder === 'asc' ? 1 : -1,
     };
 
-    const { data, total } = await this.bookingRepo.findAll(filteredQuery, {
-      sort,
-      skip,
-      limit,
-      populate: [
-        { path: 'propertyId', select: '_id name location' },
-        {
-          path: 'listingId',
-          select: 'title address images price_per_night cancel_policy',
+    const hasNameFilters = Boolean(
+      (filters as any).keyword ||
+        (filters as any).guestName ||
+        (filters as any).listingTitle ||
+        (filters as any).propertyName,
+    );
+
+    if (!hasNameFilters) {
+      const { data, total } = await this.bookingRepo.findAll(filteredQuery, {
+        sort,
+        skip,
+        limit,
+        populate: [
+          { path: 'propertyId', select: '_id name location' },
+          {
+            path: 'listingId',
+            select: 'title address images price_per_night cancel_policy',
+          },
+          { path: 'guestId', select: 'name avatar email phone' },
+          { path: 'voucher_id', select: 'code discount_percent' },
+        ],
+      });
+
+      return {
+        data: await Promise.all(
+          data.map((booking) => this.transformBookingToResponse(booking)),
+        ),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 0,
+      };
+    }
+
+    // Name-based search via aggregation (guest, listing, property)
+    const pipeline: any[] = [
+      { $match: filteredQuery },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'property',
         },
-        { path: 'guestId', select: 'name avatar email phone' },
-        { path: 'voucher_id', select: 'code discount_percent' },
-      ],
-    });
+      },
+      { $unwind: '$property' },
+      {
+        $lookup: {
+          from: 'listings',
+          localField: 'listingId',
+          foreignField: '_id',
+          as: 'listing',
+        },
+      },
+      { $unwind: '$listing' },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'guestId',
+          foreignField: '_id',
+          as: 'guest',
+        },
+      },
+      { $unwind: { path: '$guest', preserveNullAndEmptyArrays: true } },
+    ];
+
+    const andConditions: any[] = [];
+    if (
+      (filters as any).keyword &&
+      typeof (filters as any).keyword === 'string'
+    ) {
+      const regex = new RegExp((filters as any).keyword, 'i');
+      andConditions.push({
+        $or: [
+          { guest_name: regex },
+          { 'guest.name': regex },
+          { 'listing.title': regex },
+          { 'property.name': regex },
+        ],
+      });
+    }
+    if ((filters as any).guestName) {
+      const regex = new RegExp(String((filters as any).guestName), 'i');
+      andConditions.push({
+        $or: [{ guest_name: regex }, { 'guest.name': regex }],
+      });
+    }
+    if ((filters as any).listingTitle) {
+      const regex = new RegExp(String((filters as any).listingTitle), 'i');
+      andConditions.push({ 'listing.title': regex });
+    }
+    if ((filters as any).propertyName) {
+      const regex = new RegExp(String((filters as any).propertyName), 'i');
+      andConditions.push({ 'property.name': regex });
+    }
+
+    if (andConditions.length > 0) {
+      pipeline.push({ $match: { $and: andConditions } });
+    }
+
+    const countPipeline = [
+      ...pipeline.filter(
+        (stg) => !('$skip' in stg || '$limit' in stg || '$sort' in stg),
+      ),
+      { $count: 'total' },
+    ];
+
+    pipeline.push(
+      { $sort: sort },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 1,
+          propertyId: {
+            _id: '$property._id',
+            name: '$property.name',
+            location: '$property.location',
+          },
+          listingId: {
+            _id: '$listing._id',
+            title: '$listing.title',
+            images: '$listing.images',
+            address: '$listing.address',
+            price_per_night: '$listing.price_per_night',
+            cancel_policy: '$listing.cancel_policy',
+          },
+          guestId: 1,
+          checkInDate: 1,
+          check_out_date: 1,
+          guests: 1,
+          infants: 1,
+          nights: 1,
+          price_per_night: 1,
+          total_price: 1,
+          selected_services: 1,
+          services_total_amount: 1,
+          subtotal_amount: 1,
+          voucher_id: 1,
+          voucher_code: 1,
+          voucher_discount_amount: 1,
+          voucher_discount_percent: 1,
+          discount_amount: 1,
+          amount_after_discount: 1,
+          service_fee: 1,
+          tax_amount: 1,
+          final_amount: 1,
+          commissionRate: 1,
+          finalPayoutAmount: 1,
+          status: 1,
+          payment_status: 1,
+          payment_method: 1,
+          vnpay_order_id: 1,
+          momo_order_id: 1,
+          guest_name: { $ifNull: ['$guest.name', '$guest_name'] },
+          guest_email: { $ifNull: ['$guest.email', '$guest_email'] },
+          guest_phone: { $ifNull: ['$guest.phone', '$guest_phone'] },
+          special_requests: 1,
+          created_at: 1,
+          updated_at: 1,
+          note: 1,
+          additionalCost: 1,
+          additionalCostReason: 1,
+        },
+      },
+    );
+
+    const [items, countArr] = await Promise.all([
+      this.bookingRepo.getModel().aggregate(pipeline),
+      this.bookingRepo.getModel().aggregate(countPipeline),
+    ]);
+
+    const total = countArr?.[0]?.total || 0;
 
     return {
       data: await Promise.all(
-        data.map((booking) => this.transformBookingToResponse(booking)),
+        items.map((booking: any) => this.transformBookingToResponse(booking)),
       ),
       total,
       page,
@@ -1021,6 +1188,68 @@ export class BookingService {
 
     return {
       bookedDates: [...new Set(bookedDates)].sort(),
+    };
+  }
+
+  /**
+   * Kiểm tra xem có booking nào khác đã thanh toán cho cùng khoảng thời gian không
+   */
+  async checkBookingConflictForDates(
+    listingId: string,
+    checkInDate: string,
+    checkOutDate: string,
+    excludeBookingId?: string,
+  ) {
+    const query: FilterQuery<Booking> = {
+      listingId: new Types.ObjectId(listingId),
+      payment_status: { $in: ['paid', 'partially_paid'] },
+      isDeleted: false,
+      $and: [
+        {
+          checkInDate: { $lt: new Date(checkOutDate) },
+        },
+        {
+          check_out_date: { $gt: new Date(checkInDate) },
+        },
+      ],
+    };
+
+    // Loại trừ booking hiện tại nếu có
+    if (excludeBookingId) {
+      query._id = { $ne: new Types.ObjectId(excludeBookingId) };
+    }
+
+    console.log('🔍 checkBookingConflictForDates query:', {
+      listingId,
+      checkInDate,
+      checkOutDate,
+      excludeBookingId,
+      query: JSON.stringify(query, null, 2),
+    });
+
+    const { data } = await this.bookingRepo.findAll(query);
+
+    console.log('🔍 checkBookingConflictForDates result:', {
+      hasConflict: data.length > 0,
+      conflictingBookingsCount: data.length,
+      conflictingBookings: data.map((booking) => ({
+        _id: booking._id,
+        checkInDate: booking.checkInDate,
+        check_out_date: booking.check_out_date,
+        payment_status: booking.payment_status,
+        status: booking.status,
+      })),
+    });
+
+    return {
+      hasConflict: data.length > 0,
+      conflictingBookings: data.map((booking) => ({
+        _id: booking._id,
+        checkInDate: booking.checkInDate,
+        check_out_date: booking.check_out_date,
+        payment_status: booking.payment_status,
+        status: booking.status,
+      })),
     };
   }
 
@@ -1227,6 +1456,95 @@ export class BookingService {
     return {
       success: true,
       message: `Hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
+    };
+  }
+
+  async cancelBookingAsAdmin(
+    id: string,
+    adminUser: JwtPayload,
+    cancellationDetails?: {
+      accountName?: string;
+      bankName?: string;
+      accountNumber?: string;
+      cancellationReason?: string;
+      refundMethod?: string;
+      refundNote?: string;
+    },
+  ) {
+    // 1. Xác thực quyền
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Booking đã bị huỷ trước đó');
+    }
+
+    // 2. Cập nhật trạng thái
+    booking.status = BookingStatus.CANCELLED;
+    if ((booking.deposit_paid_amount || 0) > 0) {
+      booking.payment_status = PaymentStatus.REFUNDING;
+    } else {
+      booking.payment_status = PaymentStatus.UNPAID;
+    }
+    booking.cancelled_at = new Date();
+
+    // 3. Lưu thông tin hủy chi tiết nếu có
+    if (cancellationDetails) {
+      booking.cancellationDetails = {
+        accountName: cancellationDetails.accountName,
+        bankName: cancellationDetails.bankName,
+        accountNumber: cancellationDetails.accountNumber,
+        cancellationReason: cancellationDetails.cancellationReason,
+        refundMethod: cancellationDetails.refundMethod,
+        refundNote: cancellationDetails.refundNote,
+      };
+      booking.cancellationDetailsUpdatedAt = new Date();
+      booking.cancellationDetailsUpdatedBy = new Types.ObjectId(adminUser._id);
+    } else {
+      booking.cancellation_reason = `Admin ${adminUser.email} cancelled`;
+    }
+
+    // 4. Tính toán hoàn tiền theo chính sách
+    const listing = await this.listingService.findOneForStaff(
+      booking.listingId.toString(),
+    );
+    const cancel_policy = listing?.cancel_policy || CancelPolicy.FLEXIBLE;
+    const now = new Date();
+    const checkInDate = new Date(booking.checkInDate);
+    const daysBeforeCheckIn =
+      (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    let refundPercent = 0;
+    switch (cancel_policy) {
+      case CancelPolicy.FLEXIBLE:
+        if (now < checkInDate) refundPercent = 100;
+        break;
+      case CancelPolicy.MODERATE:
+        if (daysBeforeCheckIn > 7) refundPercent = 100;
+        else if (daysBeforeCheckIn >= 0) refundPercent = 50;
+        break;
+      case CancelPolicy.STRICT:
+        refundPercent = 0;
+        break;
+    }
+    const deposit_paid_amount = booking.deposit_paid_amount || 0;
+    const refund_amount = Math.round(
+      (deposit_paid_amount * refundPercent) / 100,
+    );
+    (booking as any).refund_amount = refund_amount;
+    await booking.save();
+
+    // 5. Create status change notifications
+    await this.bookingNotificationStatusService.createStatusChangeNotification(
+      booking,
+      BookingStatus.CANCELLED,
+    );
+
+    return {
+      success: true,
+      message: `Admin hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
+      refund_amount,
+      cancellationDetails: booking.cancellationDetails,
     };
   }
 
@@ -1912,10 +2230,67 @@ export class BookingService {
       { $limit: 10 },
     ]);
 
-    // Tính tỉ lệ lấp đầy trung bình toàn hệ
+    // Tính tỉ lệ lấp đầy theo unique room-night, checkOut exclusive, chỉ tính confirmed/completed
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const endExclusive = new Date(endOfDay.getTime() + dayMs);
+
+    const occupancyMatch: any = {
+      isDeleted: false,
+      status: { $in: ['confirmed', 'completed'] },
+      checkInDate: { $lt: endExclusive },
+      check_out_date: { $gt: startOfDay },
+    };
+    if (queryDto.listingId) {
+      occupancyMatch.listingId = new Types.ObjectId(queryDto.listingId);
+    } else if (queryDto.propertyId) {
+      if (queryDto.propertyId.includes(',')) {
+        occupancyMatch.propertyId = {
+          $in: queryDto.propertyId
+            .split(',')
+            .map((id) => new Types.ObjectId(id.trim())),
+        };
+      } else {
+        occupancyMatch.propertyId = new Types.ObjectId(queryDto.propertyId);
+      }
+    }
+
+    const occupancyDocs = await this.bookingRepo
+      .getModel()
+      .find(occupancyMatch, {
+        listingId: 1,
+        checkInDate: 1,
+        check_out_date: 1,
+      })
+      .lean();
+
+    const uniqueRoomNights = new Set<string>();
+    occupancyDocs.forEach((b: any) => {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(b.check_out_date);
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), endExclusive.getTime()),
+      );
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${b.listingId.toString()}::${dateStr}`);
+      }
+    });
+
+    const totalRoomNightsBooked = uniqueRoomNights.size;
     const averageOccupancyRate =
       totalPossibleNights > 0
-        ? (Number(overview.totalNights || 0) / totalPossibleNights) * 100
+        ? Math.min(100, (totalRoomNightsBooked / totalPossibleNights) * 100)
         : 0;
 
     return {
@@ -3317,6 +3692,27 @@ export class BookingService {
       const commissionRate = 0.1; // 10%
       const finalPayoutAmount = finalAmount * (1 - commissionRate);
 
+      // Xử lý payment_method và deposit_paid_amount
+      const paymentMethod = createBookingDto.payment_method || 'cash';
+      let depositPaidAmount = createBookingDto.deposit_paid_amount || 0;
+      let paymentStatus =
+        createBookingDto.payment_status || PaymentStatus.UNPAID;
+
+      // Tự động set deposit_paid_amount dựa trên payment_status từ frontend
+      if (createBookingDto.payment_status === 'paid') {
+        depositPaidAmount = finalAmount;
+        paymentStatus = PaymentStatus.PAID;
+      } else if (createBookingDto.payment_status === 'partially_paid') {
+        // Sử dụng deposit_paid_amount từ frontend hoặc tính 50% mặc định
+        depositPaidAmount =
+          createBookingDto.deposit_paid_amount || Math.round(finalAmount * 0.5);
+        paymentStatus = PaymentStatus.PARTIALLY_PAID;
+      } else {
+        // unpaid hoặc các trạng thái khác
+        depositPaidAmount = createBookingDto.deposit_paid_amount || 0;
+        paymentStatus = createBookingDto.payment_status || PaymentStatus.UNPAID;
+      }
+
       // Tạo booking data
       const bookingData = {
         propertyId: new Types.ObjectId(createBookingDto.propertyId),
@@ -3337,7 +3733,9 @@ export class BookingService {
         commissionRate,
         finalPayoutAmount,
         status: createBookingDto.status || BookingStatus.PENDING,
-        payment_status: createBookingDto.payment_status || PaymentStatus.UNPAID,
+        payment_status: paymentStatus,
+        payment_method: paymentMethod,
+        deposit_paid_amount: depositPaidAmount,
         guest_name: createBookingDto.guest_name,
         guest_email: createBookingDto.guest_email,
         guest_phone: createBookingDto.guest_phone,
@@ -3653,7 +4051,18 @@ export class BookingService {
       : new Date();
     const endDate = queryDto.endDate ? new Date(queryDto.endDate) : new Date();
 
-    if (queryDto.viewType === CalendarViewType.MONTHLY) {
+    // Normalize viewType (support aliases)
+    const vt = queryDto.viewType || CalendarViewType.MONTHLY;
+    const viewType =
+      vt === CalendarViewType.DAY
+        ? CalendarViewType.DAILY
+        : vt === CalendarViewType.WEEK
+          ? CalendarViewType.WEEKLY
+          : vt === CalendarViewType.MONTH
+            ? CalendarViewType.MONTHLY
+            : vt;
+
+    if (viewType === CalendarViewType.MONTHLY) {
       // Nếu không có startDate, lấy tháng hiện tại
       if (!queryDto.startDate) {
         startDate.setDate(1);
@@ -3665,7 +4074,7 @@ export class BookingService {
         endDate.setDate(0);
         endDate.setHours(23, 59, 59, 999);
       }
-    } else if (queryDto.viewType === CalendarViewType.WEEKLY) {
+    } else if (viewType === CalendarViewType.WEEKLY) {
       // Nếu không có startDate, lấy tuần hiện tại
       if (!queryDto.startDate) {
         const today = new Date();
@@ -3679,14 +4088,24 @@ export class BookingService {
         endDate.setDate(startDate.getDate() + 6);
         endDate.setHours(23, 59, 59, 999);
       }
-    } else {
-      // DAILY view
+    } else if (viewType === CalendarViewType.DAILY) {
       if (!queryDto.startDate) {
         startDate.setHours(0, 0, 0, 0);
       }
       if (!queryDto.endDate) {
         endDate.setHours(23, 59, 59, 999);
       }
+    } else if (viewType === CalendarViewType.TODAY) {
+      // TODAY view
+      const today = new Date();
+      startDate.setUTCFullYear(today.getUTCFullYear());
+      startDate.setUTCMonth(today.getUTCMonth());
+      startDate.setUTCDate(today.getUTCDate());
+      startDate.setUTCHours(0, 0, 0, 0);
+      endDate.setUTCFullYear(today.getUTCFullYear());
+      endDate.setUTCMonth(today.getUTCMonth());
+      endDate.setUTCDate(today.getUTCDate());
+      endDate.setUTCHours(23, 59, 59, 999);
     }
 
     // Tạo filter cho booking
@@ -3731,8 +4150,47 @@ export class BookingService {
       populate: [
         { path: 'listingId', select: 'title' },
         { path: 'propertyId', select: 'name' },
+        { path: 'guestId', select: 'name email' },
       ],
     });
+
+    // Áp dụng tìm kiếm theo tên nếu có
+    const searchedBookings = (() => {
+      const { keyword, guestName, listingTitle, propertyName } = queryDto as {
+        keyword?: string;
+        guestName?: string;
+        listingTitle?: string;
+        propertyName?: string;
+      };
+      const hasNameFilters = Boolean(
+        keyword || guestName || listingTitle || propertyName,
+      );
+      if (!hasNameFilters) return bookings;
+
+      const toRegex = (v: string) => new RegExp(String(v), 'i');
+      const kw = keyword ? toRegex(keyword) : null;
+      const gRe = guestName ? toRegex(guestName) : null;
+      const lRe = listingTitle ? toRegex(listingTitle) : null;
+      const pRe = propertyName ? toRegex(propertyName) : null;
+
+      return bookings.filter((b) => {
+        const booking = b as any;
+        const bGuestName = booking.guestId?.name || booking.guest_name || '';
+        const bListingTitle = booking.listingId?.title || '';
+        const bPropertyName = booking.propertyId?.name || '';
+
+        const matchKw = kw
+          ? kw.test(bGuestName) ||
+            kw.test(bListingTitle) ||
+            kw.test(bPropertyName)
+          : true;
+        const matchG = gRe ? gRe.test(bGuestName) : true;
+        const matchL = lRe ? lRe.test(bListingTitle) : true;
+        const matchP = pRe ? pRe.test(bPropertyName) : true;
+
+        return matchKw && matchG && matchL && matchP;
+      });
+    })();
 
     // Tạo calendar days
     const days: CalendarDayDto[] = [];
@@ -3750,7 +4208,7 @@ export class BookingService {
         currentDate.getDay() === 0 || currentDate.getDay() === 6;
 
       // Tìm bookings cho ngày này
-      const dayBookings: CalendarBookingDto[] = bookings
+      const dayBookings: CalendarBookingDto[] = searchedBookings
         .filter((booking) => {
           const bookingStart = new Date(booking.checkInDate);
           const bookingEnd = new Date(booking.check_out_date);
@@ -3797,21 +4255,102 @@ export class BookingService {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    // Tính toán tổng quan
-    const totalBookings = bookings.length;
-    const totalRevenue = bookings.reduce(
-      (sum, booking) => sum + (booking.final_amount || 0),
+    // Tính toán tổng quan (căn chỉnh với statistics/overview)
+    const totalBookings = searchedBookings.length;
+
+    // Chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
+    const revenueBookings = searchedBookings.filter((b: any) =>
+      ['confirmed', 'completed'].includes(b.status),
+    );
+    const totalRevenue = revenueBookings.reduce(
+      (sum: number, b: any) => sum + (b.final_amount || 0),
       0,
     );
+
+    // Tính tỉ lệ lấp đầy = (tổng số đêm đã đặt trong kỳ) / (số ngày trong kỳ x số listing ACTIVE trong phạm vi) x 100
+    const startOfDay = new Date(startDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(endDate);
+    endOfDay.setHours(0, 0, 0, 0);
+    const periodEndExclusive = new Date(
+      endOfDay.getTime() + 24 * 60 * 60 * 1000,
+    );
+    const daysInPeriod = Math.floor(
+      (periodEndExclusive.getTime() - startOfDay.getTime()) /
+        (24 * 60 * 60 * 1000),
+    );
+
+    // Đếm số listing ACTIVE trong phạm vi
+    let activeListingsCount = 0;
+    if (queryDto.listingId) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        _id: new Types.ObjectId(queryDto.listingId),
+        status: ListingStatus.ACTIVE,
+      });
+    } else if (queryDto.propertyId) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        propertyId: new Types.ObjectId(queryDto.propertyId),
+        status: ListingStatus.ACTIVE,
+      });
+    } else if (user?.role === 'staff' && request?.staffPropertyIds?.length) {
+      activeListingsCount = await this.listingModel.countDocuments({
+        propertyId: {
+          $in: request.staffPropertyIds.map(
+            (id: string) => new Types.ObjectId(id),
+          ),
+        },
+        status: ListingStatus.ACTIVE,
+      });
+    } else {
+      activeListingsCount = await this.listingModel.countDocuments({
+        status: ListingStatus.ACTIVE,
+      });
+    }
+
+    const totalPossibleNights = daysInPeriod * activeListingsCount;
+
+    // Tổng số room-night duy nhất (dedup overbooking) trong khoảng ngày hiển thị, checkOut exclusive
+    const dayMs = 24 * 60 * 60 * 1000;
+    const uniqueRoomNights = new Set<string>();
+    for (const b of revenueBookings as any[]) {
+      const bStart = new Date(b.checkInDate);
+      const bEndExclusive = new Date(new Date(b.check_out_date).getTime());
+      const overlapStart = new Date(
+        Math.max(bStart.getTime(), startOfDay.getTime()),
+      );
+      const overlapEndExclusive = new Date(
+        Math.min(bEndExclusive.getTime(), periodEndExclusive.getTime()),
+      );
+      // Build listing id string
+      const listingKey =
+        b?.listingId && typeof b.listingId === 'object' && b.listingId._id
+          ? String(b.listingId._id)
+          : String(b.listingId || '');
+      for (
+        let d = new Date(overlapStart);
+        d < overlapEndExclusive;
+        d = new Date(d.getTime() + dayMs)
+      ) {
+        const dateStr = d.toISOString().split('T')[0];
+        uniqueRoomNights.add(`${listingKey}::${dateStr}`);
+      }
+    }
+
+    const totalRoomNightsBooked = uniqueRoomNights.size;
     const averageOccupancy =
-      days.length > 0
-        ? days.reduce((sum, day) => sum + day.totalBookings, 0) / days.length
+      totalPossibleNights > 0
+        ? Math.min(
+            100,
+            Math.round(
+              (totalRoomNightsBooked / totalPossibleNights) * 100 * 100,
+            ) / 100,
+          )
         : 0;
 
     return {
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
-      viewType: queryDto.viewType || CalendarViewType.MONTHLY,
+      viewType,
       days,
       totalBookings,
       totalRevenue,

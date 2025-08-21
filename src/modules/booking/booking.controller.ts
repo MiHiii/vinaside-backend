@@ -9,6 +9,7 @@ import {
   Request,
   BadRequestException,
   UseGuards,
+  Res,
 } from '@nestjs/common';
 import { BookingService } from './booking.service';
 import { VNPayService } from './services/vnpay.service';
@@ -42,6 +43,8 @@ import { JwtPayload } from 'src/interfaces/jwt-payload.interface';
 import { ResponseMessage } from 'src/decorators/response-message.decorator';
 import { Public } from 'src/decorators/public.decorator';
 import { Roles } from 'src/decorators/roles.decorator';
+import { Response } from 'express';
+import { BookingExportService } from './services/booking-export.service';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -87,6 +90,7 @@ export class BookingController {
     private readonly bookingService: BookingService,
     private readonly vnpayService: VNPayService,
     private readonly paymentFactory: PaymentFactory,
+    private readonly bookingExportService: BookingExportService,
   ) {}
 
   @Post()
@@ -205,8 +209,55 @@ export class BookingController {
     return this.bookingService.getBookedDates(listingId);
   }
 
+  @Get('check-booking-conflict/:listingId')
+  @ApiOperation({
+    summary:
+      'Kiểm tra xem có booking nào khác đã thanh toán cho cùng khoảng thời gian không',
+  })
+  @ApiResponse({ status: 200, description: 'Kết quả kiểm tra conflict' })
+  @ResponseMessage('Kiểm tra conflict thành công')
+  checkBookingConflict(
+    @Param('listingId') listingId: string,
+    @Query('checkInDate') checkInDate: string,
+    @Query('checkOutDate') checkOutDate: string,
+    @Query('excludeBookingId') excludeBookingId?: string,
+  ) {
+    return this.bookingService.checkBookingConflictForDates(
+      listingId,
+      checkInDate,
+      checkOutDate,
+      excludeBookingId,
+    );
+  }
+
+  // =================== EXPORT ENDPOINTS ===================
+  @Get('export/csv')
+  @RequirePermission('booking.view')
+  @StaffFiltered({ propertyField: 'propertyId' })
+  @ApiOperation({ summary: 'Export danh sách booking ra CSV (stream)' })
+  @ApiResponse({ status: 200, description: 'CSV stream' })
+  async exportCsv(
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('propertyId') propertyId?: string,
+    @Query('listingId') listingId?: string,
+  ) {
+    await this.bookingExportService.streamCsv(res, {
+      from,
+      to,
+      status,
+      paymentStatus,
+      propertyId,
+      listingId,
+    });
+  }
+
   @Get('property/:propertyId/:id')
   @Roles('guest', 'staff', 'admin')
+  @RequirePermission('booking.view')
   @RequirePropertyStaff('propertyId')
   @ApiOperation({ summary: 'Lấy thông tin chi tiết booking' })
   @ApiResponse({ status: 200, description: 'Thông tin booking' })
@@ -313,6 +364,25 @@ export class BookingController {
     return this.bookingService.cancelBookingPublic(
       id,
       req.user._id,
+      cancellationDetails,
+    );
+  }
+
+  @Patch('admin/:id/cancel')
+  @Roles('staff', 'admin')
+  @RequirePropertyStaff('propertyId')
+  @RequirePermission('booking.cancel')
+  @ApiOperation({ summary: 'Admin/Staff hủy booking trực tiếp' })
+  @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
+  @ResponseMessage('Hủy booking thành công')
+  async cancelBookingAsAdmin(
+    @Param('id') id: string,
+    @Body() cancellationDetails: UpdateCancellationDetailsDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.cancelBookingAsAdmin(
+      id,
+      req.user,
       cancellationDetails,
     );
   }
