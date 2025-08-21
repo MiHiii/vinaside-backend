@@ -151,12 +151,18 @@ export class MessagesController {
       },
     },
   })
-  async getConversations(@Request() req: RequestWithUser): Promise<unknown[]> {
+  async getConversations(
+    @Request() req: RequestWithUser,
+    @Query('ui_for') ui_for?: 'guest' | 'staff',
+  ): Promise<unknown[]> {
     try {
-      const result = await this.messagesService.getConversations(req.user._id);
+      const result = await this.messagesService.getConversationsUI(
+        req.user,
+        ui_for,
+      );
       return Array.isArray(result) ? (result as unknown[]) : [];
-    } catch (error) {
-      console.error('Error in getConversations controller:', error);
+    } catch (err: unknown) {
+      console.error('Error in getConversations controller:', err);
       return [];
     }
   }
@@ -174,33 +180,29 @@ export class MessagesController {
   })
   async getConversation(
     @Request() req: RequestWithUser,
-    @Query('otherUserId') otherUserId?: string,
+    @Query('conversationId') conversationId?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
+    @Query('ui_for') ui_for?: 'guest' | 'staff',
   ): Promise<unknown[]> {
-    // Validate otherUserId exists
-    if (!otherUserId) {
-      throw new BadRequestException('Thiếu tham số otherUserId');
+    if (!conversationId) {
+      throw new BadRequestException('Thiếu tham số conversationId');
     }
 
     try {
-      // Parse query parameters manually để tránh default values
       const queryParams: { limit?: number; page?: number } = {};
-      if (limit && !isNaN(Number(limit))) {
-        queryParams.limit = Number(limit);
-      }
-      if (page && !isNaN(Number(page))) {
-        queryParams.page = Number(page);
-      }
+      if (limit && !isNaN(Number(limit))) queryParams.limit = Number(limit);
+      if (page && !isNaN(Number(page))) queryParams.page = Number(page);
 
-      const result = await this.messagesService.getConversation(
-        req.user._id,
-        otherUserId,
+      const result = await this.messagesService.getConversationMessages(
+        req.user,
+        conversationId,
         queryParams,
+        ui_for,
       );
       return Array.isArray(result) ? (result as unknown[]) : [];
-    } catch (error) {
-      console.error('Error in getConversation controller:', error);
+    } catch (err: unknown) {
+      console.error('Error in getConversation controller:', err);
       return [];
     }
   }
@@ -210,6 +212,7 @@ export class MessagesController {
   @ApiOperation({
     summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể (deprecated)',
   })
+  @ApiOperation({ summary: 'Deprecated - dùng messages?conversationId=...' })
   @ApiResponse({ status: 200, description: 'Tin nhắn trong cuộc trò chuyện' })
   async getConversationDeprecated(
     @Param('userId') userId: string,
@@ -223,8 +226,8 @@ export class MessagesController {
         query,
       );
       return Array.isArray(result) ? (result as unknown[]) : [];
-    } catch (error) {
-      console.error('Error in getConversationDeprecated controller:', error);
+    } catch (err: unknown) {
+      console.error('Error in getConversationDeprecated controller:', err);
       return [];
     }
   }
@@ -239,7 +242,9 @@ export class MessagesController {
 
   @Get('all-users')
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Lấy danh sách tất cả người dùng để nhắn tin' })
+  @ApiOperation({
+    summary: 'Lấy danh sách tất cả người dùng để nhắn tin (deprecated)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Danh sách người dùng',
@@ -422,17 +427,13 @@ export class MessagesController {
     description: 'Cuộc hội thoại được đánh dấu đã đọc',
   })
   markConversationAsRead(
-    @Query('otherUserId') otherUserId: string,
+    @Query('conversationId') conversationId: string,
     @Request() req: RequestWithUser,
   ) {
-    // Validate otherUserId exists
-    if (!otherUserId) {
-      throw new BadRequestException('Thiếu tham số otherUserId');
+    if (!conversationId) {
+      throw new BadRequestException('Thiếu tham số conversationId');
     }
-    return this.messagesService.markConversationAsRead(
-      req.user._id,
-      otherUserId,
-    );
+    return this.messagesService.markConversationRead(req.user, conversationId);
   }
 
   // ==================== DYNAMIC ROUTES (MUST BE LAST) ====================
@@ -444,7 +445,7 @@ export class MessagesController {
   async findOne(
     @Param('id') id: string,
     @Request() req: RequestWithUser,
-  ): Promise<Message | null> {
+  ): Promise<unknown> {
     try {
       const result = await this.messagesService.findOne(id, req.user);
       return result;
