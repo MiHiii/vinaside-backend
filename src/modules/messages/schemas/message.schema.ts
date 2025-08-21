@@ -37,7 +37,7 @@ export class Message extends Document {
   receiver_id: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Property', required: false })
-  property_id?: Types.ObjectId;
+  property_id: Types.ObjectId;
 
   @Prop({ required: true })
   content: string;

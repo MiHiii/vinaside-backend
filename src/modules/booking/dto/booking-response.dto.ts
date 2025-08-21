@@ -4,6 +4,7 @@ export class BookingServiceResponseDto {
   service_price: number;
   quantity: number;
   total_price: number;
+  allow_quantity?: boolean;
 }
 
 export class BookingResponseDto {

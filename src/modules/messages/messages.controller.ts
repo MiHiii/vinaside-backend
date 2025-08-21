@@ -80,8 +80,77 @@ export class MessagesController {
 
   @Get('conversations')
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Lấy danh sách cuộc trò chuyện' })
-  @ApiResponse({ status: 200, description: 'Danh sách cuộc trò chuyện' })
+  @ApiOperation({
+    summary: 'Lấy danh sách cuộc trò chuyện',
+    description:
+      'Trả về danh sách cuộc trò chuyện bao gồm cả chat với properties và users. Mỗi cuộc trò chuyện có thông tin về tin nhắn cuối cùng, số tin nhắn chưa đọc, và người đang trả lời.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách cuộc trò chuyện với thông tin chi tiết',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          _id: { type: 'string', description: 'ID của property hoặc user' },
+          type: {
+            type: 'string',
+            enum: ['property', 'user'],
+            description: 'Loại cuộc trò chuyện',
+          },
+          name: { type: 'string', description: 'Tên property hoặc user' },
+          avatar_url: { type: 'string', description: 'Ảnh đại diện' },
+          status: { type: 'string', description: 'Trạng thái property' },
+          isVerified: {
+            type: 'boolean',
+            description: 'Property đã được xác minh',
+          },
+          lastMessage: {
+            type: 'object',
+            properties: {
+              content: {
+                type: 'string',
+                description: 'Nội dung tin nhắn cuối',
+              },
+              sender_id: { type: 'string', description: 'ID người gửi' },
+              is_read: { type: 'string', description: 'Trạng thái đọc' },
+              sent_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'Thời gian gửi',
+              },
+            },
+          },
+          messageCount: { type: 'number', description: 'Tổng số tin nhắn' },
+          unreadCount: { type: 'number', description: 'Số tin nhắn chưa đọc' },
+          firstMessageAt: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Thời gian tin nhắn đầu tiên',
+          },
+          lastMessageAt: {
+            type: 'string',
+            format: 'date-time',
+            description: 'Thời gian tin nhắn cuối cùng',
+          },
+          lastSender: {
+            type: 'object',
+            properties: {
+              _id: {
+                type: 'string',
+                description: 'ID người gửi tin nhắn cuối',
+              },
+              isCurrentUser: {
+                type: 'boolean',
+                description: 'Có phải người dùng hiện tại không',
+              },
+            },
+          },
+        },
+      },
+    },
+  })
   async getConversations(@Request() req: RequestWithUser): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getConversations(req.user._id);
@@ -188,19 +257,21 @@ export class MessagesController {
     }
   }
 
-  @Get('available-users')
+  @Get('available-properties')
   @Roles('guest', 'staff', 'admin')
-  @ApiOperation({ summary: 'Lấy danh sách người dùng đã từng chat' })
+  @ApiOperation({ summary: 'Lấy danh sách properties có thể chat' })
   @ApiResponse({
     status: 200,
-    description: 'Danh sách người dùng có lịch sử chat',
+    description: 'Danh sách properties có lịch sử chat',
     type: [UserResponseDto],
   })
   async getAvailableUsers(
     @Request() req: RequestWithUser,
   ): Promise<UserResponseDto[]> {
     try {
-      const result = await this.messagesService.getAvailableUsers(req.user._id);
+      const result = await this.messagesService.getAvailableProperties(
+        req.user._id,
+      );
       return Array.isArray(result) ? (result as UserResponseDto[]) : [];
     } catch (error) {
       console.error('Error in getAvailableUsers controller:', error);

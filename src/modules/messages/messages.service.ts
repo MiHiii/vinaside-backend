@@ -64,12 +64,24 @@ export class MessagesService {
     user: JwtPayload,
   ): Promise<Message> {
     try {
+      // Tự động thêm property_id nếu không có
+      let propertyId = createMessageDto.property_id;
+
+      if (!propertyId) {
+        // Tìm property_id từ booking hoặc listing của user
+        // TODO: Implement logic để lấy property_id từ context
+        // Ví dụ: từ booking_id, listing_id, hoặc user's recent bookings
+        console.log(
+          '⚠️ No property_id provided, need to implement auto-detection',
+        );
+      }
+
       // Kiểm tra nếu là property message
-      if (createMessageDto.property_id) {
+      if (propertyId) {
         const isAssigned =
           await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
             new Types.ObjectId(user._id),
-            new Types.ObjectId(createMessageDto.property_id),
+            new Types.ObjectId(propertyId),
           );
         if (!isAssigned) {
           throw new BadRequestException(
@@ -86,11 +98,17 @@ export class MessagesService {
         if (!replyMessage) {
           throw new BadRequestException('Tin nhắn reply không tồn tại');
         }
+
+        // Nếu reply message có property_id, sử dụng nó
+        if (!propertyId && replyMessage.property_id) {
+          propertyId = replyMessage.property_id.toString();
+        }
       }
 
       // Tạo message mới
       const messageData = {
         ...createMessageDto,
+        property_id: propertyId, // Thêm property_id vào message
         sender_id: user._id,
         sent_at: new Date(),
         is_read: MessageStatus.SENT,
@@ -739,6 +757,111 @@ export class MessagesService {
     }
   }
 
+  async getAvailableProperties(currentUserId: string): Promise<any[]> {
+    try {
+      const userObjectId = new Types.ObjectId(currentUserId);
+
+      // Check if user has any property messages
+      const messageCount = await this.messageModel.countDocuments({
+        $or: [
+          { sender_id: userObjectId },
+          { receiver_id: userObjectId },
+          { sender_id: currentUserId },
+          { receiver_id: currentUserId },
+        ],
+        property_id: { $exists: true, $ne: null },
+      });
+
+      if (messageCount === 0) {
+        return [];
+      }
+
+      // Lấy properties đã từng chat với current user
+      const properties = await this.messageModel.aggregate([
+        {
+          $match: {
+            $or: [
+              { sender_id: userObjectId },
+              { receiver_id: userObjectId },
+              { sender_id: currentUserId },
+              { receiver_id: currentUserId },
+            ],
+            property_id: { $exists: true, $ne: null },
+          },
+        },
+        {
+          $group: {
+            _id: '$property_id',
+            lastMessage: { $first: '$$ROOT' },
+            messageCount: { $sum: 1 },
+            unreadCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$receiver_id', userObjectId] },
+                      { $ne: ['$is_read', 'read'] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $addFields: {
+            propertyIdToLookup: {
+              $cond: [
+                { $eq: [{ $type: '$_id' }, 'objectId'] },
+                '$_id',
+                { $toObjectId: '$_id' },
+              ],
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'propertyIdToLookup',
+            foreignField: '_id',
+            as: 'property',
+          },
+        },
+        {
+          $unwind: '$property',
+        },
+        {
+          $project: {
+            _id: '$property._id',
+            name: '$property.name',
+            type: '$property.type',
+            thumbnail: '$property.thumbnail',
+            status: '$property.status',
+            isVerified: '$property.isVerified',
+            lastMessageAt: '$lastMessage.sent_at',
+            messageCount: '$messageCount',
+            unreadCount: '$unreadCount',
+            lastMessage: {
+              content: '$lastMessage.content',
+              sender_id: '$lastMessage.sender_id',
+              is_read: '$lastMessage.is_read',
+            },
+          },
+        },
+        {
+          $sort: { lastMessageAt: -1 },
+        },
+      ]);
+
+      return properties || [];
+    } catch (error) {
+      console.error('Error in getAvailableProperties:', error);
+      return [];
+    }
+  }
+
   async getAvailableUsers(currentUserId: string): Promise<any[]> {
     try {
       const userObjectId = new Types.ObjectId(currentUserId);
@@ -936,37 +1059,151 @@ export class MessagesService {
    * Lấy danh sách cuộc trò chuyện
    */
   async getConversations(userId: string): Promise<any[]> {
-    const base = await this.findUserConversations(userId);
-    const enriched = await Promise.all(
-      (base || []).map(async (conv) => {
-        const c = conv as {
-          lastMessage?: { sender_id?: unknown; receiver_id?: unknown };
-          unreadCount?: number;
-          [key: string]: unknown;
-        };
-        const rawSender = c.lastMessage?.sender_id;
-        const rawReceiver = c.lastMessage?.receiver_id;
-        const senderId = this.getIdString(rawSender);
-        const receiverId = this.getIdString(rawReceiver);
-        const otherUserId = senderId === userId ? receiverId : senderId;
+    try {
+      const userObjectId = new Types.ObjectId(userId);
 
-        const summary = otherUserId
-          ? await this.computeConversationSummary(userId, otherUserId)
-          : { lastMessage: null, lastMessageAt: null, unreadCounts: {} };
+      // Lấy tất cả cuộc trò chuyện (cả user-to-user và property messages)
+      const conversations = await this.messageModel.aggregate([
+        {
+          $match: {
+            $or: [
+              { sender_id: userObjectId },
+              { receiver_id: userObjectId },
+              { sender_id: userId },
+              { receiver_id: userId },
+            ],
+          },
+        },
+        {
+          $addFields: {
+            conversationId: {
+              $cond: [
+                { $ne: ['$property_id', null] },
+                { type: 'property', id: '$property_id' },
+                {
+                  type: 'user',
+                  id: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ['$sender_id', userObjectId] },
+                          { $eq: ['$sender_id', userId] },
+                        ],
+                      },
+                      '$receiver_id',
+                      '$sender_id',
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: '$conversationId',
+            lastMessage: { $first: '$$ROOT' },
+            messageCount: { $sum: 1 },
+            unreadCount: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      {
+                        $or: [
+                          { $eq: ['$receiver_id', userObjectId] },
+                          { $eq: ['$receiver_id', userId] },
+                        ],
+                      },
+                      { $ne: ['$is_read', MessageStatus.READ] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            firstMessageAt: { $min: '$sent_at' },
+            lastMessageAt: { $max: '$sent_at' },
+          },
+        },
+        {
+          $addFields: {
+            conversationType: '$_id.type',
+            conversationId: '$_id.id',
+          },
+        },
+        {
+          $lookup: {
+            from: 'properties',
+            localField: 'conversationId',
+            foreignField: '_id',
+            as: 'property',
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'conversationId',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        {
+          $addFields: {
+            conversationInfo: {
+              $cond: [
+                { $eq: ['$conversationType', 'property'] },
+                {
+                  $arrayElemAt: ['$property', 0],
+                },
+                {
+                  $arrayElemAt: ['$user', 0],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            _id: '$conversationId',
+            type: '$conversationType',
+            name: '$conversationInfo.name',
+            avatar_url: '$conversationInfo.thumbnail',
+            status: '$conversationInfo.status',
+            isVerified: '$conversationInfo.isVerified',
+            lastMessage: {
+              content: '$lastMessage.content',
+              sender_id: '$lastMessage.sender_id',
+              is_read: '$lastMessage.is_read',
+              sent_at: '$lastMessage.sent_at',
+            },
+            messageCount: '$messageCount',
+            unreadCount: '$unreadCount',
+            firstMessageAt: '$firstMessageAt',
+            lastMessageAt: '$lastMessageAt',
+            // Thông tin về người đang trả lời
+            lastSender: {
+              _id: '$lastMessage.sender_id',
+              isCurrentUser: {
+                $or: [
+                  { $eq: ['$lastMessage.sender_id', userObjectId] },
+                  { $eq: ['$lastMessage.sender_id', userId] },
+                ],
+              },
+            },
+          },
+        },
+        {
+          $sort: { lastMessageAt: -1 },
+        },
+      ]);
 
-        return {
-          ...(conv as Record<string, unknown>),
-          unreadCount:
-            summary.unreadCounts && userId in summary.unreadCounts
-              ? summary.unreadCounts[userId]
-              : c.unreadCount || 0,
-          lastMessage: summary.lastMessage,
-          lastMessageAt: summary.lastMessageAt,
-          unreadCounts: summary.unreadCounts,
-        };
-      }),
-    );
-    return enriched;
+      return conversations || [];
+    } catch (error) {
+      console.error('Error in getConversations:', error);
+      return [];
+    }
   }
 
   /**

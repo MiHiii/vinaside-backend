@@ -46,6 +46,13 @@ export class Service extends Document {
   })
   is_active: boolean;
 
+  @Prop({
+    type: Boolean,
+    required: true,
+    default: false,
+  })
+  allow_quantity: boolean;
+
   @Prop({ default: false })
   isDeleted: boolean;
 
