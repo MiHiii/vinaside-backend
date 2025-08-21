@@ -145,49 +145,145 @@ export class ChatbotGateway {
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
     try {
+      // Validate input
+      if (!data.userId || !data.message || data.message.trim().length === 0) {
+        client.emit('receive_message', {
+          message: 'Vui lòng nhập câu hỏi của bạn!',
+        });
+        return;
+      }
+
+      // Log thông tin tin nhắn nhận được
+      this.logger.log(
+        `Nhận tin nhắn từ user ${data.userId}: "${data.message}"`,
+      );
+
+      // Lưu câu hỏi người dùng
       await this.chatbotMessageModel.create({
         content: data.message,
         user_id: new Types.ObjectId(data.userId),
       });
 
-      const intent = detectIntent(data.message);
-      const internalData = await this.fetchInternalData();
-      let response: string;
-
-      if (STATIC_RESPONSES[intent] && intent !== 'ask_cheapest_room') {
-        response = STATIC_RESPONSES[intent] as string;
-      } else {
-        response = await this.handleDynamicIntent(
-          intent,
-          data.message,
-          internalData,
-        );
+      // Kiểm tra tin nhắn có quá dài không
+      if (data.message.length > 500) {
+        data.message = data.message.substring(0, 500);
+        this.logger.warn(`Tin nhắn quá dài, đã cắt ngắn: ${data.message}`);
       }
 
+      // Thông báo đang xử lý để UX tốt hơn
+      client.emit('receive_typing', { isTyping: true });
+
+      // Phân tích intent và lấy dữ liệu
+      const intent = detectIntent(data.message);
+      this.logger.log(`Intent được nhận diện: ${intent}`);
+
+      // Lấy dữ liệu từ API
+      let internalData;
+      try {
+        internalData = await this.fetchInternalData();
+        this.logger.log(
+          `Đã lấy dữ liệu thành công: ${(internalData as { listings: any[] }).listings.length} phòng`,
+        );
+      } catch (dataError) {
+        this.logger.error('Lỗi khi lấy dữ liệu:', dataError);
+        internalData = {
+          listings: [],
+          bookings: [],
+          vouchers: [],
+          services: [],
+          reviews: [],
+        };
+      }
+
+      let response: string;
+      try {
+        // Xử lý các câu trả lời tĩnh
+        if (STATIC_RESPONSES[intent] && intent !== 'ask_cheapest_room') {
+          this.logger.log(`Sử dụng câu trả lời tĩnh cho intent: ${intent}`);
+          response = STATIC_RESPONSES[intent] as string;
+        } else {
+          // Xử lý các câu trả lời động
+          this.logger.log(`Xử lý intent động: ${intent}`);
+          response = await this.handleDynamicIntent(
+            intent,
+            data.message,
+            internalData as {
+              listings: Listing[];
+              bookings: Booking[];
+              vouchers: Voucher[];
+              services: Service[];
+              reviews: Review[];
+            },
+          );
+        }
+      } catch (intentError) {
+        this.logger.error('Lỗi khi xử lý intent:', intentError);
+        response =
+          'Xin lỗi, tôi không hiểu câu hỏi của bạn. Bạn có thể hỏi về giá phòng, tiện nghi, dịch vụ, hoặc liên hệ 0909.123.456 để được hỗ trợ!';
+      }
+
+      // Lưu câu trả lời
       await this.chatbotMessageModel.create({
         content: response,
         user_id: new Types.ObjectId(data.userId),
         reply: response,
       });
 
+      // Gửi câu trả lời cho client
       client.emit('receive_message', { message: response });
+      client.emit('receive_typing', { isTyping: false });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error('Error handling message:', errorMessage);
+
+      client.emit('receive_typing', { isTyping: false });
       client.emit('receive_message', {
-        message: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau nhé!',
+        message:
+          'Xin lỗi, có lỗi xảy ra. Hệ thống đang bận, vui lòng thử lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!',
       });
     }
   }
 
   private async fetchInternalData(): Promise<InternalData['data']> {
     try {
+      // Thêm timeout để tránh chờ quá lâu
       const response = await axios.get<InternalData>(
         'http://localhost:8080/api/v1/internal-data',
+        { timeout: 5000 }, // Timeout sau 5 giây
       );
-      return response.data.data;
-    } catch {
+
+      if (!response?.data?.data) {
+        this.logger.warn('Internal data API trả về dữ liệu không hợp lệ');
+        throw new Error('Invalid data structure');
+      }
+
+      // Log số lượng dữ liệu nhận được
+      const data = response.data.data;
+      this.logger.log(
+        `Fetched data: ${data.listings.length} listings, ${data.vouchers.length} vouchers, ${data.services.length} services, ${data.reviews.length} reviews`,
+      );
+
+      return data;
+    } catch (error) {
+      const err = error as {
+        response?: { status: string; data: any };
+        request?: any;
+        message?: string;
+      };
+
+      if (err.response) {
+        this.logger.error(
+          `Internal data API error (${err.response.status}):`,
+          err.response.data,
+        );
+      } else if (err.request) {
+        this.logger.error('Internal data API no response:', err.message);
+      } else {
+        this.logger.error('Internal data API error:', err.message);
+      }
+
+      // Trả về object rỗng trong trường hợp lỗi
       return {
         listings: [],
         bookings: [],
@@ -227,19 +323,31 @@ export class ChatbotGateway {
     const { listings, bookings, vouchers, services, reviews } = data;
     const now = new Date('2025-08-01T12:05:00+07:00');
 
+    // Log để debug
+    this.logger.log(`Xử lý intent: ${intent} với tin nhắn: "${message}"`);
+
+    // Kiểm tra có dữ liệu phòng không
+    if (!listings || listings.length === 0) {
+      this.logger.warn('Không có dữ liệu phòng');
+      return 'Hiện tại hệ thống chưa có dữ liệu về phòng. Vui lòng thử lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ!';
+    }
+
     const availableRooms: Listing[] = listings.filter((room) => {
-      const roomBookings = bookings.filter(
+      const activeBookings = bookings.filter(
         (b) =>
           b.listingId === room._id &&
-          ['pending', 'confirmed', 'completed'].includes(b.status),
+          ['confirmed', 'completed'].includes(b.status),
       );
-      return (
-        roomBookings.every((b) => {
-          const checkOut = new Date(b.check_out_date);
-          return checkOut < now;
-        }) && room.status === 'draft'
+      const hasOverlap = activeBookings.some(
+        (b) => new Date(b.check_out_date) > now,
       );
+      return !hasOverlap && room.status === 'draft';
     });
+
+    // Log số lượng phòng có sẵn
+    this.logger.log(
+      `Số phòng có sẵn: ${availableRooms.length}/${listings.length}`,
+    );
 
     switch (intent) {
       case 'ask_price': {
@@ -265,6 +373,61 @@ export class ChatbotGateway {
           .join(
             ', ',
           )}\n👉 Đặt ngay để không bỏ lỡ cơ hội nghỉ dưỡng giá tốt tại Vinaside!`;
+      }
+      case 'check_availability_weekend': {
+        const nextSaturday = new Date(now);
+        const day = nextSaturday.getDay();
+        const diffToSat = (6 - day + 7) % 7;
+        nextSaturday.setDate(nextSaturday.getDate() + diffToSat);
+        nextSaturday.setHours(0, 0, 0, 0);
+        const nextMonday = new Date(nextSaturday);
+        nextMonday.setDate(nextMonday.getDate() + 2);
+        const weekendAvailable = listings.filter((room) => {
+          const activeBookings = bookings.filter(
+            (b) =>
+              b.listingId === room._id &&
+              ['confirmed', 'completed'].includes(b.status),
+          );
+          const overlap = activeBookings.some((b) => {
+            const inDate = new Date(b.checkInDate);
+            const outDate = new Date(b.check_out_date);
+            return inDate < nextMonday && outDate > nextSaturday;
+          });
+          return !overlap && room.status === 'draft';
+        });
+        if (!weekendAvailable.length)
+          return 'Cuối tuần này chưa có phòng trống phù hợp. Bạn muốn xem tuần kế tiếp không?';
+        return `✅ Cuối tuần có ${weekendAvailable.length} phòng trống: ${weekendAvailable
+          .map((r) => r.title)
+          .join(', ')}\n👉 Bạn muốn mình giữ chỗ không?`;
+      }
+
+      case 'ask_room_count': {
+        // Xác định địa điểm được đề cập (nếu có)
+        const locationMatch = this.extractLocationFromQuery(message);
+
+        if (locationMatch) {
+          // Tìm phòng theo địa điểm
+          const roomsInLocation = this.findRoomsByLocation(
+            availableRooms,
+            locationMatch,
+          );
+          const totalRooms = this.findRoomsByLocation(listings, locationMatch);
+
+          if (totalRooms.length === 0) {
+            return `Hiện tại chưa có phòng nào tại ${locationMatch}. Bạn có thể tìm phòng ở khu vực khác như Đà Nẵng, Hội An hoặc Nha Trang.`;
+          }
+
+          return `🏨 Tại ${locationMatch}, chúng tôi có ${totalRooms.length} phòng, trong đó ${roomsInLocation.length} phòng đang trống và sẵn sàng đặt.
+📊 Các loại phòng: ${[...new Set(totalRooms.map((r) => r.title.split(' ')[0]))].join(', ')}
+💰 Giá từ ${Math.min(...totalRooms.map((r) => r.price_per_night)).toLocaleString('vi-VN')}đ - ${Math.max(...totalRooms.map((r) => r.price_per_night)).toLocaleString('vi-VN')}đ/đêm
+👉 Bạn muốn biết thêm chi tiết về loại phòng nào không?`;
+        } else {
+          // Trả về tổng số phòng
+          return `🏨 Vinaside hiện có tổng cộng ${listings.length} phòng, trong đó ${availableRooms.length} phòng đang trống.
+📊 Các địa điểm: Đà Nẵng, Hội An, Nha Trang, Hà Nội
+👉 Bạn muốn biết thông tin phòng ở địa điểm nào?`;
+        }
       }
 
       case 'ask_rooms_by_location': {
@@ -496,24 +659,313 @@ export class ChatbotGateway {
         }\n📌 Liên hệ để được hỗ trợ chi tiết!`;
       }
 
+      case 'ask_all_rooms': {
+        if (!listings.length) return 'Hiện chưa có dữ liệu phòng.';
+        const list = listings
+          .slice(0, 50)
+          .map(
+            (r) =>
+              `- ${r.title} (${r.price_per_night.toLocaleString('vi-VN')}đ/đêm)`,
+          )
+          .join('\n');
+        return `📋 Danh sách phòng hiện có:\n${list}\n👉 Bạn muốn xem chi tiết phòng nào?`;
+      }
+
+      // NEW: Handle comparison questions
+      case 'ask_comparison': {
+        return this.handleComparisonQuestions(
+          message,
+          availableRooms,
+          vouchers,
+        );
+      }
+
+      // NEW: Handle attraction and activity questions
+      case 'ask_nearby_attractions': {
+        return this.handleAttractionQuestions(message);
+      }
+
+      case 'ask_beach_activities': {
+        return `🏖️ **Hoạt động biển tại Đà Nẵng:**\n\n🏊‍♀️ **Bơi lội & Tắm biển:**\n• Biển Mỹ Khê - bãi biển đẹp nhất VN\n• Biển Non Nước - yên tĩnh, sạch sẽ\n• Biển Bãi Bắc - ít người, hoang sơ\n\n🤿 **Lặn ngắm san hô:**\n• Tour lặn Hòn Chảo\n• Lặn tại Bán đảo Sơn Trà\n• Câu cá và lặn tại Cù Lao Chàm\n\n🚤 **Thể thao nước:**\n• Lướt ván - Surf\n• Chèo thuyền Kayak\n• Parasailing ngắm toàn cảnh\n• Jet ski\n\n📞 Liên hệ để được tư vấn tour và thuê phòng gần biển!`;
+      }
+
+      case 'ask_adventure': {
+        return `⛰️ **Phiêu lưu mạo hiểm tại Đà Nẵng:**\n\n🏔️ **Leo núi & Trekking:**\n• Ngũ Hành Sơn - khám phá hang động\n• Núi Thần Tài - zipline dài nhất VN\n• Bán đảo Sơn Trà - trekking ngắm voọc\n\n🏍️ **Phượt motor:**\n• Đèo Hải Vân - cung đường ven biển\n• Hành trình Đà Nẵng - Hội An\n• Tour motor khám phá làng cổ\n\n🎯 **Extreme Sports:**\n• Bungee jumping tại Ba Na Hills\n• Canyoning tại thác Yang Bay\n• Rock climbing tại Marble Mountains\n\n🏨 Đặt phòng tại các khu vực gần địa điểm phiêu lưu để tiết kiệm thời gian di chuyển!`;
+      }
+
+      case 'ask_wellness': {
+        return `🧘‍♀️ **Thư giãn & Chăm sóc sức khỏe:**\n\n💆‍♀️ **Spa & Massage:**\n• Thăng Long Spa - 5 sao quốc tế\n• Minh An Spa - massage truyền thống\n• La Siesta Spa - view biển tuyệt đẹp\n\n🧘 **Yoga & Meditation:**\n• Yoga sunrise tại bãi biển Mỹ Khê\n• Meditation retreat tại chùa Linh Ứng\n• Hot yoga tại các resort cao cấp\n\n🌿 **Natural Healing:**\n• Tắm bùn khoáng I-Resort\n• Suối nước nóng Núi Thần Tài\n• Aromatherapy tại các resort\n\n🏨 Nhiều phòng của chúng tôi gần các spa nổi tiếng, thuận tiện cho việc thư giãn!`;
+      }
+
+      // NEW: Handle transportation questions
+      case 'ask_transportation': {
+        return this.handleTransportationQuestions(message);
+      }
+
+      // NEW: Handle food and restaurant questions
+      case 'ask_food_restaurant': {
+        return this.handleFoodQuestions(message);
+      }
+
+      // NEW: Handle weather questions
+      case 'ask_weather_season': {
+        return `🌤️ **Thời tiết Đà Nẵng qua các mùa:**\n\n🌞 **Mùa khô (Feb-Aug):**\n• Nắng đẹp, ít mưa\n• Nhiệt độ 25-35°C\n• Thích hợp tắm biển\n• **Thời điểm tốt nhất:** Mar-May\n\n🌧️ **Mùa mưa (Sep-Jan):**\n• Mưa nhiều, bão thỉnh thoảng\n• Nhiệt độ 20-28°C\n• Ít khách, giá phòng rẻ\n• Thích hợp nghỉ dưỡng\n\n🏖️ **Lời khuyên:**\n• **Tắm biển:** Feb-Aug\n• **Tiết kiệm:** Sep-Dec\n• **Lễ hội:** Tết Nguyên Đán\n\n📞 Liên hệ để được tư vấn phòng theo mùa phù hợp!`;
+      }
+
+      // NEW: Handle business travel questions
+      case 'ask_business_group': {
+        return this.handleBusinessQuestions(message, availableRooms, services);
+      }
+
+      // NEW: Handle romantic travel questions
+      case 'ask_romantic_couple': {
+        return this.handleRomanticQuestions(message, availableRooms, vouchers);
+      }
+
+      // NEW: Handle all other dynamic questions with AI
+      case 'dynamic_question': {
+        return this.handleAIQuestion(message, {
+          listings,
+          bookings,
+          vouchers,
+          services,
+          reviews,
+        });
+      }
+
       default: {
+        // Log để debug
+        this.logger.log(`Xử lý default case cho tin nhắn: "${message}"`);
+
+        // Trước tiên kiểm tra địa điểm
+        const locationMatch = this.extractLocationFromQuery(message);
+        if (locationMatch) {
+          this.logger.log(
+            `Tìm thấy địa điểm trong default case: ${locationMatch}`,
+          );
+          return this.handleRoomsByLocation(message, availableRooms, vouchers);
+        }
+
+        // Trước tiên kiểm tra xem có phải câu hỏi về phòng cụ thể không
         const roomByName = this.findRoomByName(message, listings);
         if (roomByName) {
+          this.logger.log(
+            `Tìm thấy phòng trong default case: ${roomByName.title}`,
+          );
           return this.generateRoomInfo(roomByName, vouchers, reviews);
         }
 
+        // Kiểm tra xem có phải câu hỏi về vị trí không
         const locationInfo = this.extractLocationInfo(message, availableRooms);
         if (locationInfo) {
           return locationInfo;
         }
 
+        // Kiểm tra câu hỏi về phòng có các tiện nghi
+        if (
+          message.toLowerCase().includes('wifi') ||
+          message.toLowerCase().includes('tiện nghi') ||
+          message.toLowerCase().includes('amenity')
+        ) {
+          return this.handleRoomAmenities(message, availableRooms, services);
+        }
+
+        // Kiểm tra câu hỏi về sức chứa phòng
+        if (
+          message.toLowerCase().includes('bao nhiêu người') ||
+          message.toLowerCase().includes('capacity') ||
+          message.toLowerCase().includes('sức chứa')
+        ) {
+          return `Các phòng của chúng tôi có sức chứa từ 2-6 người tùy loại phòng:\n- Phòng Standard: 2 người\n- Phòng Deluxe: 2-3 người\n- Phòng Family: 3-4 người\n- Phòng Suite: 4-6 người\n\nMỗi phòng có thể thêm 1 giường phụ với phụ phí 200.000đ/đêm. Trẻ em dưới 6 tuổi ở miễn phí khi dùng chung giường với bố mẹ.`;
+        }
+
+        // Kiểm tra câu hỏi về quy trình đặt phòng
+        if (
+          message.toLowerCase().includes('đặt phòng') ||
+          message.toLowerCase().includes('booking')
+        ) {
+          return `📋 **Quy trình đặt phòng tại Vinaside:**\n\n1️⃣ **Tìm phòng:** Chọn phòng phù hợp với nhu cầu và ngân sách\n2️⃣ **Kiểm tra lịch:** Xem ngày trống và đặt lịch\n3️⃣ **Điền thông tin:** Cung cấp thông tin cá nhân và thanh toán\n4️⃣ **Xác nhận:** Nhận email xác nhận đặt phòng\n5️⃣ **Check-in:** Đến nhận phòng theo lịch đã đặt\n\n💳 **Thanh toán:** Chấp nhận VNPay, MoMo, tiền mặt\n📞 **Hỗ trợ:** Liên hệ 0909.123.456 để được tư vấn!`;
+        }
+
+        // Sử dụng AI để trả lời câu hỏi phức tạp
+        this.logger.log(`Sử dụng AI trả lời câu hỏi: "${message}"`);
+        const readableContext = this.formatDataForAI({
+          listings,
+          bookings,
+          vouchers,
+          services,
+          reviews,
+        });
         const prompt = this.chatbotService.buildPrompt(
           message,
-          JSON.stringify({ listings, bookings, vouchers, services, reviews }),
+          readableContext,
         );
         return this.chatbotService.generateResponse(prompt);
       }
     }
+  }
+
+  // Extract location from query - tìm địa điểm từ câu hỏi
+  private extractLocationFromQuery(message: string): string | null {
+    const msg = message.toLowerCase();
+
+    // Danh sách từ khóa địa điểm - bổ sung thêm nhiều từ khóa hơn và các biến thể không dấu
+    const locationKeywords = [
+      // Đà Nẵng và các biến thể
+      'đà nẵng',
+      'da nang',
+      'danang',
+
+      // Hội An và các biến thể
+      'hội an',
+      'hoi an',
+      'hoian',
+
+      // Sơn Trà và các biến thể
+      'sơn trà',
+      'son tra',
+      'sontra',
+
+      // Các quận huyện Đà Nẵng
+      'liên chiểu',
+      'lien chieu',
+      'thanh khê',
+      'thanh khe',
+      'cẩm lệ',
+      'cam le',
+      'hoà vang',
+      'hoa vang',
+      'ngũ hành sơn',
+      'ngu hanh son',
+      'hải châu',
+      'hai chau',
+
+      // Các khu vực khác
+      'quảng ninh',
+      'quang ninh',
+      'tam đảo',
+      'tam dao',
+      'ninh bình',
+      'ninh binh',
+
+      // Các thành phố lớn
+      'hồ chí minh',
+      'ho chi minh',
+      'sài gòn',
+      'sai gon',
+      'tphcm',
+      'hà nội',
+      'ha noi',
+      'hanoi',
+      'nha trang',
+      'nhatrang',
+      'đà lạt',
+      'da lat',
+      'dalat',
+      'phú quốc',
+      'phu quoc',
+      'huế',
+      'hue',
+      'hạ long',
+      'ha long',
+      'halong',
+      'vũng tàu',
+      'vung tau',
+      'vungtau',
+
+      // Các quận ở TP.HCM
+      'quận 1',
+      'quan 1',
+      'q1',
+      'quận 2',
+      'quan 2',
+      'q2',
+      'quận 3',
+      'quan 3',
+      'q3',
+      'quận 4',
+      'quan 4',
+      'q4',
+      'quận 5',
+      'quan 5',
+      'q5',
+      'quận 7',
+      'quan 7',
+      'q7',
+
+      // Các điểm đặc trưng
+      'biển',
+      'bien',
+      'beach',
+      'trung tâm',
+      'trung tam',
+      'center',
+      'sân bay',
+      'san bay',
+      'airport',
+      'chợ',
+      'cho',
+      'market',
+      'bãi biển',
+      'bai bien',
+      'mỹ khê',
+      'my khe',
+      'bán đảo',
+      'ban dao',
+      'peninsula',
+      'non nước',
+      'non nuoc',
+    ];
+
+    // Log để debug
+    this.logger.log(`Tìm kiếm từ khóa địa điểm trong: "${msg}"`);
+
+    // Tìm từ khóa địa điểm trong câu hỏi
+    const matchedLocation = locationKeywords.find((keyword) =>
+      msg.includes(keyword),
+    );
+
+    // Log kết quả tìm kiếm
+    this.logger.log(
+      `Kết quả tìm kiếm địa điểm: ${matchedLocation || 'Không tìm thấy'}`,
+    );
+
+    return matchedLocation || null;
+  }
+
+  // Find rooms by location - tìm phòng theo vị trí
+  private findRoomsByLocation(rooms: Listing[], location: string): Listing[] {
+    // Chuẩn hóa location để tìm kiếm dễ dàng hơn
+    const normalizedLocation = location.toLowerCase().trim();
+    console.log(`Tìm kiếm phòng với địa điểm: ${normalizedLocation}`);
+
+    return rooms.filter((room) => {
+      if (!room.propertyId || typeof room.propertyId === 'string') {
+        return false;
+      }
+
+      const property = room.propertyId;
+      const propertyName = (property.name || '').toLowerCase();
+      const propertyAddress = (property.location?.address || '').toLowerCase();
+      const propertyCity = (property.location?.city || '').toLowerCase();
+      const propertyDistrict = (
+        property.location?.district || ''
+      ).toLowerCase();
+
+      // Log để debug
+      console.log(
+        `Phòng ${room.title} - Property: ${propertyName}, Địa chỉ: ${propertyAddress}, Thành phố: ${propertyCity}, Quận: ${propertyDistrict}`,
+      );
+
+      // Tìm theo nhiều trường khác nhau
+      const matchesName = propertyName.includes(normalizedLocation);
+      const matchesAddress = propertyAddress.includes(normalizedLocation);
+      const matchesCity = propertyCity.includes(normalizedLocation);
+      const matchesDistrict = propertyDistrict.includes(normalizedLocation);
+
+      // Check nếu có bất kỳ trường nào trùng khớp
+      return matchesName || matchesAddress || matchesCity || matchesDistrict;
+    });
   }
 
   private handleRoomsByLocation(
@@ -521,60 +973,21 @@ export class ChatbotGateway {
     availableRooms: Listing[],
     vouchers: Voucher[],
   ): string {
-    const msg = message.toLowerCase();
+    // Tìm vị trí được đề cập trong câu hỏi
+    const locationMatch = this.extractLocationFromQuery(message);
 
-    const locationKeywords = [
-      'đà nẵng',
-      'hội an',
-      'sơn trà',
-      'quảng ninh',
-      'liên chiểu',
-      'tam đảo',
-      'cẩm lệ',
-      'thanh khê',
-      'hoà vang',
-      'biển',
-      'beach',
-      'trung tâm',
-      'center',
-      'hồ chí minh',
-      'airport',
-      'ninh bình',
-      'market',
-      'bãi biển',
-      'mỹ khê',
-      'hà nội',
-      'bán đảo',
-      'peninsula',
-    ];
-
-    const matchedLocation = locationKeywords.find((keyword) =>
-      msg.includes(keyword),
-    );
-
-    if (!matchedLocation) {
-      return 'Vui lòng cho biết cụ thể địa điểm bạn muốn tìm phòng (ví dụ: Đà Nẵng, Hội An, Sơn Trà, v.v.)';
+    if (!locationMatch) {
+      return 'Bạn muốn tìm phòng ở đâu? Vui lòng cho tôi biết thành phố hoặc khu vực cụ thể (ví dụ: Đà Nẵng, Hội An, Sơn Trà...)';
     }
 
-    const roomsInLocation = availableRooms.filter((room) => {
-      if (!room.propertyId || typeof room.propertyId === 'string') {
-        return false;
-      }
-
-      const property = room.propertyId;
-      const propertyAddress = property.location?.address?.toLowerCase() || '';
-      const propertyCity = property.location?.city?.toLowerCase() || '';
-      const propertyDistrict = property.location?.district?.toLowerCase() || '';
-
-      return (
-        propertyAddress.includes(matchedLocation) ||
-        propertyCity.includes(matchedLocation) ||
-        propertyDistrict.includes(matchedLocation)
-      );
-    });
+    // Tìm các phòng ở vị trí đó
+    const roomsInLocation = this.findRoomsByLocation(
+      availableRooms,
+      locationMatch,
+    );
 
     if (roomsInLocation.length === 0) {
-      return `Hiện không có phòng trống tại ${matchedLocation}. Hãy thử tìm phòng ở các khu vực khác hoặc liên hệ để được tư vấn!`;
+      return `Hiện không có phòng trống tại ${locationMatch}. Hãy thử tìm phòng ở các khu vực khác hoặc liên hệ để được tư vấn!`;
     }
 
     const roomList = roomsInLocation
@@ -593,7 +1006,7 @@ export class ChatbotGateway {
       })
       .join('\n\n');
 
-    return `🏖️ Phòng trống tại ${matchedLocation}:\n\n${roomList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
+    return `🏖️ Phòng trống tại ${locationMatch}:\n\n${roomList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
   }
 
   private handlePropertyInfo(
@@ -800,12 +1213,14 @@ export class ChatbotGateway {
   private findRoomByName(message: string, listings: Listing[]): Listing | null {
     const msg = message.toLowerCase();
 
+    // Log để debug
+    this.logger.log(`Tìm phòng theo tên trong: "${msg}"`);
+
+    // Chỉ tìm kiếm theo tên phòng cụ thể, không dùng pattern chung chung
     const roomPatterns = [
-      /phòng\s+([^ở\s]+(?:\s+[^ở\s]+)*)/i,
-      /room\s+([^ở\s]+(?:\s+[^ở\s]+)*)/i,
-      /([^ở\s]+(?:\s+[^ở\s]+)*)\s+ở/i,
-      /([^ở\s]+(?:\s+[^ở\s]+)*)\s+location/i,
-      /([^ở\s]+(?:\s+[^ở\s]+)*)\s+address/i,
+      /phòng\s+(standard|deluxe|suite|family|vip|luxury|junior|executive|superior|premium)/i,
+      /room\s+(standard|deluxe|suite|family|vip|luxury|junior|executive|superior|premium)/i,
+      /(standard|deluxe|suite|family|vip|luxury|junior|executive|superior|premium)\s+room/i,
     ];
 
     for (const pattern of roomPatterns) {
@@ -923,5 +1338,250 @@ export class ChatbotGateway {
       .join('\n\n');
 
     return `🏖️ Phòng trống tại ${matchedLocation}:\n\n${roomList}\n\n📞 Liên hệ 0909.123.456 để đặt phòng ngay!`;
+  }
+
+  // NEW: Handle comparison questions
+  private handleComparisonQuestions(
+    message: string,
+    availableRooms: Listing[],
+    vouchers: Voucher[],
+  ): string {
+    if (availableRooms.length < 2) {
+      return 'Hiện tại chỉ có ít phòng trống, không thể so sánh. Hãy xem danh sách phòng hiện có hoặc liên hệ để được tư vấn!';
+    }
+
+    const topRooms = availableRooms.slice(0, 3);
+    const comparison = topRooms
+      .map((room, index) => {
+        const property = room.propertyId;
+        const address =
+          typeof property === 'object'
+            ? property?.location?.address || 'Đang cập nhật'
+            : 'Đang cập nhật';
+        const voucher = vouchers.find(
+          (v) => room.voucher_ids?.includes(v._id) && v.is_active,
+        );
+        const priceInfo = voucher
+          ? `${room.price_per_night.toLocaleString('vi-VN')}đ (giảm ${voucher.discount_percent}%)`
+          : `${room.price_per_night.toLocaleString('vi-VN')}đ`;
+
+        return `**${index + 1}. ${room.title}**\n📍 ${address}\n💰 ${priceInfo}/đêm\n👥 Tối đa ${room.max_guests || 2} khách`;
+      })
+      .join('\n\n');
+
+    return `📊 **So sánh 3 phòng hàng đầu:**\n\n${comparison}\n\n💡 **Gợi ý:** Phòng giá rẻ nhất là phòng số 1. Bạn muốn xem chi tiết phòng nào?`;
+  }
+
+  // NEW: Handle attraction questions
+  private handleAttractionQuestions(message: string): string {
+    const msg = message.toLowerCase();
+
+    if (msg.includes('gần') || msg.includes('nearby')) {
+      return `🗺️ **Địa điểm nổi tiếng gần các phòng của chúng tôi:**\n\n🏖️ **Biển & Thiên nhiên:**\n• Biển Mỹ Khê (5-15 phút)\n• Bán đảo Sơn Trà (10-20 phút)\n• Ngũ Hành Sơn (15-25 phút)\n• Hội An cổ kính (30-45 phút)\n\n🏛️ **Văn hóa & Tâm linh:**\n• Chùa Linh Ứng (15-30 phút)\n• Bảo tàng Chăm (10-20 phút)\n• Chợ Hàn (5-15 phút)\n• Cầu Rồng (10-20 phút)\n\n🎢 **Giải trí:**\n• Ba Na Hills (45-60 phút)\n• Asian Park (20-30 phút)\n• Helio Center (15-25 phút)\n\n🏨 Tất cả phòng của chúng tôi đều có vị trí thuận lợi để tham quan!`;
+    }
+
+    return `🌟 **Top điểm đến phải thăm tại Đà Nẵng:**\n\n1️⃣ **Ngũ Hành Sơn** - Núi đá và hang động huyền bí\n2️⃣ **Bán đảo Sơn Trà** - Thiên đường xanh và voọc chà vá\n3️⃣ **Hội An** - Phố cổ đèn lồng lung linh\n4️⃣ **Ba Na Hills** - Cầu Vàng nổi tiếng thế giới\n5️⃣ **Biển Mỹ Khê** - Bãi biển đẹp nhất Việt Nam\n6️⃣ **Chùa Linh Ứng** - Tâm linh và view tuyệt đẹp\n\n📍 Tất cả đều gần với các phòng nghỉ của Vinaside!`;
+  }
+
+  // NEW: Handle transportation questions
+  private handleTransportationQuestions(message: string): string {
+    const msg = message.toLowerCase();
+
+    if (msg.includes('sân bay') || msg.includes('airport')) {
+      return `✈️ **Di chuyển từ sân bay Đà Nẵng:**\n\n🚗 **Taxi/Grab:**\n• Thời gian: 15-30 phút\n• Chi phí: 80,000-150,000đ\n• Tiện lợi nhất, đến tận nơi\n\n🚌 **Xe bus:**\n• Tuyến 601: Sân bay → Trung tâm\n• Chi phí: 20,000-30,000đ\n• Thời gian: 45-60 phút\n\n🏨 **Shuttle từ hotel:**\n• Miễn phí cho một số phòng\n• Cần đặt trước khi check-in\n• Liên hệ để kiểm tra\n\n📞 Gọi 0909.123.456 để được hỗ trợ đưa đón!`;
+    }
+
+    return `🚗 **Phương tiện di chuyển tại Đà Nẵng:**\n\n🏍️ **Thuê xe máy:**\n• Giá: 100,000-150,000đ/ngày\n• Linh hoạt, dễ đậu xe\n• Phù hợp tham quan gần\n\n🚗 **Thuê ô tô:**\n• Giá: 800,000-1,500,000đ/ngày\n• Có tài xế hoặc tự lái\n• Phù hợp gia đình, đi xa\n\n📱 **Grab/GoViet:**\n• Tiện lợi, an toàn\n• Bike: 15,000-30,000đ\n• Car: 30,000-80,000đ\n\n🚲 **Xe đạp:**\n• Giá: 50,000-80,000đ/ngày\n• Thân thiện môi trường\n• Phù hợp khu vực gần biển\n\n📍 Tất cả phòng của chúng tôi đều gần các điểm thuê xe!`;
+  }
+
+  // NEW: Handle food questions
+  private handleFoodQuestions(message: string): string {
+    const msg = message.toLowerCase();
+
+    if (
+      msg.includes('đặc sản') ||
+      msg.includes('specialty') ||
+      msg.includes('local')
+    ) {
+      return `🍜 **Đặc sản Đà Nẵng không thể bỏ qua:**\n\n🥢 **Món chính:**\n• Mì Quảng - Đặc sản số 1\n• Bún chả cá - Tươi ngon từ biển\n• Cao lầu - Từ Hội An gần đây\n• Bánh xèo - Giòn rụm thơm ngon\n\n🦐 **Hải sản:**\n• Chợ đêm Helio - Tôm càng xanh\n• Bãi biển Mỹ Khê - BBQ hải sản\n• Làng chài Thọ Quang - Tươi sống\n\n🍨 **Tráng miệng:**\n• Chè bắp - Đặc sản miền Trung\n• Kem flan - Mát lạnh ngày nóng\n• Bánh tráng nướng - Vỉa hè Đà Nẵng\n\n📍 Gần tất cả phòng của chúng tôi đều có quán ăn ngon!`;
+    }
+
+    return `🍽️ **Ăn gì tại Đà Nẵng:**\n\n⭐ **Quán nổi tiếng:**\n• Mì Quảng Bà Mua - 236 Lê Duẩn\n• Bún chả cá 199 - Đông Giang\n• Nem lụi Quyết Chiến - Trần Cao Vân\n• Bánh xèo Bà Dưỡng - Hoàng Diệu\n\n🌃 **Chợ đêm & Food court:**\n• Chợ đêm Helio - Hải sản BBQ\n• Con Market - Fusion food\n• Indochina Riverside - Fine dining\n• Memory Lounge - Rooftop view\n\n💰 **Giá tham khảo:**\n• Mì Quảng: 25,000-40,000đ\n• Hải sản: 200,000-500,000đ/kg\n• Bánh tráng nướng: 5,000-10,000đ\n\n🏨 Nhiều phòng của chúng tôi gần khu ẩm thực sầm uất!`;
+  }
+
+  // NEW: Handle business questions
+  private handleBusinessQuestions(
+    message: string,
+    availableRooms: Listing[],
+    services: any[],
+  ): string {
+    const businessRooms = availableRooms.filter(
+      (room) => room.max_guests && room.max_guests >= 4,
+    );
+
+    if (businessRooms.length === 0) {
+      return 'Hiện tại không có phòng phù hợp cho nhóm lớn. Vui lòng liên hệ để được tư vấn phòng phù hợp cho business trip!';
+    }
+
+    // Lọc các dịch vụ liên quan đến business
+    services.filter((service) => {
+      if (typeof service !== 'object' || service === null) return false;
+      const serviceObj = service as { name?: string };
+      const name = serviceObj.name || '';
+      return (
+        name.toLowerCase().includes('meeting') ||
+        name.toLowerCase().includes('conference') ||
+        name.toLowerCase().includes('business')
+      );
+    });
+
+    return `💼 **Phòng phù hợp cho Business Travel:**\n\n🏢 **Phòng cho nhóm:**\n${businessRooms
+      .slice(0, 3)
+      .map((room, index) => {
+        const property = room.propertyId;
+        const address =
+          typeof property === 'object'
+            ? property?.location?.address || 'Đang cập nhật'
+            : 'Đang cập nhật';
+        return `${index + 1}. **${room.title}**\n   📍 ${address}\n   👥 ${room.max_guests} người\n   💰 ${room.price_per_night.toLocaleString('vi-VN')}đ/đêm`;
+      })
+      .join(
+        '\n\n',
+      )}\n\n🛎️ **Dịch vụ Business:**\n• WiFi tốc độ cao\n• Máy in, scan, fax\n• Meeting room (theo yêu cầu)\n• Breakfast catering\n• Airport pickup\n\n📞 Liên hệ 0909.123.456 để đặt phòng và dịch vụ business!`;
+  }
+
+  // NEW: Handle romantic questions
+  private handleRomanticQuestions(
+    message: string,
+    availableRooms: Listing[],
+    vouchers: Voucher[],
+  ): string {
+    const romanticRooms = availableRooms.filter(
+      (room) =>
+        room.view_type === 'sea' ||
+        room.title.toLowerCase().includes('deluxe') ||
+        room.title.toLowerCase().includes('suite'),
+    );
+
+    if (romanticRooms.length === 0) {
+      return 'Hiện tại chúng tôi đang cập nhật các phòng romantic. Vui lòng liên hệ để được tư vấn phòng phù hợp cho cặp đôi!';
+    }
+
+    const activeVouchers = vouchers.filter((v) => v.is_active);
+
+    return `💕 **Phòng lãng mạn cho cặp đôi:**\n\n🌊 **Sea View Rooms:**\n${romanticRooms
+      .slice(0, 2)
+      .map((room, index) => {
+        const property = room.propertyId;
+        const address =
+          typeof property === 'object'
+            ? property?.location?.address || 'Đang cập nhật'
+            : 'Đang cập nhật';
+        return `${index + 1}. **${room.title}**\n   🌅 View: ${room.view_type || 'Đẹp'}\n   📍 ${address}\n   💰 ${room.price_per_night.toLocaleString('vi-VN')}đ/đêm`;
+      })
+      .join(
+        '\n\n',
+      )}\n\n💎 **Romantic Package:**\n• Trang trí phòng với hoa hồng\n• Champagne & chocolate\n• Dinner view biển\n• Couple spa treatment\n• Photography service\n\n🎁 **Ưu đãi hiện tại:**\n${
+      activeVouchers.length > 0
+        ? activeVouchers
+            .slice(0, 2)
+            .map((v) => `• ${v.code}: Giảm ${v.discount_percent}%`)
+            .join('\n')
+        : '• Liên hệ để biết ưu đãi mới nhất'
+    }\n\n📞 Gọi 0909.123.456 để đặt phòng romantic ngay!`;
+  }
+
+  // NEW: Handle AI questions for complex queries
+  private async handleAIQuestion(
+    message: string,
+    data: {
+      listings: Listing[];
+      bookings: any[];
+      vouchers: Voucher[];
+      services: any[];
+      reviews: Review[];
+    },
+  ): Promise<string> {
+    try {
+      // Format data in readable format for Gemini
+      const readableContext = this.formatDataForAI(data);
+      const prompt = this.chatbotService.buildPrompt(message, readableContext);
+      return await this.chatbotService.generateResponse(prompt);
+    } catch (error) {
+      this.logger.error('Error with AI question:', error);
+      return 'Xin lỗi, tôi không thể xử lý câu hỏi này lúc này. Vui lòng thử lại hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!';
+    }
+  }
+
+  private formatDataForAI(data: {
+    listings: Listing[];
+    bookings: any[];
+    vouchers: Voucher[];
+    services: any[];
+    reviews: Review[];
+  }): string {
+    let context = '';
+
+    // Giới hạn số lượng dữ liệu để tránh vượt quá limit của API
+    const maxListings = 5;
+    const maxVouchers = 3;
+    const maxServices = 3;
+    const maxReviews = 3;
+    const maxDescriptionLength = 50; // Giảm độ dài mô tả để giảm kích thước payload
+
+    // Format listings information
+    if (data.listings.length > 0) {
+      context += 'PHÒNG:\n';
+      data.listings.slice(0, maxListings).forEach((room, index) => {
+        const property = room.propertyId;
+        const propertyInfo = typeof property === 'object' ? property : null;
+
+        context += `${index + 1}. ${room.title}\n`;
+        context += `   - Giá: ${room.price_per_night.toLocaleString('vi-VN')}đ\n`;
+        context += `   - Khách: ${room.max_guests || 2} người\n`;
+
+        if (propertyInfo && propertyInfo.location?.address) {
+          context += `   - Địa chỉ: ${propertyInfo.location.address}\n`;
+        }
+
+        if (room.description) {
+          context += `   - Mô tả: ${room.description.substring(0, maxDescriptionLength)}...\n`;
+        }
+      });
+    }
+
+    // Format vouchers information
+    if (data.vouchers.length > 0) {
+      context += '\nVOUCHER:\n';
+      const activeVouchers = data.vouchers
+        .filter((v) => v.is_active)
+        .slice(0, maxVouchers);
+      activeVouchers.forEach((voucher, index) => {
+        context += `${index + 1}. ${voucher.code}: Giảm ${voucher.discount_percent}%\n`;
+      });
+    }
+
+    // Format services information - chỉ tên dịch vụ
+    if (data.services.length > 0) {
+      context += '\nDỊCH VỤ:\n';
+      data.services.slice(0, maxServices).forEach((service, index) => {
+        context += `${index + 1}. ${(service as { name: string }).name}\n`;
+      });
+    }
+
+    // Format reviews information - chỉ rating
+    if (data.reviews.length > 0) {
+      context += '\nĐÁNH GIÁ:\n';
+      data.reviews.slice(0, maxReviews).forEach((review, index) => {
+        context += `${index + 1}. ${review.rating}/5 sao\n`;
+      });
+    }
+
+    // Đảm bảo kích thước không quá lớn
+    if (context.length > 5000) {
+      context = context.substring(0, 5000) + '...';
+    }
+
+    return context || 'Hiện tại chưa có dữ liệu về các phòng và dịch vụ.';
   }
 }
