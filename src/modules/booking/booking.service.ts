@@ -116,7 +116,9 @@ export class BookingService {
   /**
    * Transform booking data thành response format
    */
-  private transformBookingToResponse(booking: any): BookingResponseDto {
+  private async transformBookingToResponse(
+    booking: any,
+  ): Promise<BookingResponseDto> {
     // Handle guestId: can be ObjectId or populated object
     let guestId: string = '';
     let guest_name: string | undefined = undefined;
@@ -173,13 +175,32 @@ export class BookingService {
       nights: booking.nights,
       price_per_night: booking.price_per_night,
       total_price: booking.total_price,
-      selected_services: booking.selected_services?.map((service: any) => ({
-        service_id: service.service_id ? service.service_id.toString() : null,
-        service_name: service.service_name,
-        service_price: service.service_price,
-        quantity: service.quantity,
-        total_price: service.total_price,
-      })),
+      selected_services: await Promise.all(
+        booking.selected_services?.map(async (service: any) => {
+          // Lấy thông tin service để có allow_quantity
+          let allow_quantity = false;
+          try {
+            const serviceDetails = await this.servicesService.findOne(
+              service.service_id.toString(),
+            );
+            allow_quantity = serviceDetails?.allow_quantity || false;
+          } catch (error) {
+            // Nếu không tìm thấy service, giữ allow_quantity = false
+            this.logger.warn(`Service not found: ${service.service_id}`, error);
+          }
+
+          return {
+            service_id: service.service_id
+              ? service.service_id.toString()
+              : null,
+            service_name: service.service_name,
+            service_price: service.service_price,
+            quantity: service.quantity,
+            total_price: service.total_price,
+            allow_quantity,
+          };
+        }) || [],
+      ),
       services_total_amount: booking.services_total_amount,
       subtotal_amount: booking.subtotal_amount,
       voucher_id: booking.voucher_id
@@ -332,14 +353,26 @@ export class BookingService {
           );
         }
 
-        const serviceTotalPrice = service.default_price * serviceDto.quantity;
+        // Kiểm tra xem service có cho phép nhập số lượng hay không
+        let finalQuantity = serviceDto.quantity;
+        if (!service.allow_quantity) {
+          // Nếu service không cho phép quantity, force về 1 và validate
+          if (serviceDto.quantity > 1) {
+            throw new BadRequestException(
+              `Dịch vụ "${service.name}" không cho phép chọn số lượng. Chỉ có thể chọn 1 lần.`,
+            );
+          }
+          finalQuantity = 1;
+        }
+
+        const serviceTotalPrice = service.default_price * finalQuantity;
         servicesTotalAmount += serviceTotalPrice;
 
         selectedServices.push({
           service_id: new Types.ObjectId(serviceDto.serviceId),
           service_name: service.name,
           service_price: service.default_price,
-          quantity: serviceDto.quantity,
+          quantity: finalQuantity,
           total_price: serviceTotalPrice,
         });
       }
@@ -531,7 +564,7 @@ export class BookingService {
       // Không throw error để không ảnh hưởng đến việc tạo booking
     }
 
-    return this.transformBookingToResponse(createdBooking);
+    return await this.transformBookingToResponse(createdBooking);
   }
 
   /**
@@ -554,7 +587,7 @@ export class BookingService {
       throw new NotFoundException(`Không tìm thấy booking với ID ${id}.`);
     }
 
-    return this.transformBookingToResponse(booking);
+    return await this.transformBookingToResponse(booking);
   }
 
   /**
@@ -610,14 +643,26 @@ export class BookingService {
           );
         }
 
-        const totalPrice = service.default_price * serviceDto.quantity;
+        // Kiểm tra xem service có cho phép nhập số lượng hay không
+        let finalQuantity = serviceDto.quantity;
+        if (!service.allow_quantity) {
+          // Nếu service không cho phép quantity, force về 1 và validate
+          if (serviceDto.quantity > 1) {
+            throw new BadRequestException(
+              `Dịch vụ "${service.name}" không cho phép chọn số lượng. Chỉ có thể chọn 1 lần.`,
+            );
+          }
+          finalQuantity = 1;
+        }
+
+        const totalPrice = service.default_price * finalQuantity;
         totalServicesAmount += totalPrice;
 
         processedServices.push({
           service_id: new Types.ObjectId(serviceDto.serviceId),
           service_name: service.name,
           service_price: service.default_price,
-          quantity: serviceDto.quantity,
+          quantity: finalQuantity,
           total_price: totalPrice,
         });
       }
@@ -735,14 +780,14 @@ export class BookingService {
     }
 
     // 6. Trả về booking + outstanding_amount
-    const result = this.transformBookingToResponse(updated);
-    result.outstanding_amount =
+    const result = await this.transformBookingToResponse(updated);
+    (result as any).outstanding_amount =
       (result.final_amount || 0) - (updated.deposit_paid_amount || 0);
     return result;
   }
 
   /**
-   * Xóa mềm booking và trả về dữ liệu định dạng
+   * Xóa mềm booking và trả về dữ liệu định dạng (Admin/Staff cancellation)
    */
   async remove(id: string): Promise<{ success: boolean }> {
     const booking = await this.bookingRepo.findById(id);
@@ -864,7 +909,9 @@ export class BookingService {
     });
 
     return {
-      data: data.map((booking) => this.transformBookingToResponse(booking)),
+      data: await Promise.all(
+        data.map((booking) => this.transformBookingToResponse(booking)),
+      ),
       total,
       page,
       limit,
@@ -3207,13 +3254,25 @@ export class BookingService {
             serviceDto.serviceId,
           );
           if (service) {
-            const serviceTotal = service.default_price * serviceDto.quantity;
+            // Kiểm tra xem service có cho phép nhập số lượng hay không
+            let finalQuantity = serviceDto.quantity;
+            if (!service.allow_quantity) {
+              // Nếu service không cho phép quantity, force về 1 và validate
+              if (serviceDto.quantity > 1) {
+                throw new BadRequestException(
+                  `Dịch vụ "${service.name}" không cho phép chọn số lượng. Chỉ có thể chọn 1 lần.`,
+                );
+              }
+              finalQuantity = 1;
+            }
+
+            const serviceTotal = service.default_price * finalQuantity;
             servicesTotalAmount += serviceTotal;
             selectedServices.push({
               service_id: new Types.ObjectId(serviceDto.serviceId),
               service_name: service.name,
               service_price: service.default_price,
-              quantity: serviceDto.quantity,
+              quantity: finalQuantity,
               total_price: serviceTotal,
             });
           }

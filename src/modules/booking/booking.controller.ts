@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   Query,
   Request,
   BadRequestException,
@@ -16,6 +15,7 @@ import { VNPayService } from './services/vnpay.service';
 import { PaymentFactory } from './services/payment.factory';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+import { UpdateCancellationDetailsDto } from './dto/update-cancellation-details.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import { BookingResponseDto } from './dto/booking-response.dto';
 import {
@@ -48,7 +48,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
-import { UpdateCancellationDetailsDto } from './dto/update-booking.dto';
+
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { StaffCreateBookingDto } from './dto/staff-create-booking.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
@@ -239,10 +239,10 @@ export class BookingController {
     );
   }
 
-  @Delete('property/:propertyId/:id')
+  @Patch('property/:propertyId/:id/cancel')
   @RequirePermission('booking.cancel')
   @RequirePropertyStaff('propertyId')
-  @ApiOperation({ summary: 'Hủy booking' })
+  @ApiOperation({ summary: 'Hủy booking (Admin/Staff)' })
   @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
   @ResponseMessage('Hủy booking thành công')
   cancel(

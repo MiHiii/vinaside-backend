@@ -186,28 +186,10 @@ export class RbacSeedService {
 
         // === MESSAGE MANAGEMENT ===
         {
-          key: 'message.view',
+          key: 'message.manage',
           module: 'message',
-          action: 'view',
-          description: 'Xem tin nhắn',
-        },
-        {
-          key: 'message.create',
-          module: 'message',
-          action: 'create',
-          description: 'Tạo tin nhắn mới',
-        },
-        {
-          key: 'message.edit',
-          module: 'message',
-          action: 'edit',
-          description: 'Chỉnh sửa tin nhắn',
-        },
-        {
-          key: 'message.delete',
-          module: 'message',
-          action: 'delete',
-          description: 'Xóa tin nhắn',
+          action: 'manage',
+          description: 'Quản lý nhắn tin',
         },
 
         // === DASHBOARD MANAGEMENT ===

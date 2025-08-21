@@ -58,6 +58,15 @@ export class UpdateServiceDto {
   is_active?: boolean;
 
   @ApiProperty({
+    example: false,
+    description: 'Cho phép nhập số lượng khi đặt dịch vụ',
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  allow_quantity?: boolean;
+
+  @ApiProperty({
     example: 'https://example.com/icon.png',
     description: 'Đường dẫn icon của dịch vụ',
     required: false,
