@@ -176,30 +176,33 @@ export class MessagesGateway
     this.logger.log(`Emitted reaction_update to ${receiverRoom}`);
   }
 
-  // Method public để emit cập nhật tóm tắt cuộc trò chuyện (lastMessage, unreadCounts)
-  emitConversationUpdate(
+  // V2: emit cập nhật conversation theo conversationId và unreadCount
+  emitConversationUpdateV2(
     userId: string,
     payload: {
-      otherUserId: string;
+      conversationId: string;
       lastMessage: {
         _id: string;
         content: string;
-        senderId: string;
-        type: string;
+        sender_id: string;
+        sender_role: 'guest' | 'staff' | 'admin';
         sent_at: Date | string;
+        is_read: 'sent' | 'delivered' | 'read';
       } | null;
       lastMessageAt: Date | string | null;
-      unreadCounts: Record<string, number>;
+      unreadCount: number;
     },
   ): void {
     try {
       const userRoom = buildUserRoom(userId);
       this.server.to(userRoom).emit('conversation_update', payload);
-      this.logger.log(`Emitted conversation_update to ${userRoom}`);
+      this.logger.log(`Emitted conversation_update (v2) to ${userRoom}`);
     } catch (error) {
-      this.logger.error('Failed to emit conversation update:', error);
+      this.logger.error('Failed to emit conversation update v2:', error);
     }
   }
+
+  // Legacy emitConversationUpdate removed in favor of emitConversationUpdateV2
 
   // Method public để emit message recalled event
   emitMessageRecalled(message: Message, userId: string): void {

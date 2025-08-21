@@ -12,10 +12,11 @@ import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto, RemoveReactionDto } from './dto/reaction.dto';
 import { Message, MessageStatus, ReactionType } from './schemas/message.schema';
+import { Conversation } from './schemas/conversation.schema';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import { MessagesGateway } from './messages.gateway';
 import { removeUndefinedObject } from '../../utils/common.util';
-import { extractMessageId, isValidObjectId } from './utils/message.util';
+import { isValidObjectId } from './utils/message.util';
 import {
   ReplyToMessage,
   UserProfileResponse,
@@ -49,10 +50,55 @@ interface MessageSearchDto {
   [key: string]: any;
 }
 
+// ==== SAFE TYPES FOR LEAN DOCS & HELPERS ====
+type ReadAtDict = Record<string, Date>;
+
+interface ConversationLeanBasic {
+  _id: Types.ObjectId;
+  property_id: Types.ObjectId;
+  guest_id: Types.ObjectId;
+  staff_ids?: Types.ObjectId[];
+  last_message_at?: Date | null;
+  last_active_staff_id?: Types.ObjectId | null;
+  read_at?: ReadAtDict;
+}
+
+interface LeanMessageMinimal {
+  _id: Types.ObjectId;
+  content?: string;
+  sender_id: Types.ObjectId;
+  sent_at: Date;
+  is_read: MessageStatus;
+}
+
+interface PropertyLeanBasic {
+  _id: Types.ObjectId;
+  name?: string;
+  thumbnail?: string | null;
+  status?: string;
+  isVerified?: boolean;
+}
+
+interface UserLeanBasic {
+  _id: Types.ObjectId;
+  name?: string;
+  avatar_url?: string | null;
+}
+
+type ConversationDisplay = {
+  title: string;
+  subtitle: string;
+  avatar_url: string | null;
+  badge: null | { text: string; avatar_url: string | null };
+  unreadCount: number;
+};
+
 @Injectable()
 export class MessagesService {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<Message>,
+    @InjectModel(Conversation.name)
+    private conversationModel: Model<Conversation>,
     @Inject(forwardRef(() => MessagesGateway))
     private readonly messagesGateway: MessagesGateway,
     private readonly notificationsService: NotificationsService,
@@ -63,176 +109,280 @@ export class MessagesService {
     createMessageDto: CreateMessageDto,
     user: JwtPayload,
   ): Promise<Message> {
+    // New conversation-based flow only
+    if (
+      createMessageDto.conversation_id ||
+      createMessageDto.property_id ||
+      createMessageDto.guest_id
+    ) {
+      return this.createByConversationFlow(createMessageDto, user);
+    }
+    throw new BadRequestException(
+      'Legacy direct message flow đã deprecated. Vui lòng dùng conversation-based (conversation_id/property_id + guest_id).',
+    );
+  }
+
+  // ==================== NEW CONVERSATION-BASED FLOW ====================
+  private async resolveConversationV2(
+    dto: CreateMessageDto,
+    user: JwtPayload,
+  ): Promise<{
+    conversation: ConversationLeanBasic;
+    propertyId: Types.ObjectId;
+    guestId: Types.ObjectId;
+  }> {
+    if (dto.conversation_id) {
+      const convId = dto.conversation_id;
+      if (!isValidObjectId(convId)) {
+        throw new BadRequestException('conversation_id không hợp lệ');
+      }
+      const conversation = await this.conversationModel
+        .findById(convId)
+        .lean<ConversationLeanBasic | null>();
+      if (!conversation) {
+        throw new NotFoundException('Không tìm thấy cuộc trò chuyện');
+      }
+      const propertyId: Types.ObjectId = conversation.property_id;
+      const guestId: Types.ObjectId = conversation.guest_id;
+      if (user.role !== 'admin') {
+        if (user.role === 'guest') {
+          if (guestId.toString() !== user._id) {
+            throw new ForbiddenException(
+              'Bạn không có quyền trong conversation',
+            );
+          }
+        } else if (user.role === 'staff') {
+          const assigned =
+            await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+              new Types.ObjectId(user._id),
+              propertyId,
+            );
+          if (!assigned) {
+            throw new ForbiddenException(
+              'Staff không được assign property này',
+            );
+          }
+        }
+      }
+      return { conversation, propertyId, guestId };
+    }
+
+    const propertyIdStr = dto.property_id;
+    if (!propertyIdStr || !isValidObjectId(propertyIdStr)) {
+      throw new BadRequestException('Thiếu hoặc sai property_id');
+    }
+    const propertyId = new Types.ObjectId(propertyIdStr);
+
+    let guestId: Types.ObjectId;
+    if (user.role === 'guest') {
+      guestId = new Types.ObjectId(user._id);
+    } else if (user.role === 'staff') {
+      const guestIdStr = dto.guest_id;
+      if (!guestIdStr || !isValidObjectId(guestIdStr)) {
+        throw new BadRequestException('Thiếu hoặc sai guest_id cho staff');
+      }
+      const assigned =
+        await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+          new Types.ObjectId(user._id),
+          propertyId,
+        );
+      if (!assigned) {
+        throw new ForbiddenException('Staff không được assign property này');
+      }
+      guestId = new Types.ObjectId(guestIdStr);
+    } else {
+      const guestIdStr = dto.guest_id;
+      if (!guestIdStr || !isValidObjectId(guestIdStr)) {
+        throw new BadRequestException('Thiếu guest_id');
+      }
+      guestId = new Types.ObjectId(guestIdStr);
+    }
+
+    const conversationDoc = await this.conversationModel.findOneAndUpdate(
+      {
+        type: 'property',
+        property_id: propertyId,
+        guest_id: guestId,
+      },
+      {
+        $setOnInsert: {
+          type: 'property',
+          property_id: propertyId,
+          guest_id: guestId,
+          read_at: {},
+        },
+      },
+      { new: true, upsert: true },
+    );
+    const conversation = (await this.conversationModel
+      .findById(conversationDoc._id)
+      .lean<ConversationLeanBasic>()) as ConversationLeanBasic;
+
+    return { conversation, propertyId, guestId };
+  }
+
+  private async createByConversationFlow(
+    dto: CreateMessageDto,
+    user: JwtPayload,
+  ): Promise<Message> {
+    const { conversation, propertyId, guestId } =
+      await this.resolveConversationV2(dto, user);
+
+    // Validate reply_to_message_id belongs to the same conversation
+    if (dto.reply_to_message_id) {
+      if (!isValidObjectId(dto.reply_to_message_id)) {
+        throw new BadRequestException('reply_to_message_id không hợp lệ');
+      }
+      const ref = await this.messageModel
+        .findById(dto.reply_to_message_id)
+        .lean();
+      if (
+        !ref ||
+        this.getIdString(ref.conversation_id) !==
+          this.getIdString(conversation._id)
+      ) {
+        throw new BadRequestException(
+          'reply_to_message_id không thuộc conversation này',
+        );
+      }
+    }
+
+    const payload: Partial<Message> = {
+      conversation_id: conversation._id,
+      property_id: propertyId,
+      guest_id: guestId,
+      sender_id: new Types.ObjectId(user._id),
+      receiver_id: dto.receiver_id
+        ? new Types.ObjectId(dto.receiver_id)
+        : undefined,
+      content: dto.content,
+      sent_at: new Date(),
+      is_read: MessageStatus.SENT,
+      reply_to_message_id: dto.reply_to_message_id
+        ? new Types.ObjectId(dto.reply_to_message_id)
+        : undefined,
+    } as Partial<Message>;
+
+    const saved = await this.messageModel.create(payload);
+
+    // Update conversation summary
+    const now = new Date();
+    const update: {
+      $set: Record<string, unknown>;
+      $addToSet?: Record<string, unknown>;
+    } = {
+      $set: { last_message_id: saved._id, last_message_at: now },
+    };
+    if (user.role === 'staff') {
+      update.$addToSet = { staff_ids: new Types.ObjectId(user._id) };
+      update.$set.last_active_staff_id = new Types.ObjectId(user._id);
+      update.$set.last_active_staff_at = now;
+    }
+    await this.conversationModel.updateOne({ _id: conversation._id }, update);
+
+    const populated = await this.messageModel
+      .findById(saved._id)
+      .populate('sender_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('reactions.user_id', 'username email name avatar_url')
+      .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
+      .exec();
+
+    // Realtime: emit to guest and assigned staff + conversation updates
     try {
-      // Tự động thêm property_id nếu không có
-      let propertyId = createMessageDto.property_id;
+      const formatted = this.formatReactionResponse(populated as Message);
+      // Emit to all participants
+      const conv = await this.conversationModel
+        .findById(conversation._id)
+        .lean();
+      const participantIds = await this.participantsOfConversation(conv);
+      participantIds.forEach((uid) =>
+        this.messagesGateway.emitNewMessage(formatted, uid),
+      );
 
-      if (!propertyId) {
-        // Tìm property_id từ booking hoặc listing của user
-        // TODO: Implement logic để lấy property_id từ context
-        // Ví dụ: từ booking_id, listing_id, hoặc user's recent bookings
-        console.log(
-          '⚠️ No property_id provided, need to implement auto-detection',
-        );
+      // Notifications: notify all participants except sender
+      try {
+        const recipients = participantIds.filter((id) => id !== user._id);
+        for (const rid of recipients) {
+          await this.notificationsService.createAndSend({
+            user_id: rid,
+            recipient_type: RecipientType.GUEST, // or STAFF; unknown here so default to guest for now
+            title: 'Tin nhắn mới',
+            message: saved.content || '',
+            type: NotificationType.MESSAGE,
+            sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
+            sender_user_id: user._id,
+            metadata: {
+              conversationId: this.getIdString(conversation._id),
+              messageId: this.getIdString(saved._id),
+              propertyId: this.getIdString(propertyId),
+              guestId: this.getIdString(guestId),
+            },
+          });
+        }
+      } catch {
+        // swallow notification errors
       }
 
-      // Kiểm tra nếu là property message
-      if (propertyId) {
-        const isAssigned =
-          await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
-            new Types.ObjectId(user._id),
-            new Types.ObjectId(propertyId),
-          );
-        if (!isAssigned) {
-          throw new BadRequestException(
-            'Staff không được assign cho property này',
-          );
-        }
-      }
-
-      // Kiểm tra reply message
-      if (createMessageDto.reply_to_message_id) {
-        const replyMessage = await this.messageModel.findById(
-          createMessageDto.reply_to_message_id,
-        );
-        if (!replyMessage) {
-          throw new BadRequestException('Tin nhắn reply không tồn tại');
-        }
-
-        // Nếu reply message có property_id, sử dụng nó
-        if (!propertyId && replyMessage.property_id) {
-          propertyId = replyMessage.property_id.toString();
-        }
-      }
-
-      // Tạo message mới
-      const messageData = {
-        ...createMessageDto,
-        property_id: propertyId, // Thêm property_id vào message
-        sender_id: user._id,
-        sent_at: new Date(),
-        is_read: MessageStatus.SENT,
+      // Conversation summary
+      const lastMessage = {
+        _id: this.getIdString(saved._id),
+        content: saved.content,
+        sender_id: this.getIdString(saved.sender_id),
+        sender_role:
+          this.getIdString(saved.sender_id) === this.getIdString(guestId)
+            ? 'guest'
+            : 'staff',
+        sent_at: saved.sent_at,
+        is_read: saved.is_read,
+      } as {
+        _id: string;
+        content: string;
+        sender_id: string;
+        sender_role: 'guest' | 'staff' | 'admin';
+        sent_at: Date;
+        is_read: MessageStatus;
       };
 
-      const savedMessage = await this.messageModel.create(messageData);
+      // Emit per-user unread counts
+      const resolveReadAt = this.resolveReadAt(
+        conversation.read_at as unknown as
+          | Map<string, Date>
+          | Record<string, Date>,
+      );
+      // Guest
+      const guestReadAt = resolveReadAt(guestId.toString());
+      const guestUnread = await this.messageModel.countDocuments({
+        conversation_id: conversation._id,
+        sent_at: { $gt: guestReadAt },
+      });
+      this.messagesGateway.emitConversationUpdateV2(guestId.toString(), {
+        conversationId: this.getIdString(conversation._id),
+        lastMessage,
+        lastMessageAt: saved.sent_at,
+        unreadCount: guestUnread,
+      });
 
-      // Populate thông tin đầy đủ
-      const populatedMessage = await this.messageModel
-        .findById(savedMessage._id)
-        .populate('sender_id', 'username email name avatar_url')
-        .populate('receiver_id', 'username email name avatar_url')
-        .populate('reactions.user_id', 'username email name avatar_url')
-        .populate(
-          'reply_to_message_id',
-          'content sender_id receiver_id sent_at',
-        )
-        .populate({
-          path: 'reply_to_message_id',
-          populate: {
-            path: 'sender_id',
-            select: 'username email name avatar_url',
-          },
-        })
-        .exec();
-
-      // Emit realtime notification
-      try {
-        const messageId = extractMessageId(savedMessage);
-        if (messageId && populatedMessage) {
-          // Format message với đầy đủ thông tin reply và reactions
-          const formattedMessage =
-            this.formatReactionResponse(populatedMessage);
-
-          // Emit realtime đơn giản - CHỈ SỬ DỤNG new_message EVENT
-          // Emit đến người nhận
-          this.messagesGateway.emitNewMessage(
-            formattedMessage,
-            createMessageDto.receiver_id,
-          );
-
-          // Emit đến người gửi (sync across devices)
-          this.messagesGateway.emitNewMessage(formattedMessage, user._id);
-
-          // Update delivered status nếu user online
-          if (this.messagesGateway.isUserOnline(createMessageDto.receiver_id)) {
-            await this.update(
-              messageId,
-              { is_read: MessageStatus.DELIVERED },
-              user,
-            );
-          }
-
-          // Emit cập nhật tóm tắt cuộc trò chuyện cho cả hai phía
-          const senderId = user._id;
-          const receiverId = createMessageDto.receiver_id;
-
-          try {
-            const senderSummary = await this.computeConversationSummary(
-              senderId,
-              receiverId,
-            );
-            this.messagesGateway.emitConversationUpdate(senderId, {
-              otherUserId: receiverId,
-              ...senderSummary,
-            });
-
-            const receiverSummary = await this.computeConversationSummary(
-              receiverId,
-              senderId,
-            );
-            this.messagesGateway.emitConversationUpdate(receiverId, {
-              otherUserId: senderId,
-              ...receiverSummary,
-            });
-          } catch (err) {
-            console.error('Failed to emit conversation summary:', err);
-          }
-
-          // Tự động gửi thông báo cho người nhận
-          try {
-            const sender = populatedMessage.sender_id as {
-              _id?: Types.ObjectId | string;
-              name?: string;
-              username?: string;
-              avatar_url?: string;
-            };
-            const senderName =
-              typeof sender?.name === 'string'
-                ? sender.name
-                : typeof sender?.username === 'string'
-                  ? sender.username
-                  : 'Someone';
-            const senderUserId = sender?._id ? sender._id.toString() : user._id;
-            const avatar_url =
-              typeof sender?.avatar_url === 'string' ? sender.avatar_url : '';
-            await this.notificationsService.createAndSend({
-              user_id: createMessageDto.receiver_id,
-              recipient_type: RecipientType.GUEST, // Có thể cần logic để xác định role
-              title: 'Bạn có tin nhắn mới',
-              message: `Bạn vừa nhận được tin nhắn từ ${senderName}`,
-              type: NotificationType.MESSAGE,
-              sent_method: [SentMethod.IN_APP, SentMethod.PUSH],
-              sender_user_id: senderUserId,
-              avatar_url,
-            });
-          } catch (notificationError) {
-            console.error(
-              'Failed to send message notification:',
-              notificationError,
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Failed to emit realtime message:', error);
+      // Staffs
+      for (const uid of participantIds) {
+        if (uid === guestId.toString()) continue;
+        const readAt = resolveReadAt(uid);
+        const unread = await this.messageModel.countDocuments({
+          conversation_id: conversation._id,
+          sent_at: { $gt: readAt },
+        });
+        this.messagesGateway.emitConversationUpdateV2(uid, {
+          conversationId: this.getIdString(conversation._id),
+          lastMessage,
+          lastMessageAt: saved.sent_at,
+          unreadCount: unread,
+        });
       }
-
-      return populatedMessage || savedMessage;
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException('Không thể tạo tin nhắn');
+    } catch (err) {
+      console.error('Failed to emit realtime message:', err);
     }
+
+    return (populated as Message) || saved;
   }
 
   /**
@@ -300,7 +450,7 @@ export class MessagesService {
     }
   }
 
-  async findOne(id: string, user: JwtPayload): Promise<Message | null> {
+  async findOne(id: string, user: JwtPayload): Promise<unknown> {
     if (!isValidObjectId(id)) {
       throw new BadRequestException('Định dạng ID tin nhắn không hợp lệ');
     }
@@ -324,20 +474,31 @@ export class MessagesService {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ sender hoặc receiver mới xem được tin nhắn
-    const senderId = message.sender_id.toString();
-    const receiverId = message.receiver_id.toString();
-
-    if (
-      user.role !== 'admin' &&
-      user._id !== senderId &&
-      user._id !== receiverId
-    ) {
-      throw new ForbiddenException('Bạn chỉ có thể xem tin nhắn của mình');
+    // Authorization: user must be a participant of the conversation (guest/assigned staff) or admin
+    const conv = await this.conversationModel
+      .findById(message.conversation_id)
+      .lean();
+    if (!conv) throw new NotFoundException('Conversation không tồn tại');
+    const convData = conv as {
+      guest_id: Types.ObjectId | string;
+      property_id: Types.ObjectId | string;
+    };
+    const isGuest = this.getIdString(convData.guest_id) === user._id;
+    const isStaff =
+      user.role === 'staff'
+        ? await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            new Types.ObjectId(this.getIdString(convData.property_id)),
+          )
+        : false;
+    if (!isGuest && !isStaff && user.role !== 'admin') {
+      throw new ForbiddenException(
+        'Không có quyền xem tin nhắn của conversation này',
+      );
     }
 
     // Format reactions với emoji
-    return this.formatReactionResponse(message) as Message;
+    return this.formatReactionResponse(message);
   }
 
   async findConversation(
@@ -533,7 +694,7 @@ export class MessagesService {
     }
 
     // Authorization: chỉ receiver mới có thể mark as read
-    if (userId !== message.receiver_id.toString()) {
+    if (!message.receiver_id || userId !== message.receiver_id.toString()) {
       throw new ForbiddenException(
         'You can only mark messages sent to you as read',
       );
@@ -549,33 +710,80 @@ export class MessagesService {
       .populate('receiver_id', 'username email name avatar_url')
       .exec();
 
+    // For legacy direct message, try to emit minimal V2-like updates if conversation exists
     try {
-      const senderId = this.getIdString(updated?.sender_id);
-      const receiverId = this.getIdString(updated?.receiver_id);
-      if (senderId && receiverId) {
-        const receiverSummary = await this.computeConversationSummary(
-          receiverId,
-          senderId,
-        );
-        this.messagesGateway.emitConversationUpdate(receiverId, {
-          otherUserId: senderId,
-          ...receiverSummary,
-        });
-
-        const senderSummary = await this.computeConversationSummary(
-          senderId,
-          receiverId,
-        );
-        this.messagesGateway.emitConversationUpdate(senderId, {
-          otherUserId: receiverId,
-          ...senderSummary,
-        });
+      if (updated?.conversation_id) {
+        const conv = await this.conversationModel
+          .findById(updated.conversation_id)
+          .lean();
+        if (conv) {
+          const convLean = conv as unknown as {
+            _id: Types.ObjectId;
+            guest_id: Types.ObjectId | string;
+            property_id: Types.ObjectId | string;
+            read_at?: Map<string, Date> | Record<string, Date>;
+            last_message_at?: Date;
+          };
+          const convId = this.getIdString(convLean._id);
+          const participants = await this.participantsOfConversation(convLean);
+          const resolve = this.resolveReadAt(convLean.read_at);
+          interface LeanMessageMinimal {
+            _id: Types.ObjectId;
+            content?: string;
+            sender_id: Types.ObjectId;
+            sent_at: Date;
+            is_read: MessageStatus;
+          }
+          for (const uid of participants) {
+            const readAt = resolve(uid);
+            const unread = await this.messageModel.countDocuments({
+              conversation_id: updated.conversation_id,
+              sent_at: { $gt: readAt },
+            });
+            const lastDoc = await this.messageModel
+              .findOne({ conversation_id: updated.conversation_id })
+              .sort({ sent_at: -1 })
+              .select({
+                _id: 1,
+                content: 1,
+                sender_id: 1,
+                sent_at: 1,
+                is_read: 1,
+              })
+              .lean<LeanMessageMinimal | null>();
+            const lastMessage = lastDoc
+              ? ({
+                  _id: this.getIdString(lastDoc._id),
+                  content: lastDoc.content || '',
+                  sender_id: this.getIdString(lastDoc.sender_id),
+                  sender_role:
+                    this.getIdString(lastDoc.sender_id) ===
+                    this.getIdString(convLean.guest_id)
+                      ? 'guest'
+                      : 'staff',
+                  sent_at: lastDoc.sent_at,
+                  is_read: lastDoc.is_read,
+                } as {
+                  _id: string;
+                  content: string;
+                  sender_id: string;
+                  sender_role: 'guest' | 'staff' | 'admin';
+                  sent_at: Date;
+                  is_read: MessageStatus;
+                })
+              : null;
+            this.messagesGateway.emitConversationUpdateV2(uid, {
+              conversationId: convId,
+              lastMessage,
+              lastMessageAt:
+                lastDoc?.sent_at || convLean.last_message_at || null,
+              unreadCount: unread,
+            });
+          }
+        }
       }
     } catch (err) {
-      console.error(
-        'Failed to emit conversation summary after markAsRead:',
-        err,
-      );
+      console.error('Failed to emit v2 update after markAsRead:', err);
     }
 
     return updated;
@@ -600,30 +808,7 @@ export class MessagesService {
       )
       .exec();
 
-    try {
-      const currentUserSummary = await this.computeConversationSummary(
-        userId,
-        otherUserId,
-      );
-      this.messagesGateway.emitConversationUpdate(userId, {
-        otherUserId,
-        ...currentUserSummary,
-      });
-
-      const otherUserSummary = await this.computeConversationSummary(
-        otherUserId,
-        userId,
-      );
-      this.messagesGateway.emitConversationUpdate(otherUserId, {
-        otherUserId: userId,
-        ...otherUserSummary,
-      });
-    } catch (err) {
-      console.error(
-        'Failed to emit conversation summary after markConversationAsRead:',
-        err,
-      );
-    }
+    // Legacy endpoint; no V2 emit here to avoid ambiguity across conversations
 
     return { modifiedCount: result.modifiedCount };
   }
@@ -961,6 +1146,303 @@ export class MessagesService {
       console.error('Error getting available users:', error);
       return [];
     }
+  }
+
+  // ==================== CONVERSATION-BASED QUERIES ====================
+  async getConversationsUI(
+    user: JwtPayload,
+    ui_for?: 'guest' | 'staff',
+  ): Promise<any[]> {
+    const role = ui_for || user.role;
+
+    let filter: FilterQuery<Conversation> = {};
+    if (role === 'guest') {
+      filter = {
+        guest_id: new Types.ObjectId(user._id),
+      } as FilterQuery<Conversation>;
+    } else if (role === 'staff') {
+      const assignments =
+        await this.propertyStaffAssignmentService.getPropertiesByStaff(
+          new Types.ObjectId(user._id),
+        );
+      const propertyIds = assignments.map((a) => a.propertyId);
+      filter = {
+        property_id: { $in: propertyIds },
+      } as FilterQuery<Conversation>;
+    }
+
+    const conversations = await this.conversationModel
+      .find(filter)
+      .sort({ last_message_at: -1 })
+      .lean<ConversationLeanBasic[]>();
+
+    const results: any[] = [];
+    for (const conv of conversations) {
+      const convId = conv._id;
+      const propertyId = conv.property_id;
+      const guestId = conv.guest_id;
+
+      const [property, guest, lastMessageDoc, messageCount] = await Promise.all(
+        [
+          this.messageModel.db
+            .collection<PropertyLeanBasic>('properties')
+            .findOne(
+              { _id: propertyId },
+              {
+                projection: {
+                  _id: 1,
+                  name: 1,
+                  thumbnail: 1,
+                  status: 1,
+                  isVerified: 1,
+                },
+              },
+            ),
+          this.messageModel.db
+            .collection<UserLeanBasic>('users')
+            .findOne(
+              { _id: guestId },
+              { projection: { _id: 1, name: 1, avatar_url: 1 } },
+            ),
+          this.messageModel
+            .findOne({ conversation_id: convId })
+            .sort({ sent_at: -1 })
+            .select({
+              _id: 1,
+              content: 1,
+              sender_id: 1,
+              sent_at: 1,
+              is_read: 1,
+            })
+            .lean<LeanMessageMinimal | null>(),
+          this.messageModel.countDocuments({ conversation_id: convId }),
+        ],
+      );
+
+      const readAtResolver = this.resolveReadAt(conv.read_at);
+      const readAt = readAtResolver(user._id);
+      const unreadCount = await this.messageModel.countDocuments({
+        conversation_id: convId,
+        sent_at: { $gt: readAt },
+      });
+
+      let sender_role: 'guest' | 'staff' | 'admin' | null = null;
+      if (lastMessageDoc) {
+        const senderIdStr = this.getIdString(lastMessageDoc.sender_id);
+        sender_role = senderIdStr === guestId.toString() ? 'guest' : 'staff';
+      }
+
+      const lastContent = lastMessageDoc?.content ?? '';
+      const propertyName = property?.name ?? 'Property';
+      const guestName = guest?.name ?? 'Guest';
+
+      const display: ConversationDisplay =
+        role === 'guest'
+          ? {
+              title: propertyName,
+              subtitle: `${sender_role === 'staff' ? 'Nhân viên' : 'Bạn'}: ${lastContent}`,
+              avatar_url: property?.thumbnail ?? null,
+              badge: null,
+              unreadCount,
+            }
+          : {
+              title: guestName,
+              subtitle: `Người gửi cuối: ${lastContent}`,
+              avatar_url: guest?.avatar_url ?? null,
+              badge: {
+                text: propertyName,
+                avatar_url: property?.thumbnail ?? null,
+              },
+              unreadCount,
+            };
+
+      const lastActive = conv.last_active_staff_id
+        ? await this.messageModel.db
+            .collection('users')
+            .findOne(
+              { _id: conv.last_active_staff_id },
+              { projection: { _id: 1, name: 1, avatar_url: 1 } },
+            )
+        : null;
+
+      results.push({
+        _id: convId.toString(),
+        thread_type: 'property',
+        property: property || null,
+        guest: guest || null,
+        staff_summary: {
+          count: Array.isArray(conv.staff_ids) ? conv.staff_ids.length : 0,
+          last_active: lastActive,
+        },
+        lastMessage: lastMessageDoc
+          ? {
+              _id: this.getIdString(lastMessageDoc._id),
+              content: lastMessageDoc.content || '',
+              sender_id: this.getIdString(lastMessageDoc.sender_id),
+              sender_role: sender_role || 'guest',
+              sent_at: lastMessageDoc.sent_at,
+              is_read: lastMessageDoc.is_read,
+            }
+          : null,
+        lastMessageAt: conv.last_message_at || null,
+        messageCount,
+        ui_for: role === 'admin' ? 'staff' : role,
+        display,
+      });
+    }
+
+    return results;
+  }
+
+  async getConversationMessages(
+    user: JwtPayload,
+    conversationId: string,
+    query: { limit?: number; page?: number },
+    ui_for?: 'guest' | 'staff',
+  ): Promise<any[]> {
+    if (!isValidObjectId(conversationId)) {
+      throw new BadRequestException('conversationId không hợp lệ');
+    }
+    const conv = await this.conversationModel.findById(conversationId);
+    if (!conv) throw new NotFoundException('Không tìm thấy conversation');
+
+    const propertyId = conv.property_id;
+    const guestId = conv.guest_id;
+    if (user.role !== 'admin') {
+      if (user.role === 'guest') {
+        if (guestId.toString() !== user._id) {
+          throw new ForbiddenException(
+            'Bạn không có quyền xem cuộc trò chuyện',
+          );
+        }
+      } else if (user.role === 'staff') {
+        const assigned =
+          await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            propertyId,
+          );
+        if (!assigned)
+          throw new ForbiddenException('Staff không được assign property này');
+      }
+    }
+
+    const limit = query.limit && query.limit > 0 ? query.limit : undefined;
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const messagesQ = this.messageModel
+      .find({ conversation_id: conv._id })
+      .sort({ sent_at: 1 })
+      .populate('sender_id', 'username email name avatar_url role');
+    if (limit) messagesQ.limit(limit).skip((page - 1) * limit);
+    const docs = await messagesQ.exec();
+
+    const ui = ui_for || user.role;
+    const currentUserId = user._id;
+
+    return docs.map((m) => {
+      const mine = this.getIdString(m.sender_id) === currentUserId;
+      const senderIdStr = this.getIdString(m.sender_id);
+      const senderIsGuest = senderIdStr === guestId.toString();
+      const show_sender_meta =
+        ui === 'guest'
+          ? !senderIsGuest
+          : senderIsGuest || (!mine && ui === 'staff');
+      const sender = m.sender_id as unknown as {
+        name?: string;
+        avatar_url?: string;
+      };
+      return {
+        ...this.formatReactionResponse(m),
+        ui_for: ui === 'admin' ? 'staff' : ui,
+        ui: {
+          mine,
+          show_sender_meta,
+          sender_display_name: sender?.name || '',
+          sender_avatar_url: sender?.avatar_url || null,
+        },
+      };
+    });
+  }
+
+  async markConversationRead(
+    user: JwtPayload,
+    conversationId: string,
+  ): Promise<{ ok: boolean }> {
+    if (!isValidObjectId(conversationId)) {
+      throw new BadRequestException('conversationId không hợp lệ');
+    }
+    const conv = await this.conversationModel.findById(conversationId);
+    if (!conv) throw new NotFoundException('Không tìm thấy conversation');
+
+    if (user.role !== 'admin') {
+      const propertyId = conv.property_id;
+      const guestId = conv.guest_id;
+      if (user.role === 'guest') {
+        if (guestId.toString() !== user._id) {
+          throw new ForbiddenException('Bạn không có quyền');
+        }
+      } else if (user.role === 'staff') {
+        const assigned =
+          await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            propertyId,
+          );
+        if (!assigned) throw new ForbiddenException('Không có quyền');
+      }
+    }
+
+    await this.conversationModel.updateOne(
+      { _id: conv._id },
+      { $set: { [`read_at.${user._id}`]: new Date() } },
+    );
+
+    // Emit updated conversation summary for current user (unreadCount = 0)
+    try {
+      interface LeanMessageMinimal {
+        _id: Types.ObjectId;
+        content?: string;
+        sender_id: Types.ObjectId;
+        sent_at: Date;
+        is_read: MessageStatus;
+      }
+      const lastDoc = await this.messageModel
+        .findOne({ conversation_id: conv._id })
+        .sort({ sent_at: -1 })
+        .select({ _id: 1, content: 1, sender_id: 1, sent_at: 1, is_read: 1 })
+        .lean<LeanMessageMinimal | null>();
+
+      const lastMessage = lastDoc
+        ? ({
+            _id: this.getIdString(lastDoc._id),
+            content: lastDoc.content || '',
+            sender_id: this.getIdString(lastDoc.sender_id),
+            sender_role:
+              this.getIdString(lastDoc.sender_id) ===
+              this.getIdString(conv.guest_id)
+                ? 'guest'
+                : 'staff',
+            sent_at: lastDoc.sent_at,
+            is_read: lastDoc.is_read,
+          } as {
+            _id: string;
+            content: string;
+            sender_id: string;
+            sender_role: 'guest' | 'staff' | 'admin';
+            sent_at: Date;
+            is_read: MessageStatus;
+          })
+        : null;
+
+      this.messagesGateway.emitConversationUpdateV2(user._id, {
+        conversationId: this.getIdString(conv._id),
+        lastMessage,
+        lastMessageAt: lastDoc?.sent_at || conv.last_message_at || null,
+        unreadCount: 0,
+      });
+    } catch {
+      // swallow
+    }
+
+    return { ok: true };
   }
 
   async getAllUsers(currentUserId: string): Promise<any[]> {
@@ -1315,12 +1797,24 @@ export class MessagesService {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ sender hoặc receiver mới có thể react
-    const senderId = message.sender_id.toString();
-    const receiverId = message.receiver_id.toString();
-
-    if (user._id !== senderId && user._id !== receiverId) {
-      throw new ForbiddenException('You can only react to your own messages');
+    // Authorization: participant of conversation (guest/assigned staff) or admin
+    const conv = await this.conversationModel
+      .findById(message.conversation_id)
+      .lean();
+    if (!conv) throw new NotFoundException('Conversation không tồn tại');
+    const isGuest =
+      this.getIdString((conv as unknown as Conversation).guest_id) === user._id;
+    const isStaff =
+      user.role === 'staff'
+        ? await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            (conv as unknown as Conversation).property_id,
+          )
+        : false;
+    if (!isGuest && !isStaff && user.role !== 'admin') {
+      throw new ForbiddenException(
+        'Không có quyền tác động vào message của conversation này',
+      );
     }
 
     // Remove existing reaction from this user (if any)
@@ -1353,13 +1847,41 @@ export class MessagesService {
       throw new NotFoundException('Failed to update message');
     }
 
-    // Emit real-time notification
+    // Emit real-time notification to all participants
     try {
-      // Emit to both sender and receiver (sync all devices)
-      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
-      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
+      const convDoc = await this.conversationModel
+        .findById(updatedMessage.conversation_id)
+        .lean();
+      const uids = await this.participantsOfConversation(
+        convDoc as {
+          guest_id: Types.ObjectId | string;
+          property_id: Types.ObjectId | string;
+        } | null,
+      );
+      uids.forEach((uid) =>
+        this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
+      );
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
+    }
+
+    // Notification: inform original sender if different from reactor
+    try {
+      const senderIdStr = this.getIdString(message.sender_id);
+      if (senderIdStr && senderIdStr !== user._id) {
+        await this.notificationsService.createAndSend({
+          user_id: senderIdStr,
+          recipient_type: RecipientType.GUEST,
+          title: 'Có reaction mới',
+          message: `đã ${type} tin nhắn của bạn`,
+          type: NotificationType.MESSAGE,
+          sent_method: [SentMethod.IN_APP],
+          sender_user_id: user._id,
+          metadata: { messageId: this.getIdString(message._id) },
+        });
+      }
+    } catch {
+      // swallow
     }
 
     return updatedMessage;
@@ -1380,13 +1902,23 @@ export class MessagesService {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization: chỉ sender hoặc receiver mới có thể react
-    const senderId = message.sender_id.toString();
-    const receiverId = message.receiver_id.toString();
-
-    if (user._id !== senderId && user._id !== receiverId) {
+    // Authorization: participant of conversation (guest/assigned staff) or admin
+    const conv = await this.conversationModel
+      .findById(message.conversation_id)
+      .lean();
+    if (!conv) throw new NotFoundException('Conversation không tồn tại');
+    const isGuest =
+      this.getIdString((conv as unknown as Conversation).guest_id) === user._id;
+    const isStaff =
+      user.role === 'staff'
+        ? await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            (conv as unknown as Conversation).property_id,
+          )
+        : false;
+    if (!isGuest && !isStaff && user.role !== 'admin') {
       throw new ForbiddenException(
-        'You can only remove reactions from your own messages',
+        'Không có quyền tác động vào message của conversation này',
       );
     }
 
@@ -1406,12 +1938,41 @@ export class MessagesService {
       throw new NotFoundException('Failed to update message');
     }
 
-    // Emit real-time notification
+    // Emit real-time notification to all participants
     try {
-      const otherUserId = user._id === senderId ? receiverId : senderId;
-      this.messagesGateway.emitReactionUpdate(updatedMessage, otherUserId);
+      const convDoc = await this.conversationModel
+        .findById(updatedMessage.conversation_id)
+        .lean();
+      const uids = await this.participantsOfConversation(
+        convDoc as {
+          guest_id: Types.ObjectId | string;
+          property_id: Types.ObjectId | string;
+        } | null,
+      );
+      uids.forEach((uid) =>
+        this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
+      );
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
+    }
+
+    // Notification: toggle can add or change reaction – notify original sender
+    try {
+      const senderIdStr = this.getIdString(message.sender_id);
+      if (senderIdStr && senderIdStr !== user._id) {
+        await this.notificationsService.createAndSend({
+          user_id: senderIdStr,
+          recipient_type: RecipientType.GUEST,
+          title: 'Có reaction mới',
+          message: 'Tin nhắn của bạn vừa có reaction',
+          type: NotificationType.MESSAGE,
+          sent_method: [SentMethod.IN_APP],
+          sender_user_id: user._id,
+          metadata: { messageId: this.getIdString(message._id) },
+        });
+      }
+    } catch {
+      // swallow
     }
 
     return updatedMessage;
@@ -1420,7 +1981,7 @@ export class MessagesService {
   /**
    * Utility để format reaction response với emoji
    */
-  private formatReactionResponse(message: Message): unknown {
+  private formatReactionResponse(message: Message): Record<string, unknown> {
     // Emoji mapping cho reactions
     const emojiMap = {
       [ReactionType.LIKE]: '👍',
@@ -1498,7 +2059,9 @@ export class MessagesService {
   /**
    * Utility để format array of messages với emoji reactions
    */
-  private formatMessagesWithReactions(messages: Message[]): unknown[] {
+  private formatMessagesWithReactions(
+    messages: Message[],
+  ): Record<string, unknown>[] {
     return messages.map((message) => this.formatReactionResponse(message));
   }
 
@@ -1537,6 +2100,45 @@ export class MessagesService {
     return '';
   }
 
+  // ==================== READ_AT HELPER ====================
+  private resolveReadAt(
+    readAt: Map<string, Date> | Record<string, Date> | undefined,
+  ): (userId: string) => Date {
+    return (userId: string): Date => {
+      if (!readAt) return new Date(0);
+      if (readAt instanceof Map) {
+        const v = readAt.get(userId);
+        return v instanceof Date ? v : new Date(0);
+      }
+      const v = readAt[userId];
+      return v instanceof Date ? v : new Date(0);
+    };
+  }
+
+  // ==================== PARTICIPANTS HELPER ====================
+  private async participantsOfConversation(
+    conv: {
+      guest_id: Types.ObjectId | string;
+      property_id: Types.ObjectId | string;
+    } | null,
+  ): Promise<string[]> {
+    if (!conv) return [];
+    const guestId = this.getIdString(conv.guest_id);
+    const propertyObjectId = new Types.ObjectId(
+      this.getIdString(conv.property_id),
+    );
+    const staffs =
+      await this.propertyStaffAssignmentService.getStaffByProperty(
+        propertyObjectId,
+      );
+    const staffIds = staffs
+      .map((s) =>
+        this.getIdString((s as { staffId: Types.ObjectId | string }).staffId),
+      )
+      .filter(Boolean);
+    return [guestId, ...staffIds];
+  }
+
   async toggleReaction(
     messageId: string,
     reactionType: ReactionType,
@@ -1551,13 +2153,22 @@ export class MessagesService {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
 
-    // Authorization check - user phải là sender hoặc receiver của cuộc trò chuyện
-    const senderId = message.sender_id.toString();
-    const receiverId = message.receiver_id.toString();
-
-    if (user._id !== senderId && user._id !== receiverId) {
+    // Authorization: participant of conversation (guest/assigned staff) or admin
+    const conv = await this.conversationModel
+      .findById(message.conversation_id)
+      .lean<ConversationLeanBasic | null>();
+    if (!conv) throw new NotFoundException('Conversation không tồn tại');
+    const isGuest = this.getIdString(conv.guest_id) === user._id;
+    const isStaff =
+      user.role === 'staff'
+        ? await this.propertyStaffAssignmentService.isStaffAssignedToProperty(
+            new Types.ObjectId(user._id),
+            conv.property_id,
+          )
+        : false;
+    if (!isGuest && !isStaff && user.role !== 'admin') {
       throw new ForbiddenException(
-        'Bạn chỉ có thể react vào tin nhắn trong cuộc trò chuyện của mình',
+        'Không có quyền tác động vào message của conversation này',
       );
     }
 
@@ -1635,11 +2246,20 @@ export class MessagesService {
       action = 'added';
     }
 
-    // Emit real-time notification
+    // Emit real-time notification to all participants
     try {
-      // Emit to both sender and receiver (sync all devices)
-      this.messagesGateway.emitReactionUpdate(updatedMessage, senderId);
-      this.messagesGateway.emitReactionUpdate(updatedMessage, receiverId);
+      const convDoc = await this.conversationModel
+        .findById(updatedMessage.conversation_id)
+        .lean();
+      const uids = await this.participantsOfConversation(
+        convDoc as {
+          guest_id: Types.ObjectId | string;
+          property_id: Types.ObjectId | string;
+        } | null,
+      );
+      uids.forEach((uid) =>
+        this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
+      );
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }
@@ -1695,41 +2315,50 @@ export class MessagesService {
       throw new NotFoundException('Failed to recall message');
     }
 
-    // Emit real-time notification để cả 2 bên đều nhận được thông báo
+    // Emit real-time notification tới tất cả participants
     try {
-      const senderId = message.sender_id.toString();
-      const receiverId = message.receiver_id.toString();
-
-      // Emit đến người nhận
-      this.messagesGateway.emitMessageRecalled(updatedMessage, receiverId);
-
-      // Emit đến người gửi (để sync trên các device khác)
-      this.messagesGateway.emitMessageRecalled(updatedMessage, senderId);
-
-      // Đồng bộ cập nhật tóm tắt cuộc trò chuyện sau khi thu hồi
-      try {
-        const senderSummary = await this.computeConversationSummary(
-          senderId,
-          receiverId,
-        );
-        this.messagesGateway.emitConversationUpdate(senderId, {
-          otherUserId: receiverId,
-          ...senderSummary,
-        });
-
-        const receiverSummary = await this.computeConversationSummary(
-          receiverId,
-          senderId,
-        );
-        this.messagesGateway.emitConversationUpdate(receiverId, {
-          otherUserId: senderId,
-          ...receiverSummary,
-        });
-      } catch (err) {
-        console.error('Failed to emit conversation summary after recall:', err);
-      }
+      const conv = await this.conversationModel
+        .findById(updatedMessage.conversation_id)
+        .lean();
+      const uids = await this.participantsOfConversation(
+        conv as {
+          guest_id: Types.ObjectId | string;
+          property_id: Types.ObjectId | string;
+        } | null,
+      );
+      uids.forEach((uid) =>
+        this.messagesGateway.emitMessageRecalled(updatedMessage, uid),
+      );
     } catch (error) {
       console.error('Failed to emit message recall notification:', error);
+    }
+
+    // Notification: inform remaining participants except sender
+    try {
+      const conv = await this.conversationModel
+        .findById(updatedMessage.conversation_id)
+        .lean();
+      const uids = await this.participantsOfConversation(
+        conv as {
+          guest_id: Types.ObjectId | string;
+          property_id: Types.ObjectId | string;
+        } | null,
+      );
+      const recipients = uids.filter((id) => id !== user._id);
+      for (const rid of recipients) {
+        await this.notificationsService.createAndSend({
+          user_id: rid,
+          recipient_type: RecipientType.GUEST,
+          title: 'Tin nhắn đã được thu hồi',
+          message: '',
+          type: NotificationType.MESSAGE,
+          sent_method: [SentMethod.IN_APP],
+          sender_user_id: user._id,
+          metadata: { messageId: this.getIdString(updatedMessage._id) },
+        });
+      }
+    } catch {
+      // swallow
     }
 
     return updatedMessage;
