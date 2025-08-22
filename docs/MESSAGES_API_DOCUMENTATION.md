@@ -573,4 +573,3 @@ socket.on('connect', () => {
 ---
 
 **Lưu ý**: API này đã được tối ưu cho kiến trúc conversation-based và hỗ trợ real-time messaging. Vui lòng sử dụng các endpoint mới thay vì các API legacy đã deprecated.
-
