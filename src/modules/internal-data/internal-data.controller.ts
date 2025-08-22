@@ -9,6 +9,8 @@ import { Review } from '../reviews/schemas/review.schema';
 import { Service } from '../services/schemas/service.schema';
 import { Wishlist } from '../wishlist/schemas/wishlist.schema';
 import { VoucherUsage } from '../vouchers/schemas/voucher-usage.schema';
+import { Amenity } from '../amenities/schemas/amenity.schema';
+import { HouseRule } from '../house-rules/schemas/house-rule.schema';
 
 import { Public } from '../../decorators/public.decorator';
 
@@ -24,6 +26,8 @@ export class InternalDataController {
     @InjectModel(Wishlist.name) private wishlistModel: Model<Wishlist>,
     @InjectModel(VoucherUsage.name)
     private voucherUsageModel: Model<VoucherUsage>,
+    @InjectModel(Amenity.name) private amenityModel: Model<Amenity>,
+    @InjectModel(HouseRule.name) private houseRuleModel: Model<HouseRule>,
   ) {}
 
   @Get()
@@ -37,6 +41,8 @@ export class InternalDataController {
     const services = await this.serviceModel.find();
     const wishlists = await this.wishlistModel.find();
     const voucherUsages = await this.voucherUsageModel.find();
+    const amenities = await this.amenityModel.find();
+    const houseRules = await this.houseRuleModel.find();
     return {
       listings,
       properties,
@@ -46,6 +52,8 @@ export class InternalDataController {
       services,
       wishlists,
       voucherUsages,
+      amenities,
+      houseRules,
     };
   }
 }

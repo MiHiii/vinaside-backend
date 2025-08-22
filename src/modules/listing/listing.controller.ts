@@ -23,6 +23,7 @@ import { QueryListingDto } from './dto/query-listing.dto';
 import {
   ListingStatisticsDto,
   ListingStatisticsResponseDto,
+  DateRangeType,
 } from './dto/listing-statistics.dto';
 
 import { ListingService } from './listing.service';
@@ -287,6 +288,10 @@ export class ListingController {
     @Query() queryDto: ListingStatisticsDto,
     @Request() req: RequestWithUser,
   ): Promise<ListingStatisticsResponseDto> {
+    // Set default dateRange to last_30_days if not provided
+    if (!queryDto.dateRange) {
+      queryDto.dateRange = DateRangeType.LAST_30_DAYS;
+    }
     return this.listingService.getListingStatistics(id, queryDto, req.user);
   }
 
