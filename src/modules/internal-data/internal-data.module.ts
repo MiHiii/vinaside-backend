@@ -15,6 +15,11 @@ import {
   VoucherUsage,
   VoucherUsageSchema,
 } from '../vouchers/schemas/voucher-usage.schema';
+import { Amenity, AmenitySchema } from '../amenities/schemas/amenity.schema';
+import {
+  HouseRule,
+  HouseRuleSchema,
+} from '../house-rules/schemas/house-rule.schema';
 
 @Module({
   imports: [
@@ -27,6 +32,8 @@ import {
       { name: Service.name, schema: ServiceSchema },
       { name: Wishlist.name, schema: WishlistSchema },
       { name: VoucherUsage.name, schema: VoucherUsageSchema },
+      { name: Amenity.name, schema: AmenitySchema },
+      { name: HouseRule.name, schema: HouseRuleSchema },
     ]),
   ],
   controllers: [InternalDataController],

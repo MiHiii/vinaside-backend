@@ -1320,36 +1320,8 @@ export class DashboardService {
     // Occupancy by property
     // Calculate occupancy by property using overlapped nights and ACTIVE listings count per property
     const propertyIdToNights = new Map<string, number>();
-    const propertyIdToName = new Map<string, string>();
 
     if (occupancyRaw.length > 0) {
-      // Preload property names for involved properties
-      const propertyIds = Array.from(
-        new Set(
-          occupancyRaw.map((b) => {
-            const booking = b as {
-              propertyId?: string | { toString(): string };
-            };
-            return booking.propertyId
-              ? typeof booking.propertyId === 'string'
-                ? booking.propertyId
-                : booking.propertyId.toString()
-              : 'unknown';
-          }),
-        ),
-      )
-        .filter((id) => id !== 'unknown')
-        .map((id) => new Types.ObjectId(id));
-      if (propertyIds.length > 0) {
-        const props = await this.propertyModel
-          .find({ _id: { $in: propertyIds } }, { _id: 1, name: 1 })
-          .lean();
-        props.forEach((p) => {
-          const prop = p as { _id: { toString(): string }; name: string };
-          propertyIdToName.set(prop._id.toString(), prop.name);
-        });
-      }
-
       // Deduplicate per property using (listingId, date)
       const propertyIdToSet = new Map<string, Set<string>>();
       occupancyRaw.forEach((b) => {
@@ -1384,30 +1356,67 @@ export class DashboardService {
       });
     }
 
+    // Get occupancy by property using aggregation with property lookup
+    const occupancyByPropertyAggregation = await this.listingModel.aggregate([
+      {
+        $match: {
+          status: 'active',
+          isDeleted: { $ne: true },
+          ...propertyMatch,
+        },
+      },
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'propertyId',
+          foreignField: '_id',
+          as: 'propertyInfo',
+        },
+      },
+      { $unwind: '$propertyInfo' },
+      {
+        $match: {
+          'propertyInfo.isDeleted': { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$propertyId',
+          propertyName: { $first: '$propertyInfo.name' },
+          listingsCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    interface OccupancyItem {
+      _id: unknown;
+      propertyName: unknown;
+      listingsCount: unknown;
+    }
+
     const formattedOccupancyByProperty: Array<{
       propertyId: string;
       propertyName: string;
       occupancyRate: number;
-    }> = await Promise.all(
-      Array.from(propertyIdToNights.entries()).map(async ([pid, nights]) => {
-        const propertyListingsCount = await this.listingModel.countDocuments({
-          propertyId: new Types.ObjectId(pid),
-          status: 'active',
-        });
-        const propertyPossibleNights = totalDays * propertyListingsCount;
-        const propertyOccupancyRate = Math.min(
-          100,
-          propertyPossibleNights > 0
-            ? (nights / propertyPossibleNights) * 100
-            : 0,
-        );
-        return {
-          propertyId: pid,
-          propertyName: propertyIdToName.get(pid) || 'N/A',
-          occupancyRate: Math.round(propertyOccupancyRate * 100) / 100,
-        };
-      }),
-    );
+    }> = occupancyByPropertyAggregation.map((item) => {
+      const typedItem = item as OccupancyItem;
+      const pid = String(typedItem._id);
+      const nights = propertyIdToNights.get(pid) || 0;
+      const propertyPossibleNights =
+        totalDays * Number(typedItem.listingsCount);
+      const propertyOccupancyRate = Math.min(
+        100,
+        propertyPossibleNights > 0
+          ? (nights / propertyPossibleNights) * 100
+          : 0,
+      );
+
+      return {
+        propertyId: pid,
+        propertyName: String(typedItem.propertyName),
+        occupancyRate: Math.round(propertyOccupancyRate * 100) / 100,
+      };
+    });
 
     // Booking patterns
     const bookingPatterns: BookingPatternAggregation[] =
