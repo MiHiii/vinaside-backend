@@ -1189,7 +1189,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
           if (!it) return false;
           const item = it as { id?: string; title?: unknown };
           if (item.id === 'temp-t3ko58hvb') return false; // explicit removal per user request
-          const title = String(item.title ?? '');
+          const title = typeof item.title === 'string' ? item.title : '';
           if (!title.trim()) return false;
           return !invalidHeadingTitles.some((h) =>
             title.toLowerCase().includes(h.toLowerCase()),
@@ -2283,15 +2283,15 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
     const uniqueCities = Array.from(
       new Set(
         (data.properties || [])
-          .map((p) => (p as any)?.location?.city)
-          .filter((c: string | undefined) => !!c),
+          .map((p) => (p as { location?: { city?: string } })?.location?.city)
+          .filter((c): c is string => !!c),
       ),
     );
 
     const msgNorm = normalize(message);
-    const requestedCity = uniqueCities.find((city) =>
-      msgNorm.includes(normalize(city)),
-    );
+    const requestedCity =
+      uniqueCities.find((city) => msgNorm.includes(normalize(city))) ||
+      undefined;
 
     // Lọc theo city (nếu xác định được)
     const isInRequestedCity = (room: Listing) => {
@@ -2423,7 +2423,7 @@ Gợi ý:
       await this.saveSession(userId || 'unknown', {
         userId: userId || 'unknown',
         slots: {
-          city: requestedCity,
+          city: requestedCity || undefined,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -2446,7 +2446,7 @@ Gợi ý:
       await this.saveSession(userId || 'unknown', {
         userId: userId || 'unknown',
         slots: {
-          city: requestedCity,
+          city: requestedCity || undefined,
         },
         createdAt: new Date(),
         updatedAt: new Date(),
