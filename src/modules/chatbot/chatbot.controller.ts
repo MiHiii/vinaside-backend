@@ -123,7 +123,9 @@ export class ChatbotController {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Loading session with key: ${key}`);
     const raw = await this.redis.get(key);
-    const session: ChatbotSession | null = raw ? JSON.parse(raw) : null;
+    const session: ChatbotSession | null = raw
+      ? (JSON.parse(raw) as ChatbotSession)
+      : null;
     this.logger.log(
       `[DEBUG] Loading session for ${userId}: ${JSON.stringify(session)}`,
     );

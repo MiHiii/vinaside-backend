@@ -1388,14 +1388,22 @@ export class DashboardService {
       },
     ]);
 
+    interface OccupancyItem {
+      _id: unknown;
+      propertyName: unknown;
+      listingsCount: unknown;
+    }
+
     const formattedOccupancyByProperty: Array<{
       propertyId: string;
       propertyName: string;
       occupancyRate: number;
     }> = occupancyByPropertyAggregation.map((item) => {
-      const pid = item._id.toString();
+      const typedItem = item as OccupancyItem;
+      const pid = String(typedItem._id);
       const nights = propertyIdToNights.get(pid) || 0;
-      const propertyPossibleNights = totalDays * item.listingsCount;
+      const propertyPossibleNights =
+        totalDays * Number(typedItem.listingsCount);
       const propertyOccupancyRate = Math.min(
         100,
         propertyPossibleNights > 0
@@ -1405,7 +1413,7 @@ export class DashboardService {
 
       return {
         propertyId: pid,
-        propertyName: item.propertyName,
+        propertyName: String(typedItem.propertyName),
         occupancyRate: Math.round(propertyOccupancyRate * 100) / 100,
       };
     });

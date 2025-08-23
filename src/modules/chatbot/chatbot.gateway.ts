@@ -164,7 +164,9 @@ export class ChatbotGateway {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Loading session with key: ${key}`);
     const raw = await this.redis.get(key);
-    const session: ChatbotSession | null = raw ? JSON.parse(raw) : null;
+    const session: ChatbotSession | null = raw
+      ? (JSON.parse(raw) as ChatbotSession)
+      : null;
     this.logger.log(
       `[DEBUG] Loading session for ${userId}: ${JSON.stringify(session)}`,
     );
@@ -240,8 +242,8 @@ export class ChatbotGateway {
         socketId: client.id,
       });
       // persist auth context for later server-side API calls
-      (client as any).data = {
-        ...(client as any).data,
+      (client as { data?: { userId?: string; token?: string } }).data = {
+        ...(client as { data?: { userId?: string; token?: string } }).data,
         userId: data.userId,
         token: data.token,
       };
@@ -2177,11 +2179,11 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
     const uniqueCities = Array.from(
       new Set(
         (data.properties || [])
-          .map((p) => (p as any)?.location?.city)
+          .map((p) => (p as { location?: { city?: string } })?.location?.city)
           .filter((c: string | undefined) => !!c)
           .map((c: string) => citySynonyms[normalize(c)] || c),
       ),
-    ) as string[];
+    );
     const msgNorm = normalize(message);
     let requestedCity: string | undefined;
     for (const [alias, canon] of Object.entries(citySynonyms)) {
@@ -2281,11 +2283,10 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
     const uniqueCities = Array.from(
       new Set(
         (data.properties || [])
-          .map((p) => p?.name && (p as any)) // giữ nguyên cấu trúc
-          .map((p: any) => p?.location?.city)
+          .map((p) => (p as any)?.location?.city)
           .filter((c: string | undefined) => !!c),
       ),
-    ) as string[];
+    );
 
     const msgNorm = normalize(message);
     const requestedCity = uniqueCities.find((city) =>
@@ -2487,7 +2488,7 @@ Gợi ý:
       const response = await axios.get(
         'http://localhost:8080/api/v1/internal-data',
       );
-      const internalData: InternalData = response.data;
+      const internalData = response.data as InternalData;
 
       const { listings, bookings } = internalData.data;
       this.logger.log(
