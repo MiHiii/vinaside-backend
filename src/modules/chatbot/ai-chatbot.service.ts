@@ -129,7 +129,7 @@ export class AIChatbotService {
 
       // Step 4: Format response
       if (aiResponse.type === 'listings') {
-        return this.formatListingsResponse(aiResponse.content, slotExtraction);
+        return this.formatListingsResponse(aiResponse.content);
       }
 
       return ResponseFormatter.formatTextResponse(aiResponse.content);
@@ -189,8 +189,8 @@ EXAMPLES:
       const response = await this.callGeminiAPI(prompt, true);
       // Clean the response to remove markdown formatting
       const cleanedResponse = this.cleanJsonResponse(response);
-      const parsed = JSON.parse(cleanedResponse);
-      return parsed as SlotExtraction;
+      const parsed = JSON.parse(cleanedResponse) as SlotExtraction;
+      return parsed;
     } catch (error) {
       this.logger.error('Error extracting slots:', error);
       // Fallback to basic extraction
@@ -251,8 +251,8 @@ RESPOND WITH JSON ONLY:
       const response = await this.callGeminiAPI(prompt, true);
       // Clean the response to remove markdown formatting
       const cleanedResponse = this.cleanJsonResponse(response);
-      const parsed = JSON.parse(cleanedResponse);
-      return parsed as AIResponse;
+      const parsed = JSON.parse(cleanedResponse) as AIResponse;
+      return parsed;
     } catch (error) {
       this.logger.error('Error generating AI response:', error);
       return {
@@ -496,7 +496,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
         const normalizedTarget = normalize(roomName || '');
 
         // Try different search strategies
-        let broad;
+        let broad: { listings?: Listing[] };
         try {
           // First try with a larger limit
           broad = await this.listingService.findAll({
@@ -558,7 +558,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
 
           if (partialMatches.length > 0) {
             return ResponseFormatter.formatListingsResponse(
-              partialMatches as Listing[],
+              partialMatches,
               undefined,
               undefined,
               undefined,
@@ -582,7 +582,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn và tìm phòng
 
         // Return listings response with "Đặt ngay" CTA for matched rooms
         return ResponseFormatter.formatListingsResponse(
-          matched as Listing[],
+          matched,
           undefined,
           undefined,
           undefined,
@@ -795,7 +795,8 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết về
 
       const services = (
         servicesResponse.status === 'fulfilled'
-          ? servicesResponse.value.data?.services ||
+          ? (servicesResponse.value.data as { services?: Service[] })
+              ?.services ||
             servicesResponse.value.data ||
             []
           : []
@@ -803,7 +804,8 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết về
 
       const vouchers = (
         vouchersResponse.status === 'fulfilled'
-          ? vouchersResponse.value.data?.vouchers ||
+          ? (vouchersResponse.value.data as { vouchers?: Voucher[] })
+              ?.vouchers ||
             vouchersResponse.value.data ||
             []
           : []
@@ -901,10 +903,7 @@ Bạn muốn tìm phòng ở khu vực nào để được tư vấn chi tiết 
   /**
    * Format listings response
    */
-  private formatListingsResponse(
-    content: string,
-    _slots: SlotExtraction,
-  ): BotMessage {
+  private formatListingsResponse(content: string): BotMessage {
     try {
       const parsed = ResponseFormatter.parseTextResponseForListings(content);
       return parsed;

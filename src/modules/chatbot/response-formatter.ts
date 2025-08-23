@@ -858,103 +858,74 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
    * Clean up text by removing unnecessary emojis/icons
    */
   private static removeIcons(text: string): string {
-    // Remove common emoji patterns
-    return (
-      text
-        // Buildings and places
-        .replace(
-          /[🏡🏠🏘️🏚️🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🕍⛩️🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉⛼]/gu,
-          '',
-        )
-        // Money and payment
-        .replace(/[💰💲💵💴💶💷💸💳💱💹]/gu, '')
-        // Hand gestures
-        .replace(/[👉👈👆👇👍👎👌👊✊👋✋👐👏🙌🙏]/gu, '')
-        // Electronics and devices
-        .replace(
-          /[📞📱📲☎️📟📠🔋🔌💻💽💾💿📀🎥🎬📺📷📹🎥🎬📽️📻📠📟📠🔋🔌]/gu,
-          '',
-        )
-        // Stars and sparkles
-        .replace(/[⭐🌟✨⚡💫]/gu, '')
-        // Entertainment
-        .replace(/[🎫🎟️🎭🎨🎪🎤🎧🎼🎹🎷🎺🎸🎻🎬🎮🎯🎱🎲🎰🧩]/gu, '')
-        // Tools and objects
-        .replace(/[📍📌📎🧷📏📐✂️🔒🔑🔨⛏️🛠️🔧🔩⚙️🧰]/gu, '')
-        // Weather and nature
-        .replace(
-          /[🌞🌛🌜🌝🌚🌕🌖🌗🌘🌑🌒🌓🌔🌙⭐🌟💫⚡🔥💧❄️🌈☀️⛅⛈️🌤️⛱️]/gu,
-          '',
-        )
-        // Transportation
-        .replace(
-          /[🚗🚕🚙🚌🚎🏎️🚓🚑🚒🚐🚚🚛🚜🏍️🚲🛵🚁🛸✈️🛩️🚀🛰️🚢⛵🚤🛥️⚓]/gu,
-          '',
-        )
-        // Food and drinks
-        .replace(
-          /[🍕🍔🍟🌭🥪🌮🌯🥙🥗🍝🍜🍲🍛🍣🍱🥟🍤🍙🍘🍥🥠🥡🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯]/gu,
-          '',
-        )
-        // Activities and sports
-        .replace(
-          /[⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸🥅🏒🏑🥍🏏⛳🏹🎣🥊🥋🎽⛷️🏂🏄‍♂️🏄‍♀️🏊‍♂️🏊‍♀️🚴‍♂️🚴‍♀️🏇🧗‍♂️🧗‍♀️]/gu,
-          '',
-        )
-        // People and faces
-        .replace(
-          /[😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤗🤔🤭🤫🤥😶😐😑😬🙄😯😦😧😮😲🥱😴🤤😪😵🤐🥴🤢🤮🤧😷🤒🤕🤑🤠😈👿👹👺🤡💩👻💀☠️👽👾🤖🎃😺😸😹😻😼😽🙀😿😾]/gu,
-          '',
-        )
-        // Hearts and symbols
-        .replace(
-          /[❤️🧡💛💚💙💜🖤🤍🤎💔❣️💕💞💓💗💖💘💝💟☮️✝️☪️🕉️☸️✡️🔯🕎☯️☦️🛐⛎♈♉♊♋♌♍♎♏♐♑♒♓🆔⚛️🉑☢️☣️📴📳🈶🈚🈸🈺🈷️✴️🆚💮🉐㊙️㊗️🈴🈵🈹🈲🅰️🅱️🆎🆑🅾️🆘❌⭕🛑⛔📛🚫💯💢♨️🚷🚯🚳🚱🔞📵🚭❗❕❓❔‼️⁉️🔅🔆〽️⚠️🚸🔱⚜️🔰♻️✅🈯💹❇️✳️❎🌐💠Ⓜ️🌀💤🏧🚾♿🅿️🈳🈂️🛂🛃🛄🛅🚹🚺🚼⚧️🚻🚮🎦📶🈁🔣ℹ️🔤🔡🔠🆖🆗🆙🆒🆕🆓0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟]/gu,
-          '',
-        )
-        // Arrows and directions
-        .replace(
-          /[⬆️↗️➡️↘️⬇️↙️⬅️↖️↕️↔️↩️↪️⤴️⤵️🔀🔁🔂🔄🔃🎵🎶➕➖➗✖️♾️💲💱™️©️®️👁️‍🗨️🔚🔙🔛🔝🔜]/gu,
-          '',
-        )
-        // Time and calendar
-        .replace(
-          /[🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛🕧🕐🕜🕝🕞🕟🕠🕡🕢🕣🕤🕥🕦🕧⏰⏱️⏲️⏳⌛⌚📅📆🗓️]/gu,
-          '',
-        )
-        // Office and documents
-        .replace(
-          /[📋📌📍📎🖇️📏📐✂️🗃️🗄️🗑️🔒🔓🔏🔐🔑🗝️🔨🪓⛏️⚒️🛠️🗡️⚔️💣🏹🛡️🔧🔩⚙️🗜️⚖️🦯🔗⛓️🧰🧲🪜]/gu,
-          '',
-        )
-        // Medical and science
-        .replace(
-          /[⚗️🧪🧫🧬🔬🔭📡💊💉🩸🧴🧼🪒🧽🧯🛎️🧿📿🔮🪅🎊🎉🎈🎁🎀🪆🪅🧧✉️📩📨📧💌📥📤📦🏷️🪧📪📫📬📭📮🗳️]/gu,
-          '',
-        )
-        // Flags and countries
-        .replace(/[🏁🚩🎌🏴🏳️🏳️‍🌈🏳️‍⚧️🏴‍☠️]/gu, '')
-        // Convert circled numbers to regular numbers
-        .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/gu, (match) => {
-          const numberMap: Record<string, string> = {
-            '①': '1. ',
-            '②': '2. ',
-            '③': '3. ',
-            '④': '4. ',
-            '⑤': '5. ',
-            '⑥': '6. ',
-            '⑦': '7. ',
-            '⑧': '8. ',
-            '⑨': '9. ',
-            '⑩': '10. ',
-          };
-          return numberMap[match] || match;
-        })
-        // Replace bullet points with dashes
-        .replace(/[•●]/gu, '- ')
-        // Clean up multiple spaces and newlines
-        .replace(/\s+/g, ' ')
-        .replace(/\n\s*\n/g, '\n')
-        .trim()
-    );
+    // Remove common emoji patterns using string replacement instead of character classes
+    let cleanText = text;
+
+    // Remove specific emoji patterns
+    const emojiPatterns = [
+      // Buildings and places
+      /🏡|🏠|🏘️|🏚️|🏢|🏣|🏤|🏥|🏦|🏨|🏩|🏪|🏫|🏬|🏭|🏯|🏰|💒|🗼|🗽|⛪|🕌|🕍|⛩️|🕋|⛲|⛺|🌁|🌃|🌄|🌅|🌆|🌇|🌉|⛼/g,
+      // Money and payment
+      /💰|💲|💵|💴|💶|💷|💸|💳|💱|💹/g,
+      // Hand gestures
+      /👉|👈|👆|👇|👍|👎|👌|👊|✊|👋|✋|👐|👏|🙌|🙏/g,
+      // Electronics and devices
+      /📞|📱|📲|☎️|📟|📠|🔋|🔌|💻|💽|💾|💿|📀|🎥|🎬|📺|📷|📹|📽️|📻/g,
+      // Stars and sparkles
+      /⭐|🌟|✨|⚡|💫/g,
+      // Entertainment
+      /🎫|🎟️|🎭|🎨|🎪|🎤|🎧|🎼|🎹|🎷|🎺|🎸|🎻|🎮|🎯|🎱|🎲|🎰|🧩/g,
+      // Tools and objects
+      /📍|📌|📎|🧷|📏|📐|✂️|🔒|🔑|🔨|⛏️|🛠️|🔧|🔩|⚙️|🧰/g,
+      // Weather and nature
+      /🌞|🌛|🌜|🌝|🌚|🌕|🌖|🌗|🌘|🌑|🌒|🌓|🌔|🌙|🔥|💧|❄️|🌈|☀️|⛅|⛈️|🌤️|⛱️/g,
+      // Transportation
+      /🚗|🚕|🚙|🚌|🚎|🏎️|🚓|🚑|🚒|🚐|🚚|🚛|🚜|🏍️|🚲|🛵|🚁|🛸|✈️|🛩️|🚀|🛰️|🚢|⛵|🚤|🛥️|⚓/g,
+      // Food and drinks
+      /🍕|🍔|🍟|🌭|🥪|🌮|🌯|🥙|🥗|🍝|🍜|🍲|🍛|🍣|🍱|🥟|🍤|🍙|🍘|🍥|🥠|🥡|🍦|🍧|🍨|🍩|🍪|🎂|🍰|🧁|🥧|🍫|🍬|🍭|🍮|🍯/g,
+      // Activities and sports
+      /⚽|🏀|🏈|⚾|🎾|🏐|🏉|🏓|🏸|🥅|🏒|🏑|🥍|🏏|⛳|🏹|🎣|🥊|🥋|🎽|⛷️|🏂/g,
+      // People and faces
+      /😀|😃|😄|😁|😆|😅|😂|🤣|😊|😇|🙂|🙃|😉|😌|😍|🥰|😘|😗|😙|😚|😋|😛|😝|😜|🤪|🤨|🧐|🤓|😎|🤩|🥳|😏|😒|😞|😔|😟|😕|🙁|☹️|😣|😖|😫|😩|🥺|😢|😭|😤|😠|😡|🤬|🤯|😳|🥵|🥶|😱|😨|😰|😥|😓|🤗|🤔|🤭|🤫|🤥|😶|😐|😑|😬|🙄|😯|😦|😧|😮|😲|🥱|😴|🤤|😪|😵|🤐|🥴|🤢|🤮|🤧|😷|🤒|🤕|🤑|🤠|😈|👿|👹|👺|🤡|💩|👻|💀|☠️|👽|👾|🤖|🎃|😺|😸|😹|😻|😼|😽|🙀|😿|😾/g,
+      // Hearts and symbols
+      /❤️|🧡|💛|💚|💙|💜|🖤|🤍|🤎|💔|❣️|💕|💞|💓|💗|💖|💘|💝|💟|☮️|✝️|☪️|🕉️|☸️|✡️|🔯|🕎|☯️|☦️|🛐|⛎|♈|♉|♊|♋|♌|♍|♎|♏|♐|♑|♒|♓|🆔|⚛️|🉑|☢️|☣️|📴|📳|🈶|🈚|🈸|🈺|🈷️|✴️|🆚|💮|🉐|㊙️|㊗️|🈴|🈵|🈹|🈲|🅰️|🅱️|🆎|🆑|🅾️|🆘|❌|⭕|🛑|⛔|📛|🚫|💯|💢|♨️|🚷|🚯|🚳|🚱|🔞|📵|🚭|❗|❕|❓|❔|‼️|⁉️|🔅|🔆|〽️|⚠️|🚸|🔱|⚜️|🔰|♻️|✅|🈯|💹|❇️|✳️|❎|🌐|💠|Ⓜ️|🌀|💤|🏧|🚾|♿|🅿️|🈳|🈂️|🛂|🛃|🛄|🛅|🚹|🚺|🚼|⚧️|🚻|🚮|🎦|📶|🈁|🔣|ℹ️|🔤|🔡|🔠|🆖|🆗|🆙|🆒|🆕|🆓|0️⃣|1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣|7️⃣|8️⃣|9️⃣|🔟/g,
+      // Arrows and directions
+      /⬆️|↗️|➡️|↘️|⬇️|↙️|⬅️|↖️|↕️|↔️|↩️|↪️|⤴️|⤵️|🔀|🔁|🔂|🔄|🔃|🎵|🎶|➕|➖|➗|✖️|♾️|💱|™️|©️|®️|🔚|🔙|🔛|🔝|🔜/g,
+      // Time and calendar
+      /🕐|🕑|🕒|🕓|🕔|🕕|🕖|🕗|🕘|🕙|🕚|🕛|🕧|🕜|🕝|🕞|🕟|🕠|🕡|🕢|🕣|🕤|🕥|🕦|⏰|⏱️|⏲️|⏳|⌛|⌚|📅|📆|🗓️/g,
+      // Office and documents
+      /📋|🖇️|🗃️|🗄️|🗑️|🔓|🔏|🔐|🗝️|🪓|⚒️|🗡️|⚔️|💣|🛡️|🗜️|⚖️|🦯|🔗|⛓️|🧲|🪜/g,
+      // Medical and science
+      /⚗️|🧪|🧫|🧬|🔬|🔭|📡|💊|💉|🩸|🧴|🧼|🪒|🧽|🧯|🛎️|🧿|📿|🔮|🪅|🎊|🎉|🎈|🎁|🎀|🪆|🧧|✉️|📩|📨|📧|💌|📥|📤|📦|🏷️|🪧|📪|📫|📬|📭|📮|🗳️/g,
+      // Flags and countries
+      /🏁|🚩|🎌|🏴|🏳️|🏴‍☠️/g,
+    ];
+
+    // Apply each pattern
+    emojiPatterns.forEach((pattern) => {
+      cleanText = cleanText.replace(pattern, '');
+    });
+
+    // Convert circled numbers to regular numbers
+    cleanText = cleanText.replace(/①/g, '1. ');
+    cleanText = cleanText.replace(/②/g, '2. ');
+    cleanText = cleanText.replace(/③/g, '3. ');
+    cleanText = cleanText.replace(/④/g, '4. ');
+    cleanText = cleanText.replace(/⑤/g, '5. ');
+    cleanText = cleanText.replace(/⑥/g, '6. ');
+    cleanText = cleanText.replace(/⑦/g, '7. ');
+    cleanText = cleanText.replace(/⑧/g, '8. ');
+    cleanText = cleanText.replace(/⑨/g, '9. ');
+    cleanText = cleanText.replace(/⑩/g, '10. ');
+
+    // Replace bullet points with dashes
+    cleanText = cleanText.replace(/•/g, '- ');
+    cleanText = cleanText.replace(/●/g, '- ');
+
+    // Clean up multiple spaces and newlines
+    cleanText = cleanText.replace(/\s+/g, ' ');
+    cleanText = cleanText.replace(/\n\s*\n/g, '\n');
+
+    return cleanText.trim();
   }
 }

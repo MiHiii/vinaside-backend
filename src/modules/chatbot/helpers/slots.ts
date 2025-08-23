@@ -364,7 +364,8 @@ export function mergeSlots(
 
   for (const k of Object.keys(newS) as (keyof Slots)[]) {
     const v = newS[k];
-    if (v !== undefined && v !== null && v !== '') (merged as any)[k] = v;
+    if (v !== undefined && v !== null && v !== '')
+      (merged as Record<string, unknown>)[k] = v;
   }
 
   // Tự suy ra checkOut nếu có checkIn + nights mà chưa có checkOut

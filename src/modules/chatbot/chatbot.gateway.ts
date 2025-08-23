@@ -1187,7 +1187,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
           if (!it) return false;
           const item = it as { id?: string; title?: unknown };
           if (item.id === 'temp-t3ko58hvb') return false; // explicit removal per user request
-          const title = String(item.title || '');
+          const title = String(item.title ?? '');
           if (!title.trim()) return false;
           return !invalidHeadingTitles.some((h) =>
             title.toLowerCase().includes(h.toLowerCase()),
