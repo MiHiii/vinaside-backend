@@ -122,7 +122,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Lấy thống kê chi tiết của một tài sản',
     description:
-      'Lấy thống kê chi tiết bao gồm booking, property, listing, service, voucher, users với date range filter',
+      'Lấy thống kê chi tiết bao gồm booking, property, listing, service, voucher, users với date range filter. Mặc định là last_30_days nếu không chỉ định.',
   })
   @ApiResponse({
     status: 200,
@@ -228,11 +228,11 @@ export class PropertyController {
   @Public()
   @Get(':propertyId/rooms')
   @ApiOperation({
-    summary: 'Lấy danh sách tất cả phòng trong property (public)',
+    summary: 'Lấy danh sách phòng đang hoạt động trong property (public)',
   })
   @ApiResponse({
     status: 200,
-    description: 'Danh sách phòng trong property',
+    description: 'Danh sách phòng đang hoạt động trong property',
   })
   @ResponseMessage('Lấy danh sách phòng trong property thành công')
   getPropertyRooms(
@@ -240,5 +240,23 @@ export class PropertyController {
     @Query() queryDto: PropertyRoomsQueryDto,
   ) {
     return this.propertyService.getPropertyRooms(propertyId, queryDto);
+  }
+
+  @Get(':propertyId/rooms/all')
+  @RequirePermission('property.view')
+  @ApiOperation({
+    summary: 'Lấy danh sách tất cả phòng trong property (staff only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Danh sách tất cả phòng trong property (bao gồm inactive, draft)',
+  })
+  @ResponseMessage('Lấy danh sách tất cả phòng trong property thành công')
+  getAllPropertyRooms(
+    @Param('propertyId') propertyId: string,
+    @Query() queryDto: PropertyRoomsQueryDto,
+  ) {
+    return this.propertyService.getAllPropertyRooms(propertyId, queryDto);
   }
 }

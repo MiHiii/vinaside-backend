@@ -1165,7 +1165,13 @@ export class MessagesService {
         await this.propertyStaffAssignmentService.getPropertiesByStaff(
           new Types.ObjectId(user._id),
         );
-      const propertyIds = assignments.map((a) => a.propertyId);
+      const propertyIds = assignments.map((a) => {
+        // Handle populated propertyId object
+        if (typeof a.propertyId === 'object' && a.propertyId !== null) {
+          return new Types.ObjectId(a.propertyId._id || a.propertyId);
+        }
+        return new Types.ObjectId(a.propertyId);
+      });
       filter = {
         property_id: { $in: propertyIds },
       } as FilterQuery<Conversation>;

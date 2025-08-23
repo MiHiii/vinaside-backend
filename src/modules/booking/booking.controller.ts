@@ -50,6 +50,7 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
@@ -368,14 +369,20 @@ export class BookingController {
     );
   }
 
-  @Patch('admin/:id/cancel')
+  @Patch('admin/:propertyId/:id/cancel')
   @Roles('staff', 'admin')
-  @RequirePropertyStaff('propertyId')
+  @RequirePropertyStaff({
+    propertyIdSource: 'param',
+    propertyIdParam: 'propertyId',
+  })
   @RequirePermission('booking.cancel')
   @ApiOperation({ summary: 'Admin/Staff hủy booking trực tiếp' })
+  @ApiParam({ name: 'propertyId', description: 'ID của property' })
+  @ApiParam({ name: 'id', description: 'ID của booking' })
   @ApiResponse({ status: 200, description: 'Booking được hủy thành công' })
   @ResponseMessage('Hủy booking thành công')
   async cancelBookingAsAdmin(
+    @Param('propertyId') propertyId: string,
     @Param('id') id: string,
     @Body() cancellationDetails: UpdateCancellationDetailsDto,
     @Request() req: RequestWithUser,

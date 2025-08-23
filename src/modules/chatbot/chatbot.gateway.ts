@@ -7,12 +7,42 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { InjectRedis } from '@nestjs-modules/ioredis';
+import Redis from 'ioredis';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ChatbotMessage } from './schemas/chatbot-message.schema';
-import { ChatbotService } from './chatbot.service';
-import { STATIC_RESPONSES, detectIntent } from './intent-rules';
+import { AIChatbotService } from './ai-chatbot.service';
+import {
+  extractSlotsFromText,
+  mergeSlots,
+  missingForSearch,
+  buildAsk,
+  isSessionExpired,
+  isGeneralInfoRequest,
+  isServiceRequest,
+  isVoucherRequest,
+  isCancellationPolicyRequest,
+  isPaymentMethodsRequest,
+  isBookingProcessRequest,
+  Slots,
+} from './helpers/slots';
+import {
+  BotMessage,
+  BotMessageType,
+  CTAButton,
+  ListingItem,
+} from './dto/bot-message.dto';
+import { ResponseFormatter } from './response-formatter';
+import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+
+interface ChatbotSession {
+  userId: string;
+  slots: Slots;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface InternalData {
   data: {
@@ -21,6 +51,10 @@ interface InternalData {
     vouchers: Voucher[];
     services: Service[];
     reviews: Review[];
+    properties: Property[];
+    wishlists: Wishlist[];
+    amenities: Amenity[];
+    houseRules: HouseRule[];
   };
 }
 
@@ -37,6 +71,8 @@ interface Listing {
   pet_friendly?: boolean;
   family_friendly?: boolean;
   cancellation_policy?: string;
+  beds?: number;
+  bathrooms?: number;
   max_guests?: number;
   allow_infants?: boolean;
   max_infants?: number;
@@ -59,6 +95,28 @@ interface Booking {
   checkInDate: string;
   check_out_date: string;
   status: string;
+}
+
+interface Property {
+  _id: string;
+  name: string;
+  status?: string;
+}
+
+interface Wishlist {
+  _id: string;
+  user_id: string;
+  listing_id: string;
+}
+
+interface Amenity {
+  _id: string;
+  name: string;
+}
+
+interface HouseRule {
+  _id: string;
+  name: string;
 }
 
 interface Voucher {
@@ -98,10 +156,64 @@ export class ChatbotGateway {
   private connectedUsers: Map<string, { userId: string; socketId: string }> =
     new Map();
 
+  // Cache keys for Redis session per user
+  private sessionKey(userId: string) {
+    return `chatbot:session:${userId}`;
+  }
+  private async loadSession(userId: string): Promise<ChatbotSession | null> {
+    const key = this.sessionKey(userId);
+    this.logger.log(`[DEBUG] Loading session with key: ${key}`);
+    const raw = await this.redis.get(key);
+    const session: ChatbotSession | null = raw
+      ? (JSON.parse(raw) as ChatbotSession)
+      : null;
+    this.logger.log(
+      `[DEBUG] Loading session for ${userId}: ${JSON.stringify(session)}`,
+    );
+    if (session && session.slots) {
+      this.logger.log(
+        `[DEBUG] Session slots loaded: ${JSON.stringify(session.slots)}`,
+      );
+    }
+    return session;
+  }
+  private async saveSession(
+    userId: string,
+    session: ChatbotSession,
+  ): Promise<void> {
+    const key = this.sessionKey(userId);
+    this.logger.log(`[DEBUG] Saving session with key: ${key}`);
+    this.logger.log(
+      `[DEBUG] Saving session for ${userId}: ${JSON.stringify(session)}`,
+    );
+    if (session && session.slots) {
+      this.logger.log(
+        `[DEBUG] Session slots being saved: ${JSON.stringify(session.slots)}`,
+      );
+    }
+    await this.redis.set(key, JSON.stringify(session), 'EX', 60 * 60 * 6);
+  }
+
+  // Active holds registry (in-memory)
+  private activeHolds: Map<
+    string,
+    {
+      userId: string;
+      listingId: string;
+      checkIn: string;
+      checkOut: string;
+      guests: number;
+      expiresAt: number;
+      timeout: NodeJS.Timeout;
+    }
+  > = new Map();
+
   constructor(
-    private readonly chatbotService: ChatbotService,
+    private readonly aiChatbotService: AIChatbotService,
     @InjectModel(ChatbotMessage.name)
     private chatbotMessageModel: Model<ChatbotMessage>,
+    @InjectRedis() private readonly redis: Redis,
+    private readonly configService: ConfigService,
   ) {}
 
   afterInit(): void {
@@ -121,7 +233,7 @@ export class ChatbotGateway {
 
   @SubscribeMessage('join_room')
   async handleJoinRoom(
-    @MessageBody() data: { userId: string },
+    @MessageBody() data: { userId: string; token?: string },
     @ConnectedSocket() client: Socket,
   ): Promise<{ success: boolean; message: string }> {
     try {
@@ -129,6 +241,12 @@ export class ChatbotGateway {
         userId: data.userId,
         socketId: client.id,
       });
+      // persist auth context for later server-side API calls
+      (client as { data?: { userId?: string; token?: string } }).data = {
+        ...(client as { data?: { userId?: string; token?: string } }).data,
+        userId: data.userId,
+        token: data.token,
+      };
       await client.join(`chatbot_${data.userId}`);
       return { success: true, message: 'Joined chatbot room successfully' };
     } catch (error) {
@@ -148,7 +266,13 @@ export class ChatbotGateway {
       // Validate input
       if (!data.userId || !data.message || data.message.trim().length === 0) {
         client.emit('receive_message', {
-          message: 'Vui lòng nhập câu hỏi của bạn!',
+          success: false,
+          data: {
+            type: BotMessageType.TEXT,
+            text: 'Vui lòng nhập câu hỏi của bạn!',
+          },
+          statusCode: 400,
+          message: 'Dữ liệu không hợp lệ',
         });
         return;
       }
@@ -173,74 +297,280 @@ export class ChatbotGateway {
       // Thông báo đang xử lý để UX tốt hơn
       client.emit('receive_typing', { isTyping: true });
 
-      // Phân tích intent và lấy dữ liệu
-      const intent = detectIntent(data.message);
-      this.logger.log(`Intent được nhận diện: ${intent}`);
+      // === CHATBOT FLOW: load → extract → merge → save → if missing ask once → else search/hold ===
 
-      // Lấy dữ liệu từ API
-      let internalData;
-      try {
-        internalData = await this.fetchInternalData();
+      // 1) LOAD: Load session state
+      let session: ChatbotSession = (await this.loadSession(data.userId)) || {
+        userId: data.userId,
+        slots: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Check if session is expired and clear context if needed
+      if (isSessionExpired(session)) {
         this.logger.log(
-          `Đã lấy dữ liệu thành công: ${(internalData as { listings: any[] }).listings.length} phòng`,
+          `[DEBUG] Session expired, clearing context for user ${data.userId}`,
         );
-      } catch (dataError) {
-        this.logger.error('Lỗi khi lấy dữ liệu:', dataError);
-        internalData = {
-          listings: [],
-          bookings: [],
-          vouchers: [],
-          services: [],
-          reviews: [],
+        session = {
+          userId: data.userId,
+          slots: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
         };
       }
 
-      let response: string;
-      try {
-        // Xử lý các câu trả lời tĩnh
-        if (STATIC_RESPONSES[intent] && intent !== 'ask_cheapest_room') {
-          this.logger.log(`Sử dụng câu trả lời tĩnh cho intent: ${intent}`);
-          response = STATIC_RESPONSES[intent] as string;
-        } else {
-          // Xử lý các câu trả lời động
-          this.logger.log(`Xử lý intent động: ${intent}`);
-          response = await this.handleDynamicIntent(
-            intent,
-            data.message,
-            internalData as {
-              listings: Listing[];
-              bookings: Booking[];
-              vouchers: Voucher[];
-              services: Service[];
-              reviews: Review[];
-            },
-          );
-        }
-      } catch (intentError) {
-        this.logger.error('Lỗi khi xử lý intent:', intentError);
-        response =
-          'Xin lỗi, tôi không hiểu câu hỏi của bạn. Bạn có thể hỏi về giá phòng, tiện nghi, dịch vụ, hoặc liên hệ 0909.123.456 để được hỗ trợ!';
+      this.logger.log(
+        `[DEBUG] Loaded session slots: ${JSON.stringify(session.slots)}`,
+      );
+
+      // 2) EXTRACT: Extract slots from current message
+      const newSlots = extractSlotsFromText(data.message, new Date());
+      this.logger.log(
+        `[DEBUG] Extracted new slots: ${JSON.stringify(newSlots)}`,
+      );
+
+      // 3) MERGE: Merge new slots with existing session
+      session.slots = mergeSlots(session.slots || {}, newSlots, data.message);
+      this.logger.log(`[DEBUG] Merged slots: ${JSON.stringify(session.slots)}`);
+
+      // 4) SAVE: Save updated session
+      session.updatedAt = new Date();
+      await this.saveSession(data.userId, session);
+
+      // 5) CHECK MISSING: Check what's still missing
+      const lacks = missingForSearch(session.slots, data.message);
+      this.logger.log(`[DEBUG] Missing slots: ${JSON.stringify(lacks)}`);
+      this.logger.log(`[DEBUG] isCompleteForSearch: ${lacks.length === 0}`);
+
+      // 6) CHECK FOR SERVICE REQUEST
+      if (isServiceRequest(data.message)) {
+        this.logger.log(`[DEBUG] Service request detected: "${data.message}"`);
+        const serviceResponse = await this.handleServiceRequest();
+        client.emit('receive_message', {
+          success: true,
+          data: serviceResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
       }
 
-      // Lưu câu trả lời
-      await this.chatbotMessageModel.create({
-        content: response,
-        user_id: new Types.ObjectId(data.userId),
-        reply: response,
-      });
+      // 7) CHECK FOR VOUCHER REQUEST
+      if (isVoucherRequest(data.message)) {
+        this.logger.log(`[DEBUG] Voucher request detected: "${data.message}"`);
+        const voucherResponse = await this.handleVoucherRequest();
+        client.emit('receive_message', {
+          success: true,
+          data: voucherResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
 
-      // Gửi câu trả lời cho client
-      client.emit('receive_message', { message: response });
-      client.emit('receive_typing', { isTyping: false });
+      // 8) CHECK FOR CANCELLATION POLICY REQUEST
+      if (isCancellationPolicyRequest(data.message)) {
+        this.logger.log(
+          `[DEBUG] Cancellation policy request detected: "${data.message}"`,
+        );
+        const cancellationResponse = this.handleCancellationPolicyRequest();
+        client.emit('receive_message', {
+          success: true,
+          data: cancellationResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
+
+      // 9) CHECK FOR PAYMENT METHODS REQUEST
+      if (isPaymentMethodsRequest(data.message)) {
+        this.logger.log(
+          `[DEBUG] Payment methods request detected: "${data.message}"`,
+        );
+        const paymentResponse = this.handlePaymentMethodsRequest();
+        client.emit('receive_message', {
+          success: true,
+          data: paymentResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
+
+      // 10) CHECK FOR BOOKING PROCESS REQUEST
+      if (isBookingProcessRequest(data.message)) {
+        this.logger.log(
+          `[DEBUG] Booking process request detected: "${data.message}"`,
+        );
+        const bookingProcessResponse = this.handleBookingProcessRequest();
+        client.emit('receive_message', {
+          success: true,
+          data: bookingProcessResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
+
+      // 11) CHECK FOR GENERAL INFO REQUEST (before room detail)
+      if (isGeneralInfoRequest(data.message)) {
+        this.logger.log(
+          `[DEBUG] General info request detected: "${data.message}"`,
+        );
+        // Use AI service to handle general info requests
+        const aiResponse = await this.aiChatbotService.processMessage(
+          data.message,
+        );
+        client.emit('receive_message', {
+          success: true,
+          data: aiResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
+
+      // 12) CHECK FOR ROOM DETAIL REQUEST
+      if (session.slots.roomName) {
+        const roomName = session.slots.roomName;
+        this.logger.log(`[DEBUG] Room detail request for: ${roomName}`);
+
+        // Fetch internal data to find the specific room
+        const response = await axios.get<InternalData>(
+          'http://localhost:8080/api/v1/internal-data',
+        );
+        const { listings } = response.data.data;
+
+        // Find the specific room
+        const targetRoom = listings.find(
+          (room: Listing) =>
+            room.title.toLowerCase().includes(roomName.toLowerCase()) ||
+            roomName.toLowerCase().includes(room.title.toLowerCase()),
+        );
+
+        if (targetRoom) {
+          // Return as listings format with single room for detail view
+          const listingsMessage = ResponseFormatter.formatListingsResponse(
+            [targetRoom], // Single room array
+            session.slots.checkIn,
+            session.slots.checkOut,
+            session.slots.guests,
+            session.slots.city,
+            'book_now',
+          );
+
+          // Override header to indicate it's a detail view
+          listingsMessage.header = `Chi tiết ${targetRoom.title}`;
+
+          client.emit('receive_message', {
+            success: true,
+            data: listingsMessage,
+            statusCode: 201,
+            message: 'Gửi tin nhắn thành công',
+          });
+          client.emit('receive_typing', { isTyping: false });
+          return;
+        } else {
+          const notFoundResponse = ResponseFormatter.formatTextResponse(
+            `Không tìm thấy phòng "${roomName}". Vui lòng kiểm tra lại tên phòng hoặc liên hệ 0909.123.456 để được tư vấn!`,
+          );
+
+          client.emit('receive_message', {
+            success: true,
+            data: notFoundResponse,
+            statusCode: 201,
+            message: 'Gửi tin nhắn thành công',
+          });
+          client.emit('receive_typing', { isTyping: false });
+          return;
+        }
+      }
+
+      // 7) IF MISSING: Ask once for missing info
+      if (lacks.length > 0) {
+        const askResponse = buildAsk(session.slots, lacks);
+        this.logger.log(`[DEBUG] Asking for missing info: ${askResponse.text}`);
+        client.emit('receive_message', {
+          success: true,
+          data: askResponse,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
+
+      // 13) ELSE SEARCH: Slots complete, search for rooms
+      this.logger.log(
+        `[DEBUG] Slots đầy đủ, tìm phòng với: ${JSON.stringify(session.slots)}`,
+      );
+
+      // Tìm phòng dựa trên slots
+      const availableRooms = await this.findAvailableRooms(session.slots);
+
+      if (availableRooms && availableRooms.length > 0) {
+        const listingsMessage = ResponseFormatter.formatListingsResponse(
+          availableRooms,
+          session.slots.checkIn,
+          session.slots.checkOut,
+          session.slots.guests,
+          session.slots.city,
+          'book_now',
+        );
+
+        client.emit('receive_message', {
+          success: true,
+          data: listingsMessage,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      } else {
+        // No rooms found but slots are complete - return availability response
+        const noRoomsMessage = ResponseFormatter.formatAvailabilityResponse(
+          `Hiện tại không có phòng trống tại ${session.slots.city} cho ngày ${session.slots.checkIn} đến ${session.slots.checkOut} với ${session.slots.guests} khách. Vui lòng thử ngày khác hoặc liên hệ 0909.123.456 để được hỗ trợ!`,
+          {
+            city: session.slots.city,
+            checkIn: session.slots.checkIn,
+            checkOut: session.slots.checkOut,
+            guests: session.slots.guests,
+            nights: session.slots.nights,
+          },
+        );
+
+        client.emit('receive_message', {
+          success: true,
+          data: noRoomsMessage,
+          statusCode: 201,
+          message: 'Gửi tin nhắn thành công',
+        });
+        client.emit('receive_typing', { isTyping: false });
+        return;
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
       this.logger.error('Error handling message:', errorMessage);
 
       client.emit('receive_typing', { isTyping: false });
+      const errorBotMessage: BotMessage = {
+        type: BotMessageType.TEXT,
+        text: 'Xin lỗi, có lỗi xảy ra. Hệ thống đang bận, vui lòng thử lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!',
+      };
       client.emit('receive_message', {
-        message:
-          'Xin lỗi, có lỗi xảy ra. Hệ thống đang bận, vui lòng thử lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!',
+        success: false,
+        data: errorBotMessage,
+        statusCode: 500,
+        message: 'Có lỗi xảy ra',
       });
     }
   }
@@ -261,7 +591,7 @@ export class ChatbotGateway {
       // Log số lượng dữ liệu nhận được
       const data = response.data.data;
       this.logger.log(
-        `Fetched data: ${data.listings.length} listings, ${data.vouchers.length} vouchers, ${data.services.length} services, ${data.reviews.length} reviews`,
+        `Fetched data: ${data.listings.length} listings, ${data.bookings.length} bookings, ${data.properties.length} properties, ${data.amenities.length} amenities, ${data.houseRules.length} houseRules, ${data.wishlists.length} wishlists, ${data.vouchers.length} vouchers, ${data.services.length} services, ${data.reviews.length} reviews`,
       );
 
       return data;
@@ -286,17 +616,21 @@ export class ChatbotGateway {
       // Trả về object rỗng trong trường hợp lỗi
       return {
         listings: [],
+        properties: [],
         bookings: [],
         vouchers: [],
         services: [],
         reviews: [],
+        amenities: [],
+        houseRules: [],
+        wishlists: [],
       };
     }
   }
 
   private async handleCheapestRoom(): Promise<string> {
     const data = await this.fetchInternalData();
-    const listings = data.listings.filter((room) => room.status === 'draft');
+    const listings = data.listings.filter((room) => room.status === 'active');
     if (!listings.length) return 'Không có dữ liệu phòng.';
 
     const cheapest = listings.reduce(
@@ -341,7 +675,7 @@ export class ChatbotGateway {
       const hasOverlap = activeBookings.some(
         (b) => new Date(b.check_out_date) > now,
       );
-      return !hasOverlap && room.status === 'draft';
+      return !hasOverlap && room.status === 'active';
     });
 
     // Log số lượng phòng có sẵn
@@ -365,15 +699,6 @@ export class ChatbotGateway {
         return `📋 Giá các phòng trống:\n${prices.join('\n')}\n📌 Đặt ngay để tận hưởng kỳ nghỉ tại Đà Nẵng!`;
       }
 
-      case 'check_availability': {
-        if (!availableRooms.length)
-          return 'Hiện không có phòng trống. Hãy theo dõi Fanpage để nhận thông báo khi có phòng mới nhé!';
-        return `✅ Hiện có ${availableRooms.length} phòng trống: ${availableRooms
-          .map((r) => r.title)
-          .join(
-            ', ',
-          )}\n👉 Đặt ngay để không bỏ lỡ cơ hội nghỉ dưỡng giá tốt tại Vinaside!`;
-      }
       case 'check_availability_weekend': {
         const nextSaturday = new Date(now);
         const day = nextSaturday.getDay();
@@ -393,13 +718,13 @@ export class ChatbotGateway {
             const outDate = new Date(b.check_out_date);
             return inDate < nextMonday && outDate > nextSaturday;
           });
-          return !overlap && room.status === 'draft';
+          return !overlap && room.status === 'active';
         });
         if (!weekendAvailable.length)
           return 'Cuối tuần này chưa có phòng trống phù hợp. Bạn muốn xem tuần kế tiếp không?';
         return `✅ Cuối tuần có ${weekendAvailable.length} phòng trống: ${weekendAvailable
           .map((r) => r.title)
-          .join(', ')}\n👉 Bạn muốn mình giữ chỗ không?`;
+          .join(', ')}\n👉 Bạn muốn mình đặt phòng không?`;
       }
 
       case 'ask_room_count': {
@@ -451,11 +776,49 @@ export class ChatbotGateway {
       }
 
       case 'ask_booking_process': {
-        return `📋 Quy trình đặt phòng tại Vinaside:\n\n1️⃣ Chọn phòng phù hợp với nhu cầu\n2️⃣ Kiểm tra lịch trống và đặt ngày\n3️⃣ Điền thông tin cá nhân\n4️⃣ Chọn phương thức thanh toán (Momo, VNPay, tiền mặt)\n5️⃣ Xác nhận đặt phòng\n6️⃣ Nhận email xác nhận\n\n⏰ Check-in: 14:00 | Check-out: 12:00\n📞 Liên hệ: 0909.123.456 để được hỗ trợ!`;
+        return `✨ **Quy trình đặt phòng tại Vinaside** ✨
+
+**1. Tìm kiếm**
+
+Truy cập website www.vinaside.com
+hoặc gọi hotline 0909.123.456 để tìm homestay phù hợp theo địa điểm, thời gian và số lượng khách.
+
+**2. Chọn phòng**
+
+Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọn phòng ưng ý.
+
+**3. Đặt phòng**
+
+Điền thông tin đặt phòng và gửi yêu cầu.
+
+**4. Xác nhận**
+
+Đội ngũ Vinaside sẽ liên hệ với bạn để xác nhận thông tin và hoàn tất thủ tục nhanh chóng.
+
+👉 **Bạn muốn tìm homestay ở khu vực nào ạ?**`;
       }
 
       case 'ask_booking_steps': {
-        return `🚀 Các bước đặt phòng chi tiết:\n\n**Bước 1: Tìm kiếm** 🔍\n- Chọn địa điểm và ngày check-in/check-out\n- Lọc theo giá, tiện nghi, đánh giá\n\n**Bước 2: Chọn phòng** 🏠\n- Xem chi tiết phòng và hình ảnh\n- Kiểm tra chính sách hủy phòng\n\n**Bước 3: Đặt phòng** 📝\n- Điền thông tin cá nhân\n- Chọn phương thức thanh toán\n\n**Bước 4: Xác nhận** ✅\n- Nhận email xác nhận\n- Lưu mã đặt phòng\n\n**Bước 5: Check-in** 🎉\n- Đến đúng giờ nhận phòng\n- Xuất trình giấy tờ tùy thân\n\n📞 Cần hỗ trợ? Gọi ngay 0909.123.456!`;
+        return `✨ **Quy trình đặt phòng tại Vinaside** ✨
+
+1. Tìm kiếm
+
+ .Truy cập website www.vinaside.com
+ .hoặc gọi hotline 0909.123.456 để tìm homestay phù hợp theo địa điểm, thời gian và số lượng khách.
+
+2. Chọn phòng
+
+. Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọn phòng ưng ý.
+
+3. Đặt phòng
+
+ .Điền thông tin đặt phòng và gửi yêu cầu.
+
+4. Xác nhận
+
+ .Đội ngũ Vinaside sẽ liên hệ với bạn để xác nhận thông tin và hoàn tất thủ tục nhanh chóng.
+
+👉 **Bạn muốn tìm homestay ở khu vực nào ạ?**`;
       }
 
       case 'ask_vinaside_info': {
@@ -463,7 +826,7 @@ export class ChatbotGateway {
       }
 
       case 'ask_payment_methods': {
-        return `💳 Các phương thức thanh toán:\n\n• 💰 Tiền mặt khi nhận phòng\n• 📱 Momo (QR Code)\n• 🏦 VNPay (Chuyển khoản)\n• 💳 Thẻ tín dụng/ghi nợ\n• 🏧 ATM (Chuyển khoản)\n\n✅ Tất cả đều an toàn và được bảo mật!\n📞 Liên hệ để được hướng dẫn chi tiết!`;
+        return this.handlePaymentMethodsRequest().text;
       }
 
       case 'ask_checkin_checkout': {
@@ -493,23 +856,6 @@ export class ChatbotGateway {
 
       case 'ask_room_availability_calendar': {
         return `📅 Lịch trống phòng:\n\nHiện tại chúng tôi đang cập nhật hệ thống lịch trống trực tuyến.\n\n📞 Vui lòng liên hệ 0909.123.456 để:\n• Kiểm tra lịch trống cụ thể\n• Đặt phòng theo ngày mong muốn\n• Nhận thông báo khi có phòng trống\n\n⏰ Phục vụ 24/7!`;
-      }
-
-      case 'ask_room_details': {
-        const roomMatch = listings.find((item) =>
-          message.toLowerCase().includes(item.title.toLowerCase()),
-        );
-        if (!roomMatch)
-          return 'Vui lòng cung cấp tên phòng để xem chi tiết nhé!';
-        const roomReviews = reviews.filter((r) => r.room_id === roomMatch._id);
-        const avgRating = roomReviews.length
-          ? (
-              roomReviews.reduce((sum, r) => sum + r.rating, 0) /
-              roomReviews.length
-            ).toFixed(1)
-          : 'Chưa có';
-        const imageUrl = roomMatch.images?.[0] || 'Không có hình ảnh';
-        return `🏠 **${roomMatch.title}**\n💰 Giá: ${roomMatch.price_per_night.toLocaleString('vi-VN')}đ/đêm\n📸 [Xem ảnh](${imageUrl})\n📝 Mô tả: ${roomMatch.description}\n⭐ Đánh giá: ${avgRating} sao (${roomReviews.length} đánh giá)\n👉 [Xem chi tiết](${`/room-detail/${roomMatch._id}`})`;
       }
 
       case 'ask_service': {
@@ -784,7 +1130,7 @@ export class ChatbotGateway {
           message.toLowerCase().includes('đặt phòng') ||
           message.toLowerCase().includes('booking')
         ) {
-          return `📋 **Quy trình đặt phòng tại Vinaside:**\n\n1️⃣ **Tìm phòng:** Chọn phòng phù hợp với nhu cầu và ngân sách\n2️⃣ **Kiểm tra lịch:** Xem ngày trống và đặt lịch\n3️⃣ **Điền thông tin:** Cung cấp thông tin cá nhân và thanh toán\n4️⃣ **Xác nhận:** Nhận email xác nhận đặt phòng\n5️⃣ **Check-in:** Đến nhận phòng theo lịch đã đặt\n\n💳 **Thanh toán:** Chấp nhận VNPay, MoMo, tiền mặt\n📞 **Hỗ trợ:** Liên hệ 0909.123.456 để được tư vấn!`;
+          return `📋 Quy trình đặt phòng tại Vinaside:\n\n1️⃣ Tìm phòng: Chọn phòng phù hợp với nhu cầu và ngân sách\n2️⃣ Kiểm tra lịch: Xem ngày trống và đặt lịch\n3️⃣ Điền thông tin: Cung cấp thông tin cá nhân và thanh toán\n4️⃣ Xác nhận: Nhận email xác nhận đặt phòng\n5️⃣ Check-in: Đến nhận phòng theo lịch đã đặt\n\n💳 Thanh toán: Chấp nhận VNPay, MoMo, tiền mặt\n📞 Hỗ trợ: Liên hệ 0909.123.456 để được tư vấn!`;
         }
 
         // Sử dụng AI để trả lời câu hỏi phức tạp
@@ -796,13 +1142,139 @@ export class ChatbotGateway {
           services,
           reviews,
         });
-        const prompt = this.chatbotService.buildPrompt(
+        const prompt = this.aiChatbotService.buildPrompt(
           message,
           readableContext,
         );
-        return this.chatbotService.generateResponse(prompt);
+        return this.aiChatbotService.generateResponse(prompt);
       }
     }
+  }
+
+  private validateAndFormatResponse(botMessage: BotMessage): BotMessage {
+    // Ensure the response has the correct structure for Frontend
+    if (botMessage.type === BotMessageType.LISTINGS) {
+      const listingsMessage = botMessage as BotMessage & {
+        header?: string;
+        meta?: { total: number };
+        items?: unknown[];
+        cta?: CTAButton;
+      };
+
+      // Validate required fields for listings response
+      if (!Array.isArray(listingsMessage.items)) {
+        this.logger.warn(
+          'Listings response missing items array, but keeping as listings type for FE',
+        );
+        // Return empty listings instead of converting to text
+        return {
+          type: BotMessageType.LISTINGS,
+          header: listingsMessage.header || 'Danh sách phòng',
+          meta: { total: 0 },
+          items: [],
+          cta: listingsMessage.cta,
+        };
+      }
+
+      // Remove any unwanted temporary helper items that are not real rooms
+      const invalidHeadingTitles = [
+        'Thông tin phòng phù hợp với yêu cầu của bạn:',
+        'Thông tin phòng:',
+        'Danh sách phòng:',
+        'Các phòng:',
+        'Phòng phù hợp:',
+      ];
+      listingsMessage.items = (listingsMessage.items || []).filter(
+        (it: unknown) => {
+          if (!it) return false;
+          const item = it as { id?: string; title?: unknown };
+          if (item.id === 'temp-t3ko58hvb') return false; // explicit removal per user request
+          const title = typeof item.title === 'string' ? item.title : '';
+          if (!title.trim()) return false;
+          return !invalidHeadingTitles.some((h) =>
+            title.toLowerCase().includes(h.toLowerCase()),
+          );
+        },
+      );
+
+      // Ensure each item has required fields; coerce price when missing
+      const validatedItems: ListingItem[] = listingsMessage.items
+        .map((item: unknown, index: number) => {
+          const listingItem = item as {
+            id?: string;
+            title?: string;
+            pricePerNight?: unknown;
+            address?: string;
+            imageUrl?: string;
+            detailUrl?: string;
+            tags?: unknown;
+            totalPrice?: unknown;
+          };
+          if (!listingItem?.id || !listingItem?.title) {
+            this.logger.warn(`Invalid item at index ${index}:`, item);
+            return null;
+          }
+          const coercedPrice =
+            typeof listingItem.pricePerNight === 'number'
+              ? listingItem.pricePerNight
+              : Number(listingItem.pricePerNight) || 0;
+          return {
+            id: listingItem.id,
+            title: listingItem.title,
+            pricePerNight: coercedPrice,
+            address: listingItem.address || '',
+            imageUrl: listingItem.imageUrl || '',
+            detailUrl:
+              listingItem.detailUrl || `/room-detail/${listingItem.id}`,
+            tags: Array.isArray(listingItem.tags)
+              ? (listingItem.tags as string[])
+              : [],
+            totalPrice:
+              typeof listingItem.totalPrice === 'number'
+                ? listingItem.totalPrice
+                : coercedPrice,
+          } as ListingItem;
+        })
+        .filter((item): item is ListingItem => item !== null);
+
+      // ALWAYS return listings type, even if no valid items
+      // This ensures FE always receives the expected type
+      if (validatedItems.length === 0) {
+        this.logger.warn(
+          'No valid items in listings response, but keeping as listings type for FE',
+        );
+        return {
+          type: BotMessageType.LISTINGS,
+          header: listingsMessage.header || 'Danh sách phòng',
+          meta: { total: 0 },
+          items: [],
+          cta: listingsMessage.cta,
+        };
+      }
+
+      // Return validated listings response
+      return {
+        type: BotMessageType.LISTINGS,
+        header: listingsMessage.header || 'Danh sách phòng',
+        meta: listingsMessage.meta || { total: validatedItems.length },
+        items: validatedItems,
+        cta: listingsMessage.cta,
+      };
+    }
+
+    // For text responses, ensure they have the correct structure
+    if (botMessage.type === BotMessageType.TEXT) {
+      const textMessage = botMessage as BotMessage & { text?: unknown };
+      if (!textMessage.text || typeof textMessage.text !== 'string') {
+        this.logger.warn('Text response missing text field');
+        return {
+          type: BotMessageType.TEXT,
+          text: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau.',
+        };
+      }
+    }
+
+    return botMessage;
   }
 
   // Extract location from query - tìm địa điểm từ câu hỏi
@@ -821,32 +1293,21 @@ export class ChatbotGateway {
       'hoi an',
       'hoian',
 
-      // Sơn Trà và các biến thể
-      'sơn trà',
-      'son tra',
-      'sontra',
+      // Hà Nội và các biến thể
+      'hà nội',
+      'ha noi',
+      'hanoi',
+      'hn',
 
-      // Các quận huyện Đà Nẵng
-      'liên chiểu',
-      'lien chieu',
-      'thanh khê',
-      'thanh khe',
-      'cẩm lệ',
-      'cam le',
-      'hoà vang',
-      'hoa vang',
-      'ngũ hành sơn',
-      'ngu hanh son',
-      'hải châu',
-      'hai chau',
+      // Ninh Bình và các biến thể
+      'ninh bình',
+      'ninh binh',
 
       // Các khu vực khác
       'quảng ninh',
       'quang ninh',
       'tam đảo',
       'tam dao',
-      'ninh bình',
-      'ninh binh',
 
       // Các thành phố lớn
       'hồ chí minh',
@@ -854,67 +1315,12 @@ export class ChatbotGateway {
       'sài gòn',
       'sai gon',
       'tphcm',
-      'hà nội',
-      'ha noi',
-      'hanoi',
+      'hcm',
       'nha trang',
       'nhatrang',
       'đà lạt',
       'da lat',
       'dalat',
-      'phú quốc',
-      'phu quoc',
-      'huế',
-      'hue',
-      'hạ long',
-      'ha long',
-      'halong',
-      'vũng tàu',
-      'vung tau',
-      'vungtau',
-
-      // Các quận ở TP.HCM
-      'quận 1',
-      'quan 1',
-      'q1',
-      'quận 2',
-      'quan 2',
-      'q2',
-      'quận 3',
-      'quan 3',
-      'q3',
-      'quận 4',
-      'quan 4',
-      'q4',
-      'quận 5',
-      'quan 5',
-      'q5',
-      'quận 7',
-      'quan 7',
-      'q7',
-
-      // Các điểm đặc trưng
-      'biển',
-      'bien',
-      'beach',
-      'trung tâm',
-      'trung tam',
-      'center',
-      'sân bay',
-      'san bay',
-      'airport',
-      'chợ',
-      'cho',
-      'market',
-      'bãi biển',
-      'bai bien',
-      'mỹ khê',
-      'my khe',
-      'bán đảo',
-      'ban dao',
-      'peninsula',
-      'non nước',
-      'non nuoc',
     ];
 
     // Log để debug
@@ -931,6 +1337,76 @@ export class ChatbotGateway {
     );
 
     return matchedLocation || null;
+  }
+
+  private extractBookingInfo(message: string): {
+    checkInDate: string | null;
+    location: string | null;
+    nights: number | null;
+    guests: number | null;
+  } | null {
+    try {
+      this.logger.log(`Extracting booking info from message: "${message}"`);
+
+      // Extract date (supports: 24/8, 24-8, 24.8, 24 tháng 8)
+      const dateMatch = message.match(
+        /(\d{1,2})\s*(?:[/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})/i,
+      );
+      this.logger.log(`Date match:`, dateMatch);
+
+      if (!dateMatch) {
+        this.logger.warn('No date match found');
+        return null;
+      }
+
+      const day = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10);
+      const year = new Date().getFullYear();
+      const checkInDate = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      this.logger.log(`Parsed date: ${checkInDate}`);
+
+      // Extract location
+      const location = this.extractLocationFromQuery(message);
+      this.logger.log(`Extracted location: ${location}`);
+
+      if (!location) {
+        this.logger.warn('No location found');
+        return null;
+      }
+
+      // Extract nights
+      const nightsMatch = message.match(/(\d+)\s*(?:đêm|night|nights)/i);
+      const nights = nightsMatch ? parseInt(nightsMatch[1], 10) : null;
+      this.logger.log(`Extracted nights: ${nights}`);
+
+      // Extract guests
+      const guestsMatch = message.match(
+        /(\d+)\s*(?:người|person|people|guests)/i,
+      );
+      const guests = guestsMatch ? parseInt(guestsMatch[1], 10) : null;
+      this.logger.log(`Extracted guests: ${guests}`);
+
+      // All required fields must be present
+      if (!nights || !guests) {
+        this.logger.warn(
+          `Missing required fields: nights=${nights}, guests=${guests}`,
+        );
+        return null;
+      }
+
+      const result = {
+        checkInDate,
+        location,
+        nights,
+        guests,
+      };
+
+      this.logger.log(`Extracted booking info:`, result);
+      return result;
+    } catch (error) {
+      this.logger.error('Error extracting booking info:', error);
+      return null;
+    }
   }
 
   // Find rooms by location - tìm phòng theo vị trí
@@ -1505,8 +1981,11 @@ export class ChatbotGateway {
     try {
       // Format data in readable format for Gemini
       const readableContext = this.formatDataForAI(data);
-      const prompt = this.chatbotService.buildPrompt(message, readableContext);
-      return await this.chatbotService.generateResponse(prompt);
+      const prompt = this.aiChatbotService.buildPrompt(
+        message,
+        readableContext,
+      );
+      return await this.aiChatbotService.generateResponse(prompt);
     } catch (error) {
       this.logger.error('Error with AI question:', error);
       return 'Xin lỗi, tôi không thể xử lý câu hỏi này lúc này. Vui lòng thử lại hoặc liên hệ 0909.123.456 để được hỗ trợ trực tiếp!';
@@ -1583,5 +2062,670 @@ export class ChatbotGateway {
     }
 
     return context || 'Hiện tại chưa có dữ liệu về các phòng và dịch vụ.';
+  }
+
+  /**
+   * Test method to verify response format for Frontend
+   * This can be called to ensure the response structure is correct
+   */
+  private testResponseFormat(botMessage: BotMessage): boolean {
+    try {
+      const messageType = botMessage.type;
+
+      if (messageType === BotMessageType.LISTINGS) {
+        const listingsMessage = botMessage as BotMessage & {
+          items?: { id?: unknown; title?: unknown; pricePerNight?: unknown }[];
+        };
+
+        // Check required fields
+        if (!Array.isArray(listingsMessage.items)) {
+          this.logger.error('Listings response missing items array');
+          return false;
+        }
+
+        if (listingsMessage.items.length === 0) {
+          this.logger.warn('Listings response has empty items array');
+          return true; // This is valid, just no items
+        }
+
+        // Check each item has required fields
+        for (let i = 0; i < listingsMessage.items.length; i++) {
+          const item = listingsMessage.items[i];
+          if (
+            !item?.id ||
+            !item?.title ||
+            typeof item?.pricePerNight !== 'number'
+          ) {
+            this.logger.error(`Item ${i} missing required fields:`, item);
+            return false;
+          }
+        }
+
+        this.logger.log(
+          `Listings response format validation passed with ${listingsMessage.items.length} items`,
+        );
+        return true;
+      }
+
+      if (messageType === BotMessageType.TEXT) {
+        const textMessage = botMessage as BotMessage & { text?: unknown };
+        if (!textMessage.text || typeof textMessage.text !== 'string') {
+          this.logger.error('Text response missing text field');
+          return false;
+        }
+        this.logger.log('Text response format validation passed');
+        return true;
+      }
+
+      this.logger.error(`Unknown response type: ${messageType}`);
+      return false;
+    } catch (error) {
+      this.logger.error('Error testing response format:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Handle availability on date intent - extracted from handleDynamicIntent
+   */
+  private async handleAvailabilityOnDate(
+    message: string,
+    data: InternalData['data'],
+    userId?: string,
+  ): Promise<BotMessage> {
+    const { listings, bookings } = data;
+    const now = new Date('2025-08-01T12:05:00+07:00');
+
+    // Parse date from message (supports: 25/8, 25-8, 25.8, 25 tháng 8, 25 thang 8, optional year)
+    const raw = message.toLowerCase();
+    const m1 = raw.match(
+      /(\d{1,2})\s*(?:[/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})(?:[/\-.](\d{2,4}))?/i,
+    );
+    if (!m1) {
+      return ResponseFormatter.formatTextResponse(
+        'Vui lòng cung cấp ngày theo định dạng 25/8, 25-8, 25.8 hoặc "25 tháng 8" để mình kiểm tra giúp nhé!',
+      );
+    }
+    const day = parseInt(m1[1], 10);
+    const month = parseInt(m1[2], 10);
+    let year = m1[3] ? parseInt(m1[3], 10) : now.getFullYear();
+    if (year < 100) year += 2000; // normalize 2-digit years
+    // Normalize date-only compare to VN timezone by using a stable UTC anchor
+    const queryDate = new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
+
+    // detect requested city similar to check_availability
+    const normalize = (s: string) =>
+      (s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const citySynonyms: Record<string, string> = {
+      'hà nội': 'hà nội',
+      'ha noi': 'hà nội',
+      hn: 'hà nội',
+      hanoi: 'hà nội',
+      'hồ chí minh': 'hồ chí minh',
+      'ho chi minh': 'hồ chí minh',
+      hcm: 'hồ chí minh',
+      'sài gòn': 'hồ chí minh',
+      'sai gon': 'hồ chí minh',
+      'đà nẵng': 'đà nẵng',
+      'da nang': 'đà nẵng',
+      'đà lạt': 'đà lạt',
+      'da lat': 'đà lạt',
+      'ninh bình': 'ninh bình',
+      'ninh binh': 'ninh bình',
+    };
+    const uniqueCities = Array.from(
+      new Set(
+        (data.properties || [])
+          .map((p) => (p as { location?: { city?: string } })?.location?.city)
+          .filter((c: string | undefined) => !!c)
+          .map((c: string) => citySynonyms[normalize(c)] || c),
+      ),
+    );
+    const msgNorm = normalize(message);
+    let requestedCity: string | undefined;
+    for (const [alias, canon] of Object.entries(citySynonyms)) {
+      if (msgNorm.includes(alias)) {
+        requestedCity = canon;
+        break;
+      }
+    }
+    if (!requestedCity) {
+      requestedCity = uniqueCities.find((city) =>
+        msgNorm.includes(normalize(city)),
+      );
+    }
+    const isInRequestedCity = (room: Listing) => {
+      const rawCity = room?.propertyId?.location?.city || '';
+      const canon = citySynonyms[normalize(rawCity)] || rawCity;
+      return requestedCity
+        ? normalize(canon) === normalize(requestedCity)
+        : true;
+    };
+
+    // Room is available on date if no booking covers that date
+    const roomsOnDate = listings.filter((room) => {
+      const activeBookings = bookings.filter(
+        (b) =>
+          b.listingId === room._id &&
+          ['confirmed', 'completed'].includes(b.status),
+      );
+      const isBooked = activeBookings.some((b) => {
+        // Normalize to date-only compare in local zone by formatting YYYY-MM-DD
+        const inDate = new Date(b.checkInDate);
+        const outDate = new Date(b.check_out_date);
+        const fmt = (dt: Date) =>
+          `${dt.getFullYear()}-${(dt.getMonth() + 1)
+            .toString()
+            .padStart(2, '0')}-${dt.getDate().toString().padStart(2, '0')}`;
+        const q = fmt(queryDate);
+        const i = fmt(inDate);
+        const o = fmt(outDate);
+        return i <= q && q < o;
+      });
+      return !isBooked && room.status === 'active' && isInRequestedCity(room);
+    });
+
+    if (roomsOnDate.length === 0) {
+      const dateStr = `${day.toString().padStart(2, '0')}/${month
+        .toString()
+        .padStart(2, '0')}/${year}`;
+      const cityText = requestedCity ? ` tại ${requestedCity}` : '';
+      return ResponseFormatter.formatTextResponse(
+        `⚠️ Ngày ${dateStr}${cityText} không còn phòng trống. Vui lòng chọn ngày khác.`,
+      );
+    }
+
+    // Save context (default guests 2) via Redis
+    await this.saveSession(userId || 'unknown', {
+      userId: userId || 'unknown',
+      slots: {
+        checkIn: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+        checkOut: `${year}-${month.toString().padStart(2, '0')}-${(day + 1).toString().padStart(2, '0')}`,
+        guests: 2,
+        city: requestedCity,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Tạo response có cấu trúc
+    return ResponseFormatter.formatListingsResponse(
+      roomsOnDate.slice(0, 5),
+      `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
+      `${year}-${month.toString().padStart(2, '0')}-${(day + 1).toString().padStart(2, '0')}`,
+      2,
+      requestedCity,
+    );
+  }
+
+  /**
+   * Handle availability intent - extracted from handleDynamicIntent
+   */
+  private async handleAvailability(
+    message: string,
+    data: InternalData['data'],
+    userId?: string,
+  ): Promise<BotMessage> {
+    const { listings, bookings } = data;
+    const now = new Date('2025-08-01T12:05:00+07:00');
+
+    // Chuẩn hóa chuỗi để so khớp không dấu/không phân biệt hoa thường
+    const normalize = (s: string) =>
+      (s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    // Thử nhận diện city từ message dựa trên danh sách city trong dữ liệu properties
+    const uniqueCities = Array.from(
+      new Set(
+        (data.properties || [])
+          .map((p) => (p as { location?: { city?: string } })?.location?.city)
+          .filter((c): c is string => !!c),
+      ),
+    );
+
+    const msgNorm = normalize(message);
+    const requestedCity =
+      uniqueCities.find((city) => msgNorm.includes(normalize(city))) ||
+      undefined;
+
+    // Lọc theo city (nếu xác định được)
+    const isInRequestedCity = (room: Listing) => {
+      const city = room?.propertyId?.location?.city || '';
+      return requestedCity
+        ? normalize(city) === normalize(requestedCity)
+        : true;
+    };
+
+    // Slot filling for "hôm nay" queries: anchor today to 21/08/2025 (Asia/Ho_Chi_Minh)
+    const isTodayQuery = /\bhôm nay\b|\bhom nay\b|\btoday\b/i.test(message);
+    if (isTodayQuery && requestedCity) {
+      const raw = message.toLowerCase();
+      const nightsMatch =
+        raw.match(/(\d+)\s*(?:đêm|dem|night|nights)/i) ||
+        raw.match(/(\d+)\s*(?:ngày|day|days)/i);
+      const guestsMatch =
+        raw.match(/(\d+)\s*(?:người|khách|adult|adults)/i) ||
+        (/(cặp đôi|cap doi)/i.test(raw) ? ['2', '2'] : null);
+      const nights = nightsMatch
+        ? Math.max(1, parseInt(nightsMatch[1], 10))
+        : undefined;
+      const guests = guestsMatch
+        ? Math.max(1, parseInt(guestsMatch[1], 10))
+        : undefined;
+
+      const todayVN = new Date(Date.UTC(2025, 7, 21, 5, 0, 0)); // 21/08/2025
+      const todayStr = `${todayVN.getUTCDate().toString().padStart(2, '0')}/${(
+        todayVN.getUTCMonth() + 1
+      )
+        .toString()
+        .padStart(2, '0')}/${todayVN.getUTCFullYear()}`;
+
+      if (!nights || !guests) {
+        return ResponseFormatter.formatTextResponse(
+          `Bạn đi mấy người và ở mấy đêm? Mình sẽ tra phòng trống cho hôm nay (${todayStr}) tại ${requestedCity}.`,
+        );
+      }
+
+      // Compute range for today
+      const checkIn = new Date(todayVN.getTime());
+      const checkOut = new Date(todayVN.getTime());
+      checkOut.setUTCDate(checkOut.getUTCDate() + nights);
+      const fmt = (dt: Date) =>
+        `${dt.getUTCFullYear()}-${(dt.getUTCMonth() + 1)
+          .toString()
+          .padStart(2, '0')}-${dt.getUTCDate().toString().padStart(2, '0')}`;
+      const ciStr = fmt(checkIn);
+      const coStr = fmt(checkOut);
+
+      // Filter rooms available for the range
+      const roomsRange = listings.filter((room) => {
+        if (!isInRequestedCity(room)) return false;
+        if (room.status !== 'active') return false;
+        if (room.max_guests && room.max_guests < guests) return false;
+        const activeBookings = bookings.filter(
+          (b) =>
+            b.listingId === room._id &&
+            ['confirmed', 'completed'].includes(b.status),
+        );
+        const overlap = activeBookings.some((b) => {
+          const inDate = new Date(b.checkInDate);
+          const outDate = new Date(b.check_out_date);
+          const i = `${inDate.getFullYear()}-${(inDate.getMonth() + 1)
+            .toString()
+            .padStart(2, '0')}-${inDate.getDate().toString().padStart(2, '0')}`;
+          const o = `${outDate.getFullYear()}-${(outDate.getMonth() + 1)
+            .toString()
+            .padStart(2, '0')}-${outDate
+            .getDate()
+            .toString()
+            .padStart(2, '0')}`;
+          return i < coStr && o > ciStr;
+        });
+        return !overlap;
+      });
+
+      const rangeVN = `${todayStr}–${new Date(checkOut.getTime()).toLocaleDateString('vi-VN')}`;
+
+      if (roomsRange.length === 0) {
+        return ResponseFormatter.formatTextResponse(
+          `Hôm nay (${rangeVN}, ${nights} đêm, ${guests} khách) tại ${requestedCity} không còn phòng.
+Gợi ý:
+① Dời ngày (thêm/bớt 1-2 ngày) để mở thêm lựa chọn
+② Đổi khu vực tìm phòng
+③ Điều chỉnh số đêm/khách`,
+        );
+      }
+
+      // Save context for later hold (Redis)
+      await this.saveSession(userId || 'unknown', {
+        userId: userId || 'unknown',
+        slots: {
+          checkIn: ciStr,
+          checkOut: coStr,
+          guests,
+          city: requestedCity,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Tạo response có cấu trúc
+      return ResponseFormatter.formatListingsResponse(
+        roomsRange.slice(0, 5),
+        ciStr,
+        coStr,
+        guests,
+        requestedCity,
+      );
+    }
+
+    const availableRooms: Listing[] = listings.filter((room) => {
+      const activeBookings = bookings.filter(
+        (b) =>
+          b.listingId === room._id &&
+          ['confirmed', 'completed'].includes(b.status),
+      );
+      const hasOverlap = activeBookings.some(
+        (b) => new Date(b.check_out_date) > now,
+      );
+      return !hasOverlap && room.status === 'active';
+    });
+
+    const availableInCity = availableRooms.filter(isInRequestedCity);
+
+    if (availableInCity.length > 0) {
+      // Lưu context vào session
+      await this.saveSession(userId || 'unknown', {
+        userId: userId || 'unknown',
+        slots: {
+          city: requestedCity || undefined,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Tạo response có cấu trúc
+      return ResponseFormatter.formatListingsResponse(
+        availableInCity.slice(0, 5),
+        undefined,
+        undefined,
+        undefined,
+        requestedCity,
+      );
+    }
+
+    // Không có phòng trống: đề xuất các phòng cùng khu vực (nếu xác định) để người dùng xem chi tiết và chọn ngày khác
+    const allInCity = listings.filter(isInRequestedCity);
+    if (allInCity.length > 0) {
+      // Lưu context vào session
+      await this.saveSession(userId || 'unknown', {
+        userId: userId || 'unknown',
+        slots: {
+          city: requestedCity || undefined,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Tạo response có cấu trúc
+      return ResponseFormatter.formatListingsResponse(
+        allInCity.slice(0, 5),
+        undefined,
+        undefined,
+        undefined,
+        requestedCity,
+      );
+    }
+
+    // Fallback: trả về tất cả phòng có sẵn
+    if (availableRooms.length > 0) {
+      return ResponseFormatter.formatListingsResponse(
+        availableRooms.slice(0, 5),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      );
+    }
+
+    return ResponseFormatter.formatTextResponse(
+      'Hiện tại không có phòng trống. Vui lòng thử lại sau hoặc liên hệ 0909.123.456 để được hỗ trợ!',
+    );
+  }
+
+  private async findAvailableRooms(slots: Slots): Promise<Listing[]> {
+    try {
+      this.logger.log(
+        `Finding available rooms with slots: ${JSON.stringify(slots)}`,
+      );
+
+      // Fetch internal data
+      const response = await axios.get(
+        'http://localhost:8080/api/v1/internal-data',
+      );
+      const internalData = response.data as InternalData;
+
+      const { listings, bookings } = internalData.data;
+      this.logger.log(
+        `Fetched ${listings.length} listings and ${bookings.length} bookings`,
+      );
+
+      // Filter by city if specified
+      let filteredListings = listings;
+      if (slots.city) {
+        filteredListings = listings.filter((listing) => {
+          const propertyCity = listing.propertyId?.location?.city;
+          const propertyName = listing.propertyId?.name;
+
+          // Normalize city names for better matching
+          const normalize = (s: string) =>
+            s
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '');
+
+          const cityMatches =
+            propertyCity &&
+            (normalize(propertyCity).includes(normalize(slots.city!)) ||
+              normalize(slots.city!).includes(normalize(propertyCity)));
+
+          const nameMatches =
+            propertyName &&
+            normalize(propertyName).includes(normalize(slots.city!));
+
+          const matches = cityMatches || nameMatches;
+
+          this.logger.log(
+            `Listing ${listing.title} - Property: ${propertyName}, City: ${propertyCity}, matches ${slots.city}: ${matches}`,
+          );
+          return matches;
+        });
+        this.logger.log(
+          `After city filter: ${filteredListings.length} listings`,
+        );
+      }
+
+      // Filter by availability
+      const availableRooms = filteredListings.filter((room) => {
+        // Check if room is active
+        if (room.status !== 'active') {
+          this.logger.log(`Room ${room.title} not active: ${room.status}`);
+          return false;
+        }
+
+        // Check booking conflicts if dates are specified
+        if (slots.checkIn && slots.checkOut) {
+          const checkIn = new Date(slots.checkIn);
+          const checkOut = new Date(slots.checkOut);
+
+          const conflictingBookings = bookings.filter(
+            (booking) =>
+              booking.listingId === room._id &&
+              ['confirmed', 'completed'].includes(booking.status) &&
+              new Date(booking.checkInDate) < checkOut &&
+              new Date(booking.check_out_date) > checkIn,
+          );
+
+          if (conflictingBookings.length > 0) {
+            this.logger.log(
+              `Room ${room.title} has ${conflictingBookings.length} conflicting bookings`,
+            );
+            return false;
+          }
+        }
+
+        // Check guest capacity if specified
+        if (slots.guests && room.max_guests && slots.guests > room.max_guests) {
+          this.logger.log(
+            `Room ${room.title} guest capacity: ${room.max_guests}, requested: ${slots.guests}`,
+          );
+          return false;
+        }
+
+        this.logger.log(`Room ${room.title} is available`);
+        return true;
+      });
+
+      this.logger.log(`Found ${availableRooms.length} available rooms`);
+      return availableRooms.slice(0, 10); // Limit to 10 results
+    } catch (error) {
+      this.logger.error('Error finding available rooms:', error);
+      return [];
+    }
+  }
+
+  private async handleServiceRequest() {
+    try {
+      // Fetch internal data to get services
+      const response = await axios.get<InternalData>(
+        'http://localhost:8080/api/v1/internal-data',
+      );
+      const { services } = response.data.data;
+
+      if (!services || services.length === 0) {
+        return {
+          type: 'text',
+          text: 'Hiện tại chưa có thông tin dịch vụ. Vui lòng liên hệ 0909.123.456 để được tư vấn!',
+        };
+      }
+
+      // Convert services to listing format
+      const serviceItems = services.map((service: Service) => ({
+        id: service._id,
+        title: service.name,
+        pricePerNight: service.default_price,
+        address: 'Dịch vụ tại chỗ',
+        imageUrl: 'https://example.com/service-icon.png',
+        detailUrl: null, // Không có chi tiết
+        tags: ['Dịch vụ', 'Tại chỗ'],
+        totalPrice: service.default_price,
+        description: service.description || 'Dịch vụ chất lượng cao',
+      }));
+
+      return {
+        type: 'listings',
+        header: '🎉 Dịch vụ tại chỗ',
+        meta: { total: serviceItems.length },
+        items: serviceItems,
+        // Không có CTA
+      };
+    } catch (error) {
+      this.logger.error('Error handling service request:', error);
+      return {
+        type: 'text',
+        text: 'Xin lỗi, có lỗi xảy ra khi tải thông tin dịch vụ. Vui lòng thử lại sau!',
+      };
+    }
+  }
+
+  private async handleVoucherRequest() {
+    try {
+      // Fetch internal data to get vouchers
+      const response = await axios.get<InternalData>(
+        'http://localhost:8080/api/v1/internal-data',
+      );
+      const { vouchers } = response.data.data;
+
+      if (!vouchers || vouchers.length === 0) {
+        return {
+          type: 'text',
+          text: 'Hiện tại chưa có voucher khuyến mãi. Vui lòng theo dõi Fanpage để cập nhật ưu đãi mới nhất!',
+        };
+      }
+
+      // Filter active vouchers only
+      const activeVouchers = vouchers.filter(
+        (voucher: Voucher) => voucher.is_active,
+      );
+
+      if (activeVouchers.length === 0) {
+        return {
+          type: 'text',
+          text: 'Hiện tại không có voucher đang hoạt động. Vui lòng theo dõi Fanpage để cập nhật ưu đãi mới nhất!',
+        };
+      }
+
+      // Convert vouchers to listing format
+      const voucherItems = activeVouchers.map((voucher: Voucher) => ({
+        id: voucher._id,
+        title: `Voucher ${voucher.code}`,
+        pricePerNight: voucher.min_order_value,
+        address: `Giảm ${voucher.discount_percent}%`,
+        imageUrl: 'https://example.com/voucher-icon.png',
+        detailUrl: null, // Không có chi tiết
+        tags: ['Voucher', 'Khuyến mãi'],
+        totalPrice: voucher.min_order_value,
+        description: `Giảm ${voucher.discount_percent}% cho đơn hàng tối thiểu ${voucher.min_order_value.toLocaleString('vi-VN')}đ. Hết hạn: ${new Date(voucher.expiration_date).toLocaleDateString('vi-VN')}`,
+      }));
+
+      return {
+        type: 'listings',
+        header: '🎁 Voucher khuyến mãi',
+        meta: { total: voucherItems.length },
+        items: voucherItems,
+        // Không có CTA
+      };
+    } catch (error) {
+      this.logger.error('Error handling voucher request:', error);
+      return {
+        type: 'text',
+        text: 'Xin lỗi, có lỗi xảy ra khi tải thông tin voucher. Vui lòng thử lại sau!',
+      };
+    }
+  }
+
+  private handleCancellationPolicyRequest() {
+    return {
+      type: 'text',
+      text: `📋 **Chính sách hủy phòng:**
+
+🛎 Nhận phòng: ngày check-in theo đặt phòng.
+
+✅ Hủy trước 14:00 ngày hôm trước khi nhận phòng: Hoàn tiền đầy đủ.
+
+❌ Hủy sau thời điểm trên hoặc không đến nhận phòng: Tính phí đêm đầu tiên.
+
+📞 Liên hệ: 0909.123.456 để được hỗ trợ thêm!`,
+    };
+  }
+
+  private handlePaymentMethodsRequest() {
+    return {
+      type: 'text',
+      text: `💳 Hình thức thanh toán:
+
+Thanh toán online qua VNPAY (an toàn, nhanh chóng).
+
+Thanh toán trực tiếp khi nhận phòng.
+
+✅ Tất cả đều an toàn và được bảo mật!
+📞 Liên hệ 0909.123.456 để được hướng dẫn chi tiết!`,
+    };
+  }
+
+  private handleBookingProcessRequest() {
+    return {
+      type: 'text',
+      text: `✨ Quy trình đặt phòng tại Vinaside ✨
+
+1. Tìm kiếm
+Truy cập website www.vinaside.com hoặc gọi hotline 0909.123.456 để tìm homestay phù hợp theo địa điểm, thời gian và số lượng khách.
+
+2. Chọn phòng
+Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọn phòng ưng ý.
+
+3. Đặt phòng
+Điền thông tin đặt phòng và gửi yêu cầu.
+
+4. Xác nhận
+Đội ngũ Vinaside sẽ liên hệ với bạn để xác nhận thông tin và hoàn tất thủ tục nhanh chóng.
+
+👉 Bạn muốn tìm homestay ở khu vực nào ạ?`,
+    };
   }
 }
