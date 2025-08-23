@@ -30,14 +30,21 @@ export class Reaction {
 
 @Schema({ timestamps: true })
 export class Message extends Document {
+  @Prop({ type: Types.ObjectId, ref: 'Conversation', required: true })
+  conversation_id: Types.ObjectId;
+
+  // Denormalize để tiện filter
+  @Prop({ type: Types.ObjectId, ref: 'Property' })
+  property_id?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  guest_id?: Types.ObjectId;
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   sender_id: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  receiver_id: Types.ObjectId;
-
-  @Prop({ type: Types.ObjectId, ref: 'Property', required: false })
-  property_id?: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  receiver_id?: Types.ObjectId;
 
   @Prop({ required: true })
   content: string;
@@ -63,8 +70,8 @@ export class Message extends Document {
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
 
-// Thêm indexes cho property_id
-MessageSchema.index({ property_id: 1 });
-MessageSchema.index({ property_id: 1, sender_id: 1 });
-MessageSchema.index({ property_id: 1, receiver_id: 1 });
+MessageSchema.index({ conversation_id: 1, sent_at: 1 });
+MessageSchema.index({ sender_id: 1, sent_at: -1 });
+MessageSchema.index({ property_id: 1, guest_id: 1, sent_at: -1 });
+MessageSchema.index({ conversation_id: 1, sent_at: -1 });
 MessageSchema.index({ property_id: 1, sent_at: -1 });

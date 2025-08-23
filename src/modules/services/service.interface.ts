@@ -7,6 +7,7 @@ export interface ServiceInterface extends Document {
   readonly unit: string;
   readonly default_price: number;
   readonly is_active: boolean;
+  readonly allow_quantity: boolean;
   readonly isDeleted: boolean;
   readonly created_at: Date;
   readonly updated_at: Date;
