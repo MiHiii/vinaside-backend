@@ -1,5 +1,3 @@
-import { Slots } from '../helpers/slots';
-
 export interface ChatbotMessageData {
   message: string;
   userId: string;

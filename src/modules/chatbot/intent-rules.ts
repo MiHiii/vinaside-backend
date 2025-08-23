@@ -73,7 +73,7 @@ export function detectIntent(
     ask_price: /(giá|bao nhiêu|cost|price).*(phòng|room)/i,
     // Date-specific availability: capture dd/mm or dd-mm (with optional year)
     check_availability_on_date:
-      /(?:đặt|book|reserve|ở|tôi muốn|muốn|^)?.*(ngày|date|vào ngày|tháng)\s*(\d{1,2}(?:[\/\-.]\d{1,2}|\s*(?:tháng|thang)\s*\d{1,2})(?:[\/\-.]\d{2,4})?)/i,
+      /(?:đặt|book|reserve|ở|tôi muốn|muốn|^)?.*(ngày|date|vào ngày|tháng)\s*(\d{1,2}(?:[/\-.]\d{1,2}|\s*(?:tháng|thang)\s*\d{1,2})(?:[/\-.]\d{2,4})?)/i,
     // Mở rộng từ khóa để nhận diện ý định đặt phòng
     check_availability: /(trống|còn phòng|available|book|đặt phòng|dat phong)/i,
     check_availability_weekend: /(cuối tuần|weekend)/i,

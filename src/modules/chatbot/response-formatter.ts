@@ -95,7 +95,17 @@ export class ResponseFormatter {
   /**
    * Format voucher information response
    */
-  static formatVoucherResponse(vouchers: any[]): TextBotMessage {
+  static formatVoucherResponse(
+    vouchers: Array<{
+      code: string;
+      discount_percentage?: number;
+      discount_amount?: number;
+      min_order_amount?: number;
+      expiry_date?: string;
+      usage_limit?: number;
+      description?: string;
+    }>,
+  ): TextBotMessage {
     if (!vouchers || vouchers.length === 0) {
       return this.formatTextResponse(
         `Hiện tại chưa có voucher nào khả dụng.
@@ -152,7 +162,14 @@ Bạn muốn tìm phòng để sử dụng voucher không?`;
   /**
    * Format service information response
    */
-  static formatServiceResponse(services: any[]): TextBotMessage {
+  static formatServiceResponse(
+    services: Array<{
+      name: string;
+      description?: string;
+      price?: number;
+      is_available?: boolean;
+    }>,
+  ): TextBotMessage {
     if (!services || services.length === 0) {
       return this.formatTextResponse(
         `Dịch vụ hiện tại:
@@ -338,9 +355,6 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
     const hasMultipleListings =
       (text.match(/\*\*.*Phòng.*\*\*/g) || []).length >= 1;
     const hasPricePatterns = text.match(/VNĐ\/đêm|Giá:|💰|VND\/đêm|VNĐ\/đêm/gi);
-    const hasRoomDetails = text.match(
-      /Số giường:|Số phòng tắm:|Số khách tối đa:/gi,
-    );
 
     if (!hasMultipleListings || !hasPricePatterns) {
       return this.formatTextResponse(text);
@@ -444,7 +458,7 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
 
     // Enhanced city extraction - capture multi-word city names
     const cityMatch = text.match(
-      /(?:ở|tại|tìm|phòng)\s+([A-Za-zÀ-ỹ\s]{2,}?)(?=(?:\s+(?:có|sau|đang|hiện|cho|với|ngày|từ|đến)|[\.,:\n]|$))/i,
+      /(?:ở|tại|tìm|phòng)\s+([A-Za-zÀ-ỹ\s]{2,}?)(?=(?:\s+(?:có|sau|đang|hiện|cho|với|ngày|từ|đến)|[.,:\n]|$))/iu,
     );
 
     // Extract nights information
@@ -576,7 +590,7 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
             price_per_night: match.price_per_night,
             description: '',
             status: 'active',
-            propertyId: match.propertyId as any,
+            propertyId: match.propertyId as Listing['propertyId'],
             max_guests: match.max_guests,
             beds: match.beds,
             bathrooms: match.bathrooms,
@@ -584,8 +598,8 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
             pet_friendly: match.pet_friendly,
             family_friendly: match.family_friendly,
             allow_infants: match.allow_infants,
-            cancellation_policy: match.cancellation_policy,
-          } as any,
+            cancellation_policy: match.cancellation_policy || '',
+          },
           nights,
         ),
         description: this.generateRoomDescription(
@@ -595,7 +609,7 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
             price_per_night: match.price_per_night,
             description: '',
             status: 'active',
-            propertyId: match.propertyId as any,
+            propertyId: match.propertyId as Listing['propertyId'],
             max_guests: match.max_guests,
             beds: match.beds,
             bathrooms: match.bathrooms,
@@ -603,8 +617,8 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
             pet_friendly: match.pet_friendly,
             family_friendly: match.family_friendly,
             allow_infants: match.allow_infants,
-            cancellation_policy: match.cancellation_policy,
-          } as any,
+            cancellation_policy: match.cancellation_policy || '',
+          },
           nights,
         ),
       };
@@ -849,78 +863,78 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
       text
         // Buildings and places
         .replace(
-          /[🏡🏠🏘️🏚️🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🕍⛩️🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉⛼]/g,
+          /[🏡🏠🏘️🏚️🏢🏣🏤🏥🏦🏨🏩🏪🏫🏬🏭🏯🏰💒🗼🗽⛪🕌🕍⛩️🕋⛲⛺🌁🌃🌄🌅🌆🌇🌉⛼]/gu,
           '',
         )
         // Money and payment
-        .replace(/[💰💲💵💴💶💷💸💳💱💹]/g, '')
+        .replace(/[💰💲💵💴💶💷💸💳💱💹]/gu, '')
         // Hand gestures
-        .replace(/[👉👈👆👇👍👎👌👊✊👋✋👐👏🙌🙏]/g, '')
+        .replace(/[👉👈👆👇👍👎👌👊✊👋✋👐👏🙌🙏]/gu, '')
         // Electronics and devices
         .replace(
-          /[📞📱📲☎️📟📠🔋🔌💻💽💾💿📀🎥🎬📺📷📹🎥🎬📽️📻📠📟📠🔋🔌]/g,
+          /[📞📱📲☎️📟📠🔋🔌💻💽💾💿📀🎥🎬📺📷📹🎥🎬📽️📻📠📟📠🔋🔌]/gu,
           '',
         )
         // Stars and sparkles
-        .replace(/[⭐🌟✨⚡💫]/g, '')
+        .replace(/[⭐🌟✨⚡💫]/gu, '')
         // Entertainment
-        .replace(/[🎫🎟️🎭🎨🎪🎤🎧🎼🎹🎷🎺🎸🎻🎬🎮🎯🎱🎲🎰🧩]/g, '')
+        .replace(/[🎫🎟️🎭🎨🎪🎤🎧🎼🎹🎷🎺🎸🎻🎬🎮🎯🎱🎲🎰🧩]/gu, '')
         // Tools and objects
-        .replace(/[📍📌📎🧷📏📐✂️🔒🔑🔨⛏️🛠️🔧🔩⚙️🧰]/g, '')
+        .replace(/[📍📌📎🧷📏📐✂️🔒🔑🔨⛏️🛠️🔧🔩⚙️🧰]/gu, '')
         // Weather and nature
         .replace(
-          /[🌞🌛🌜🌝🌚🌕🌖🌗🌘🌑🌒🌓🌔🌙⭐🌟💫⚡🔥💧❄️🌈☀️⛅⛈️🌤️⛱️]/g,
+          /[🌞🌛🌜🌝🌚🌕🌖🌗🌘🌑🌒🌓🌔🌙⭐🌟💫⚡🔥💧❄️🌈☀️⛅⛈️🌤️⛱️]/gu,
           '',
         )
         // Transportation
         .replace(
-          /[🚗🚕🚙🚌🚎🏎️🚓🚑🚒🚐🚚🚛🚜🏍️🚲🛵🚁🛸✈️🛩️🚀🛰️🚢⛵🚤🛥️⚓]/g,
+          /[🚗🚕🚙🚌🚎🏎️🚓🚑🚒🚐🚚🚛🚜🏍️🚲🛵🚁🛸✈️🛩️🚀🛰️🚢⛵🚤🛥️⚓]/gu,
           '',
         )
         // Food and drinks
         .replace(
-          /[🍕🍔🍟🌭🥪🌮🌯🥙🥗🍝🍜🍲🍛🍣🍱🥟🍤🍙🍘🍥🥠🥡🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯]/g,
+          /[🍕🍔🍟🌭🥪🌮🌯🥙🥗🍝🍜🍲🍛🍣🍱🥟🍤🍙🍘🍥🥠🥡🍦🍧🍨🍩🍪🎂🍰🧁🥧🍫🍬🍭🍮🍯]/gu,
           '',
         )
         // Activities and sports
         .replace(
-          /[⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸🥅🏒🏑🥍🏏⛳🏹🎣🥊🥋🎽⛷️🏂🏄‍♂️🏄‍♀️🏊‍♂️🏊‍♀️🚴‍♂️🚴‍♀️🏇🧗‍♂️🧗‍♀️]/g,
+          /[⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸🥅🏒🏑🥍🏏⛳🏹🎣🥊🥋🎽⛷️🏂🏄‍♂️🏄‍♀️🏊‍♂️🏊‍♀️🚴‍♂️🚴‍♀️🏇🧗‍♂️🧗‍♀️]/gu,
           '',
         )
         // People and faces
         .replace(
-          /[😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤗🤔🤭🤫🤥😶😐😑😬🙄😯😦😧😮😲🥱😴🤤😪😵🤐🥴🤢🤮🤧😷🤒🤕🤑🤠😈👿👹👺🤡💩👻💀☠️👽👾🤖🎃😺😸😹😻😼😽🙀😿😾]/g,
+          /[😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓🤗🤔🤭🤫🤥😶😐😑😬🙄😯😦😧😮😲🥱😴🤤😪😵🤐🥴🤢🤮🤧😷🤒🤕🤑🤠😈👿👹👺🤡💩👻💀☠️👽👾🤖🎃😺😸😹😻😼😽🙀😿😾]/gu,
           '',
         )
         // Hearts and symbols
         .replace(
-          /[❤️🧡💛💚💙💜🖤🤍🤎💔❣️💕💞💓💗💖💘💝💟☮️✝️☪️🕉️☸️✡️🔯🕎☯️☦️🛐⛎♈♉♊♋♌♍♎♏♐♑♒♓🆔⚛️🉑☢️☣️📴📳🈶🈚🈸🈺🈷️✴️🆚💮🉐㊙️㊗️🈴🈵🈹🈲🅰️🅱️🆎🆑🅾️🆘❌⭕🛑⛔📛🚫💯💢♨️🚷🚯🚳🚱🔞📵🚭❗❕❓❔‼️⁉️🔅🔆〽️⚠️🚸🔱⚜️🔰♻️✅🈯💹❇️✳️❎🌐💠Ⓜ️🌀💤🏧🚾♿🅿️🈳🈂️🛂🛃🛄🛅🚹🚺🚼⚧️🚻🚮🎦📶🈁🔣ℹ️🔤🔡🔠🆖🆗🆙🆒🆕🆓0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟]/g,
+          /[❤️🧡💛💚💙💜🖤🤍🤎💔❣️💕💞💓💗💖💘💝💟☮️✝️☪️🕉️☸️✡️🔯🕎☯️☦️🛐⛎♈♉♊♋♌♍♎♏♐♑♒♓🆔⚛️🉑☢️☣️📴📳🈶🈚🈸🈺🈷️✴️🆚💮🉐㊙️㊗️🈴🈵🈹🈲🅰️🅱️🆎🆑🅾️🆘❌⭕🛑⛔📛🚫💯💢♨️🚷🚯🚳🚱🔞📵🚭❗❕❓❔‼️⁉️🔅🔆〽️⚠️🚸🔱⚜️🔰♻️✅🈯💹❇️✳️❎🌐💠Ⓜ️🌀💤🏧🚾♿🅿️🈳🈂️🛂🛃🛄🛅🚹🚺🚼⚧️🚻🚮🎦📶🈁🔣ℹ️🔤🔡🔠🆖🆗🆙🆒🆕🆓0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟]/gu,
           '',
         )
         // Arrows and directions
         .replace(
-          /[⬆️↗️➡️↘️⬇️↙️⬅️↖️↕️↔️↩️↪️⤴️⤵️🔀🔁🔂🔄🔃🎵🎶➕➖➗✖️♾️💲💱™️©️®️👁️‍🗨️🔚🔙🔛🔝🔜]/g,
+          /[⬆️↗️➡️↘️⬇️↙️⬅️↖️↕️↔️↩️↪️⤴️⤵️🔀🔁🔂🔄🔃🎵🎶➕➖➗✖️♾️💲💱™️©️®️👁️‍🗨️🔚🔙🔛🔝🔜]/gu,
           '',
         )
         // Time and calendar
         .replace(
-          /[🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛🕧🕐🕜🕝🕞🕟🕠🕡🕢🕣🕤🕥🕦🕧⏰⏱️⏲️⏳⌛⌚📅📆🗓️]/g,
+          /[🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛🕧🕐🕜🕝🕞🕟🕠🕡🕢🕣🕤🕥🕦🕧⏰⏱️⏲️⏳⌛⌚📅📆🗓️]/gu,
           '',
         )
         // Office and documents
         .replace(
-          /[📋📌📍📎🖇️📏📐✂️🗃️🗄️🗑️🔒🔓🔏🔐🔑🗝️🔨🪓⛏️⚒️🛠️🗡️⚔️💣🏹🛡️🔧🔩⚙️🗜️⚖️🦯🔗⛓️🧰🧲🪜]/g,
+          /[📋📌📍📎🖇️📏📐✂️🗃️🗄️🗑️🔒🔓🔏🔐🔑🗝️🔨🪓⛏️⚒️🛠️🗡️⚔️💣🏹🛡️🔧🔩⚙️🗜️⚖️🦯🔗⛓️🧰🧲🪜]/gu,
           '',
         )
         // Medical and science
         .replace(
-          /[⚗️🧪🧫🧬🔬🔭📡💊💉🩸🧴🧼🪒🧽🧯🛎️🧿📿🔮🪅🎊🎉🎈🎁🎀🪆🪅🧧✉️📩📨📧💌📥📤📦🏷️🪧📪📫📬📭📮🗳️]/g,
+          /[⚗️🧪🧫🧬🔬🔭📡💊💉🩸🧴🧼🪒🧽🧯🛎️🧿📿🔮🪅🎊🎉🎈🎁🎀🪆🪅🧧✉️📩📨📧💌📥📤📦🏷️🪧📪📫📬📭📮🗳️]/gu,
           '',
         )
         // Flags and countries
-        .replace(/[🏁🚩🎌🏴🏳️🏳️‍🌈🏳️‍⚧️🏴‍☠️]/g, '')
+        .replace(/[🏁🚩🎌🏴🏳️🏳️‍🌈🏳️‍⚧️🏴‍☠️]/gu, '')
         // Convert circled numbers to regular numbers
-        .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, (match) => {
+        .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/gu, (match) => {
           const numberMap: Record<string, string> = {
             '①': '1. ',
             '②': '2. ',
@@ -936,7 +950,7 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
           return numberMap[match] || match;
         })
         // Replace bullet points with dashes
-        .replace(/[•●]/g, '- ')
+        .replace(/[•●]/gu, '- ')
         // Clean up multiple spaces and newlines
         .replace(/\s+/g, ' ')
         .replace(/\n\s*\n/g, '\n')

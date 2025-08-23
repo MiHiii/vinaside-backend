@@ -28,25 +28,21 @@ import {
   Slots,
 } from './helpers/slots';
 import {
-  ChatbotSession,
-  ChatbotMessageData,
-  ChatbotResponse,
-  ExtractedSlots,
-  BookingInfo,
-  RoomSearchCriteria,
-  IntentMatch,
-  ChatbotConfig,
-  MessagePattern,
-  RoomDetailPattern,
-} from './interfaces/chatbot-message.interface';
-import {
   BotMessage,
   BotMessageType,
-  CTAActionType,
+  CTAButton,
+  ListingItem,
 } from './dto/bot-message.dto';
 import { ResponseFormatter } from './response-formatter';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+
+interface ChatbotSession {
+  userId: string;
+  slots: Slots;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 interface InternalData {
   data: {
@@ -164,11 +160,11 @@ export class ChatbotGateway {
   private sessionKey(userId: string) {
     return `chatbot:session:${userId}`;
   }
-  private async loadSession(userId: string): Promise<any | null> {
+  private async loadSession(userId: string): Promise<ChatbotSession | null> {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Loading session with key: ${key}`);
     const raw = await this.redis.get(key);
-    const session = raw ? JSON.parse(raw) : null;
+    const session: ChatbotSession | null = raw ? JSON.parse(raw) : null;
     this.logger.log(
       `[DEBUG] Loading session for ${userId}: ${JSON.stringify(session)}`,
     );
@@ -179,7 +175,10 @@ export class ChatbotGateway {
     }
     return session;
   }
-  private async saveSession(userId: string, session: any): Promise<void> {
+  private async saveSession(
+    userId: string,
+    session: ChatbotSession,
+  ): Promise<void> {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Saving session with key: ${key}`);
     this.logger.log(
@@ -299,7 +298,7 @@ export class ChatbotGateway {
       // === CHATBOT FLOW: load → extract → merge → save → if missing ask once → else search/hold ===
 
       // 1) LOAD: Load session state
-      let session = (await this.loadSession(data.userId)) || {
+      let session: ChatbotSession = (await this.loadSession(data.userId)) || {
         userId: data.userId,
         slots: {},
         createdAt: new Date(),
@@ -443,14 +442,14 @@ export class ChatbotGateway {
         this.logger.log(`[DEBUG] Room detail request for: ${roomName}`);
 
         // Fetch internal data to find the specific room
-        const response = await axios.get(
+        const response = await axios.get<InternalData>(
           'http://localhost:8080/api/v1/internal-data',
         );
-        const { listings, vouchers, reviews } = response.data.data;
+        const { listings } = response.data.data;
 
         // Find the specific room
         const targetRoom = listings.find(
-          (room: any) =>
+          (room: Listing) =>
             room.title.toLowerCase().includes(roomName.toLowerCase()) ||
             roomName.toLowerCase().includes(room.title.toLowerCase()),
         );
@@ -652,7 +651,6 @@ export class ChatbotGateway {
     intent: string,
     message: string,
     data: InternalData['data'],
-    userId?: string,
   ): Promise<string> {
     const { listings, bookings, vouchers, services, reviews } = data;
     const now = new Date('2025-08-01T12:05:00+07:00');
@@ -1151,12 +1149,15 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
     }
   }
 
-  private async validateAndFormatResponse(
-    botMessage: BotMessage,
-  ): Promise<BotMessage> {
+  private validateAndFormatResponse(botMessage: BotMessage): BotMessage {
     // Ensure the response has the correct structure for Frontend
     if (botMessage.type === BotMessageType.LISTINGS) {
-      const listingsMessage = botMessage as any;
+      const listingsMessage = botMessage as BotMessage & {
+        header?: string;
+        meta?: { total: number };
+        items?: unknown[];
+        cta?: CTAButton;
+      };
 
       // Validate required fields for listings response
       if (!Array.isArray(listingsMessage.items)) {
@@ -1182,10 +1183,11 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
         'Phòng phù hợp:',
       ];
       listingsMessage.items = (listingsMessage.items || []).filter(
-        (it: any) => {
+        (it: unknown) => {
           if (!it) return false;
-          if (it.id === 'temp-t3ko58hvb') return false; // explicit removal per user request
-          const title = (it.title || '').toString();
+          const item = it as { id?: string; title?: unknown };
+          if (item.id === 'temp-t3ko58hvb') return false; // explicit removal per user request
+          const title = String(item.title || '');
           if (!title.trim()) return false;
           return !invalidHeadingTitles.some((h) =>
             title.toLowerCase().includes(h.toLowerCase()),
@@ -1194,28 +1196,44 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
       );
 
       // Ensure each item has required fields; coerce price when missing
-      const validatedItems = listingsMessage.items
-        .map((item: any, index: number) => {
-          if (!item?.id || !item?.title) {
+      const validatedItems: ListingItem[] = listingsMessage.items
+        .map((item: unknown, index: number) => {
+          const listingItem = item as {
+            id?: string;
+            title?: string;
+            pricePerNight?: unknown;
+            address?: string;
+            imageUrl?: string;
+            detailUrl?: string;
+            tags?: unknown;
+            totalPrice?: unknown;
+          };
+          if (!listingItem?.id || !listingItem?.title) {
             this.logger.warn(`Invalid item at index ${index}:`, item);
             return null;
           }
           const coercedPrice =
-            typeof item.pricePerNight === 'number'
-              ? item.pricePerNight
-              : Number(item.pricePerNight) || 0;
+            typeof listingItem.pricePerNight === 'number'
+              ? listingItem.pricePerNight
+              : Number(listingItem.pricePerNight) || 0;
           return {
-            id: item.id,
-            title: item.title,
+            id: listingItem.id,
+            title: listingItem.title,
             pricePerNight: coercedPrice,
-            address: item.address || '',
-            imageUrl: item.imageUrl || '',
-            detailUrl: item.detailUrl || `/room-detail/${item.id}`,
-            tags: Array.isArray(item.tags) ? item.tags : [],
-            totalPrice: item.totalPrice,
-          };
+            address: listingItem.address || '',
+            imageUrl: listingItem.imageUrl || '',
+            detailUrl:
+              listingItem.detailUrl || `/room-detail/${listingItem.id}`,
+            tags: Array.isArray(listingItem.tags)
+              ? (listingItem.tags as string[])
+              : [],
+            totalPrice:
+              typeof listingItem.totalPrice === 'number'
+                ? listingItem.totalPrice
+                : coercedPrice,
+          } as ListingItem;
         })
-        .filter(Boolean);
+        .filter((item): item is ListingItem => item !== null);
 
       // ALWAYS return listings type, even if no valid items
       // This ensures FE always receives the expected type
@@ -1244,7 +1262,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
 
     // For text responses, ensure they have the correct structure
     if (botMessage.type === BotMessageType.TEXT) {
-      const textMessage = botMessage as any;
+      const textMessage = botMessage as BotMessage & { text?: unknown };
       if (!textMessage.text || typeof textMessage.text !== 'string') {
         this.logger.warn('Text response missing text field');
         return {
@@ -1330,7 +1348,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
 
       // Extract date (supports: 24/8, 24-8, 24.8, 24 tháng 8)
       const dateMatch = message.match(
-        /(\d{1,2})\s*(?:[\/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})/i,
+        /(\d{1,2})\s*(?:[/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})/i,
       );
       this.logger.log(`Date match:`, dateMatch);
 
@@ -2050,10 +2068,12 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
    */
   private testResponseFormat(botMessage: BotMessage): boolean {
     try {
-      const messageType = (botMessage as any).type;
+      const messageType = botMessage.type;
 
       if (messageType === BotMessageType.LISTINGS) {
-        const listingsMessage = botMessage as any;
+        const listingsMessage = botMessage as BotMessage & {
+          items?: { id?: unknown; title?: unknown; pricePerNight?: unknown }[];
+        };
 
         // Check required fields
         if (!Array.isArray(listingsMessage.items)) {
@@ -2070,9 +2090,9 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
         for (let i = 0; i < listingsMessage.items.length; i++) {
           const item = listingsMessage.items[i];
           if (
-            !item.id ||
-            !item.title ||
-            typeof item.pricePerNight !== 'number'
+            !item?.id ||
+            !item?.title ||
+            typeof item?.pricePerNight !== 'number'
           ) {
             this.logger.error(`Item ${i} missing required fields:`, item);
             return false;
@@ -2086,7 +2106,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
       }
 
       if (messageType === BotMessageType.TEXT) {
-        const textMessage = botMessage as any;
+        const textMessage = botMessage as BotMessage & { text?: unknown };
         if (!textMessage.text || typeof textMessage.text !== 'string') {
           this.logger.error('Text response missing text field');
           return false;
@@ -2117,7 +2137,7 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
     // Parse date from message (supports: 25/8, 25-8, 25.8, 25 tháng 8, 25 thang 8, optional year)
     const raw = message.toLowerCase();
     const m1 = raw.match(
-      /(\d{1,2})\s*(?:[\/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})(?:[\/\-.](\d{2,4}))?/i,
+      /(\d{1,2})\s*(?:[/\-.]|\s*(?:tháng|thang)\s*)(\d{1,2})(?:[/\-.](\d{2,4}))?/i,
     );
     if (!m1) {
       return ResponseFormatter.formatTextResponse(
@@ -2218,15 +2238,15 @@ Xem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọ
 
     // Save context (default guests 2) via Redis
     await this.saveSession(userId || 'unknown', {
-      intent: 'check_availability',
+      userId: userId || 'unknown',
       slots: {
         checkIn: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
         checkOut: `${year}-${month.toString().padStart(2, '0')}-${(day + 1).toString().padStart(2, '0')}`,
         guests: 2,
         city: requestedCity,
-        rooms: roomsOnDate,
       },
-      asked: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     // Tạo response có cấu trúc
@@ -2362,15 +2382,15 @@ Gợi ý:
 
       // Save context for later hold (Redis)
       await this.saveSession(userId || 'unknown', {
-        intent: 'check_availability',
+        userId: userId || 'unknown',
         slots: {
           checkIn: ciStr,
           checkOut: coStr,
           guests,
           city: requestedCity,
-          rooms: roomsRange,
         },
-        asked: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       // Tạo response có cấu trúc
@@ -2400,12 +2420,12 @@ Gợi ý:
     if (availableInCity.length > 0) {
       // Lưu context vào session
       await this.saveSession(userId || 'unknown', {
-        intent: 'check_availability',
+        userId: userId || 'unknown',
         slots: {
           city: requestedCity,
-          rooms: availableInCity,
         },
-        asked: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       // Tạo response có cấu trúc
@@ -2423,12 +2443,12 @@ Gợi ý:
     if (allInCity.length > 0) {
       // Lưu context vào session
       await this.saveSession(userId || 'unknown', {
-        intent: 'check_availability',
+        userId: userId || 'unknown',
         slots: {
           city: requestedCity,
-          rooms: allInCity,
         },
-        asked: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       // Tạo response có cấu trúc
@@ -2561,7 +2581,7 @@ Gợi ý:
   private async handleServiceRequest() {
     try {
       // Fetch internal data to get services
-      const response = await axios.get(
+      const response = await axios.get<InternalData>(
         'http://localhost:8080/api/v1/internal-data',
       );
       const { services } = response.data.data;
@@ -2574,7 +2594,7 @@ Gợi ý:
       }
 
       // Convert services to listing format
-      const serviceItems = services.map((service: any) => ({
+      const serviceItems = services.map((service: Service) => ({
         id: service._id,
         title: service.name,
         pricePerNight: service.default_price,
@@ -2605,7 +2625,7 @@ Gợi ý:
   private async handleVoucherRequest() {
     try {
       // Fetch internal data to get vouchers
-      const response = await axios.get(
+      const response = await axios.get<InternalData>(
         'http://localhost:8080/api/v1/internal-data',
       );
       const { vouchers } = response.data.data;
@@ -2619,7 +2639,7 @@ Gợi ý:
 
       // Filter active vouchers only
       const activeVouchers = vouchers.filter(
-        (voucher: any) => voucher.is_active,
+        (voucher: Voucher) => voucher.is_active,
       );
 
       if (activeVouchers.length === 0) {
@@ -2630,7 +2650,7 @@ Gợi ý:
       }
 
       // Convert vouchers to listing format
-      const voucherItems = activeVouchers.map((voucher: any) => ({
+      const voucherItems = activeVouchers.map((voucher: Voucher) => ({
         id: voucher._id,
         title: `Voucher ${voucher.code}`,
         pricePerNight: voucher.min_order_value,

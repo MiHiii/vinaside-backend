@@ -1,21 +1,7 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Delete,
-  Query,
-  Request,
-  HttpCode,
-  HttpStatus,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Post, Body, Request, UseGuards } from '@nestjs/common';
 import { AIChatbotService } from './ai-chatbot.service';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RequirePermission } from '../../decorators/require-permission.decorator';
-import { Roles } from '../../decorators/roles.decorator';
 import { ResponseMessage } from '../../decorators/response-message.decorator';
 import { JwtPayload } from '../../interfaces/jwt-payload.interface';
 import {
@@ -33,9 +19,7 @@ import {
   extractSlotsFromText,
   mergeSlots,
   missingForSearch,
-  isCompleteForSearch,
   buildAsk,
-  formatDateForDisplay,
   isSessionExpired,
   isGeneralInfoRequest,
   isServiceRequest,
@@ -50,6 +34,72 @@ import axios from 'axios';
 
 interface RequestWithUser extends Request {
   user: JwtPayload;
+}
+
+interface ChatbotSession {
+  userId: string;
+  slots: Slots;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface InternalDataResponse {
+  data: {
+    listings: Listing[];
+    bookings: Booking[];
+    vouchers: Voucher[];
+    services: Service[];
+    reviews: Review[];
+  };
+}
+
+interface Listing {
+  _id: string;
+  title: string;
+  price_per_night: number;
+  description: string;
+  status: string;
+  max_guests?: number;
+  propertyId?: {
+    _id: string;
+    name: string;
+    location?: {
+      address?: string;
+      city?: string;
+      district?: string;
+    };
+  };
+}
+
+interface Booking {
+  _id: string;
+  listingId: string;
+  checkInDate: string;
+  check_out_date: string;
+  status: string;
+}
+
+interface Voucher {
+  _id: string;
+  code: string;
+  discount_percent: number;
+  expiration_date: string;
+  is_active: boolean;
+  min_order_value: number;
+}
+
+interface Service {
+  _id: string;
+  name: string;
+  default_price: number;
+  description?: string;
+}
+
+interface Review {
+  _id: string;
+  room_id: string;
+  rating: number;
+  comment: string;
 }
 
 @ApiTags('Chatbot')
@@ -69,7 +119,7 @@ export class ChatbotController {
     return `chatbot:session:${userId}`;
   }
 
-  private async loadSession(userId: string): Promise<any | null> {
+  private async loadSession(userId: string): Promise<ChatbotSession | null> {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Loading session with key: ${key}`);
     const raw = await this.redis.get(key);
@@ -80,7 +130,10 @@ export class ChatbotController {
     return session;
   }
 
-  private async saveSession(userId: string, session: any): Promise<void> {
+  private async saveSession(
+    userId: string,
+    session: ChatbotSession,
+  ): Promise<void> {
     const key = this.sessionKey(userId);
     this.logger.log(`[DEBUG] Saving session with key: ${key}`);
     this.logger.log(
@@ -89,14 +142,14 @@ export class ChatbotController {
     await this.redis.set(key, JSON.stringify(session), 'EX', 60 * 60 * 6);
   }
 
-  private async findAvailableRooms(slots: Slots): Promise<any[]> {
+  private async findAvailableRooms(slots: Slots): Promise<Listing[]> {
     try {
       this.logger.log(
         `Finding available rooms with slots: ${JSON.stringify(slots)}`,
       );
 
       // Fetch internal data
-      const response = await axios.get(
+      const response = await axios.get<InternalDataResponse>(
         'http://localhost:8080/api/v1/internal-data',
       );
       const internalData = response.data;
@@ -109,7 +162,7 @@ export class ChatbotController {
       // Filter by city if specified
       let filteredListings = listings;
       if (slots.city) {
-        filteredListings = listings.filter((listing: any) => {
+        filteredListings = listings.filter((listing: Listing) => {
           const propertyCity = listing.propertyId?.location?.city;
           const propertyName = listing.propertyId?.name;
 
@@ -137,7 +190,7 @@ export class ChatbotController {
       }
 
       // Filter by availability
-      const availableRooms = filteredListings.filter((room: any) => {
+      const availableRooms = filteredListings.filter((room: Listing) => {
         // Check if room is active
         if (room.status !== 'active') {
           return false;
@@ -149,7 +202,7 @@ export class ChatbotController {
           const checkOut = new Date(slots.checkOut);
 
           const conflictingBookings = bookings.filter(
-            (booking: any) =>
+            (booking: Booking) =>
               booking.listingId === room._id &&
               ['confirmed', 'completed'].includes(booking.status) &&
               new Date(booking.checkInDate) < checkOut &&
@@ -180,7 +233,7 @@ export class ChatbotController {
   private async handleServiceRequest() {
     try {
       // Fetch internal data to get services
-      const response = await axios.get(
+      const response = await axios.get<InternalDataResponse>(
         'http://localhost:8080/api/v1/internal-data',
       );
       const { services } = response.data.data;
@@ -193,7 +246,7 @@ export class ChatbotController {
       }
 
       // Convert services to listing format
-      const serviceItems = services.map((service: any) => ({
+      const serviceItems = services.map((service: Service) => ({
         id: service._id,
         title: service.name,
         pricePerNight: service.default_price,
@@ -224,7 +277,7 @@ export class ChatbotController {
   private async handleVoucherRequest() {
     try {
       // Fetch internal data to get vouchers
-      const response = await axios.get(
+      const response = await axios.get<InternalDataResponse>(
         'http://localhost:8080/api/v1/internal-data',
       );
       const { vouchers } = response.data.data;
@@ -238,7 +291,7 @@ export class ChatbotController {
 
       // Filter active vouchers only
       const activeVouchers = vouchers.filter(
-        (voucher: any) => voucher.is_active,
+        (voucher: Voucher) => voucher.is_active,
       );
 
       if (activeVouchers.length === 0) {
@@ -249,7 +302,7 @@ export class ChatbotController {
       }
 
       // Convert vouchers to listing format
-      const voucherItems = activeVouchers.map((voucher: any) => ({
+      const voucherItems = activeVouchers.map((voucher: Voucher) => ({
         id: voucher._id,
         title: `Voucher ${voucher.code}`,
         pricePerNight: voucher.min_order_value,
@@ -316,7 +369,7 @@ export class ChatbotController {
       // === CHATBOT FLOW: load → extract → merge → save → if missing ask once → else search/hold ===
 
       // 1) LOAD: Load session state
-      let session = (await this.loadSession(userId)) || {
+      let session: ChatbotSession = (await this.loadSession(userId)) || {
         userId: userId,
         slots: {},
         createdAt: new Date(),
@@ -408,14 +461,14 @@ export class ChatbotController {
         this.logger.log(`[DEBUG] Room detail request for: ${roomName}`);
 
         // Fetch internal data to find the specific room
-        const response = await axios.get(
+        const response = await axios.get<InternalDataResponse>(
           'http://localhost:8080/api/v1/internal-data',
         );
-        const { listings, vouchers, reviews } = response.data.data;
+        const { listings } = response.data.data;
 
         // Find the specific room
         const targetRoom = listings.find(
-          (room: any) =>
+          (room: Listing) =>
             room.title.toLowerCase().includes(roomName.toLowerCase()) ||
             roomName.toLowerCase().includes(room.title.toLowerCase()),
         );

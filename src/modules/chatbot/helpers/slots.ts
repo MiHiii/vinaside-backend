@@ -111,11 +111,10 @@ export function extractSlotsFromText(
 
   // Pattern for date ranges: "25/8 đến 27/8" or "25/8-27/8"
   const rgRange =
-    /(\d{1,2})[\/\-.](\d{1,2})(?:\s*(?:đến|to|-)\s*)(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/i;
+    /(\d{1,2})[/\-.](\d{1,2})(?:\s*(?:đến|to|-)\s*)(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?/i;
 
   // Pattern for single dates: "27/8" or "ngày 27/8" - improved to catch more variations
-  const rgSingle =
-    /(?:ngày\s+)?(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/i;
+  const rgSingle = /(?:ngày\s+)?(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?/i;
 
   // Additional pattern for dates without separators or with different formats
   const rgSingleAlt =
@@ -288,7 +287,9 @@ export function isNewConversation(message: string): boolean {
 }
 
 // Check if session is too old (more than 30 minutes)
-export function isSessionExpired(session: any): boolean {
+export function isSessionExpired(session: {
+  updatedAt?: string | Date;
+}): boolean {
   if (!session || !session.updatedAt) return true;
 
   const lastUpdate = new Date(session.updatedAt);
@@ -363,7 +364,7 @@ export function mergeSlots(
 
   for (const k of Object.keys(newS) as (keyof Slots)[]) {
     const v = newS[k];
-    if (v !== undefined && v !== null && v !== '') merged[k] = v as any;
+    if (v !== undefined && v !== null && v !== '') (merged as any)[k] = v;
   }
 
   // Tự suy ra checkOut nếu có checkIn + nights mà chưa có checkOut
@@ -382,7 +383,6 @@ export function generateContextualQuestion(s: Slots, lacks: string[]): string {
   const hasCheckIn = !!s.checkIn;
   const hasGuests = !!s.guests;
   const hasNights = !!s.nights;
-  const hasCheckOut = !!s.checkOut;
 
   // If we have most information, ask for the specific missing piece
   if (lacks.length === 1) {
@@ -437,7 +437,7 @@ export function formatDateForDisplay(dateStr: string): string {
       return 'ngày không hợp lệ';
     }
     return `${date.getDate()}/${date.getMonth() + 1}`;
-  } catch (error) {
+  } catch {
     return 'ngày không hợp lệ';
   }
 }

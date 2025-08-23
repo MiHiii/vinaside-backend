@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ChatbotConfig } from '../../configs/chatbot.config';
-import { BotMessage, BotMessageType } from './dto/bot-message.dto';
+import { BotMessage } from './dto/bot-message.dto';
 import { ListingService } from '../listing/listing.service';
 import { ResponseFormatter } from './response-formatter';
 
@@ -25,9 +25,64 @@ interface AIResponse {
   content: string;
   function_call?: {
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   };
   slots?: SlotExtraction;
+}
+
+interface Listing {
+  _id: string;
+  title: string;
+  price_per_night: number;
+  description: string;
+  status: string;
+  max_guests?: number;
+  propertyId?: {
+    _id: string;
+    name: string;
+    location?: {
+      address?: string;
+      city?: string;
+      district?: string;
+    };
+  };
+}
+
+interface Voucher {
+  _id: string;
+  code: string;
+  discount_percent: number;
+  expiration_date: string;
+  is_active: boolean;
+  min_order_value: number;
+  discount_percentage?: number;
+  discount_amount?: number;
+}
+
+interface Service {
+  _id: string;
+  name: string;
+  default_price: number;
+  description?: string;
+  title?: string;
+}
+
+interface Amenity {
+  _id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  type?: string;
+  is_available?: boolean;
+  title?: string;
+}
+
+interface ApiResponse<T> {
+  data: T;
+  vouchers?: Voucher[];
+  services?: Service[];
+  amenities?: Amenity[];
+  listings?: Listing[];
 }
 
 @Injectable()
@@ -214,7 +269,7 @@ Vui lòng thử lại sau hoặc liên hệ ${this.config.contact.phone} để �
    * Execute function calls based on AI decision
    */
   private async executeFunctionCall(
-    functionCall: any,
+    functionCall: { name: string; arguments: Record<string, unknown> },
     slots: SlotExtraction,
   ): Promise<BotMessage> {
     const { name, arguments: args } = functionCall;
@@ -222,19 +277,22 @@ Vui lòng thử lại sau hoặc liên hệ ${this.config.contact.phone} để �
     switch (name) {
       case 'check_available_rooms_by_location':
         return await this.checkAvailableRoomsByLocation(
-          args.location || slots.slots.location,
+          (args.location as string) || slots.slots.location || '',
         );
 
       case 'check_available_rooms_complete_info':
         return await this.checkAvailableRoomsWithCompleteInfo(
-          args.checkInDate || slots.slots.checkInDate,
-          args.location || slots.slots.location,
-          args.nights || slots.slots.nights,
-          args.guests || slots.slots.guests,
+          (args.checkInDate as string) || slots.slots.checkInDate || '',
+          (args.location as string) || slots.slots.location || '',
+          (args.nights as number) || slots.slots.nights || 0,
+          (args.guests as number) || slots.slots.guests || 0,
         );
 
       case 'get_listing_details':
-        return await this.getListingDetails(args.listingId, args.roomName);
+        return await this.getListingDetails(
+          args.listingId as string | undefined,
+          args.roomName as string | undefined,
+        );
 
       case 'get_voucher_info':
         return await this.getVoucherInfo();
@@ -293,7 +351,7 @@ Sau khi có đủ thông tin, mình sẽ giúp bạn tìm phòng phù hợp và 
       }
 
       return ResponseFormatter.formatListingsResponse(
-        result.listings,
+        result.listings as Listing[],
         undefined,
         undefined,
         undefined,
@@ -365,7 +423,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn thêm và tìm 
       }
 
       return ResponseFormatter.formatListingsResponse(
-        result.listings,
+        result.listings as Listing[],
         checkInDate,
         checkOutDate,
         guests,
@@ -396,7 +454,7 @@ Vui lòng thử lại sau hoặc liên hệ ${this.config.contact.phone} để �
     try {
       this.logger.log(`Getting listing details for: ${listingId || roomName}`);
 
-      let queryDto: any = {
+      const queryDto: Record<string, unknown> = {
         page: 1,
         limit: 10,
       };
@@ -445,7 +503,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
             page: 1,
             limit: 500,
           });
-        } catch (error) {
+        } catch {
           // Fallback to smaller limit
           broad = await this.listingService.findAll({
             page: 1,
@@ -453,7 +511,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
           });
         }
 
-        const matched = (broad.listings || []).filter((l: any) => {
+        const matched = (broad.listings || []).filter((l: Listing) => {
           const title = normalize(l.title);
           const propertyName = normalize(l.propertyId?.name || '');
 
@@ -484,7 +542,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
         if (!matched.length) {
           // Try one more search with different approach
           const allListings = broad.listings || [];
-          const partialMatches = allListings.filter((l: any) => {
+          const partialMatches = allListings.filter((l: Listing) => {
             const title = (l.title || '').toLowerCase();
             const propertyName = (l.propertyId?.name || '').toLowerCase();
             const searchTerm = (roomName || '').toLowerCase();
@@ -500,7 +558,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết.`,
 
           if (partialMatches.length > 0) {
             return ResponseFormatter.formatListingsResponse(
-              partialMatches,
+              partialMatches as Listing[],
               undefined,
               undefined,
               undefined,
@@ -524,7 +582,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn và tìm phòng
 
         // Return listings response with "Đặt ngay" CTA for matched rooms
         return ResponseFormatter.formatListingsResponse(
-          matched,
+          matched as Listing[],
           undefined,
           undefined,
           undefined,
@@ -535,7 +593,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn và tìm phòng
 
       // Return listings response with "Đặt ngay" CTA
       return ResponseFormatter.formatListingsResponse(
-        result.listings,
+        result.listings as Listing[],
         undefined,
         undefined,
         undefined,
@@ -560,7 +618,7 @@ Vui lòng thử lại sau hoặc liên hệ ${this.config.contact.phone} để �
     try {
       this.logger.log('Fetching voucher data from internal API');
 
-      const response = await axios.get(
+      const response = await axios.get<ApiResponse<Voucher[]>>(
         `${this.config.internal.dataUrl}/vouchers`,
         {
           timeout: this.config.internal.timeout,
@@ -568,7 +626,9 @@ Vui lòng thử lại sau hoặc liên hệ ${this.config.contact.phone} để �
         },
       );
 
-      const vouchers = response.data?.vouchers || response.data || [];
+      const vouchers = (response.data?.vouchers ||
+        response.data ||
+        []) as Voucher[];
       this.logger.log(`Found ${vouchers.length} vouchers`);
 
       return ResponseFormatter.formatVoucherResponse(vouchers);
@@ -594,7 +654,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn về các chư�
     try {
       this.logger.log('Fetching service data from internal API');
 
-      const response = await axios.get(
+      const response = await axios.get<ApiResponse<Service[]>>(
         `${this.config.internal.dataUrl}/services`,
         {
           timeout: this.config.internal.timeout,
@@ -602,7 +662,9 @@ Liên hệ ${this.config.contact.phone} để được tư vấn về các chư�
         },
       );
 
-      const services = response.data?.services || response.data || [];
+      const services = (response.data?.services ||
+        response.data ||
+        []) as Service[];
       this.logger.log(`Found ${services.length} services`);
 
       return ResponseFormatter.formatServiceResponse(services);
@@ -634,7 +696,7 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết về
     try {
       this.logger.log('Fetching amenities data from internal API');
 
-      const response = await axios.get(
+      const response = await axios.get<ApiResponse<Amenity[]>>(
         `${this.config.internal.dataUrl}/amenities`,
         {
           timeout: this.config.internal.timeout,
@@ -642,7 +704,9 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết về
         },
       );
 
-      const amenities = response.data?.amenities || response.data || [];
+      const amenities = (response.data?.amenities ||
+        response.data ||
+        []) as Amenity[];
       this.logger.log(`Found ${amenities.length} amenities`);
 
       if (!amenities || amenities.length === 0) {
@@ -669,7 +733,7 @@ Các tiện nghi chính:
 
 `;
 
-      amenities.forEach((amenity: any, index: number) => {
+      amenities.forEach((amenity: Amenity, index: number) => {
         formattedText += `${index + 1}. ${amenity.name || amenity.title}
     Mô tả: ${amenity.description || 'Không có mô tả'}
     Loại: ${amenity.category || amenity.type || 'Tiện nghi chung'}
@@ -729,19 +793,21 @@ Liên hệ ${this.config.contact.phone} để được tư vấn chi tiết về
         }),
       ]);
 
-      const services =
+      const services = (
         servicesResponse.status === 'fulfilled'
           ? servicesResponse.value.data?.services ||
             servicesResponse.value.data ||
             []
-          : [];
+          : []
+      ) as Service[];
 
-      const vouchers =
+      const vouchers = (
         vouchersResponse.status === 'fulfilled'
           ? vouchersResponse.value.data?.vouchers ||
             vouchersResponse.value.data ||
             []
-          : [];
+          : []
+      ) as Voucher[];
 
       this.logger.log(
         `Found ${services.length} services and ${vouchers.length} vouchers`,
@@ -757,7 +823,7 @@ Vinaside cung cấp đầy đủ dịch vụ cho chuyến du lịch hoàn hảo:
       if (services.length > 0) {
         formattedText += `Dịch vụ chính:
 `;
-        services.slice(0, 3).forEach((service: any, index: number) => {
+        services.slice(0, 3).forEach((service: Service, index: number) => {
           formattedText += `${index + 1}. ${service.name || service.title} - ${service.description || 'Dịch vụ chất lượng'}
 
 `;
@@ -784,7 +850,7 @@ Vinaside cung cấp đầy đủ dịch vụ cho chuyến du lịch hoàn hảo:
 Hiện có ${vouchers.length} voucher đang áp dụng:
 
 `;
-        vouchers.slice(0, 2).forEach((voucher: any, index: number) => {
+        vouchers.slice(0, 2).forEach((voucher: Voucher, index: number) => {
           const discountText = voucher.discount_percentage
             ? `${voucher.discount_percentage}%`
             : voucher.discount_amount
@@ -837,7 +903,7 @@ Bạn muốn tìm phòng ở khu vực nào để được tư vấn chi tiết 
    */
   private formatListingsResponse(
     content: string,
-    slots: SlotExtraction,
+    _slots: SlotExtraction,
   ): BotMessage {
     try {
       const parsed = ResponseFormatter.parseTextResponseForListings(content);
@@ -1212,7 +1278,7 @@ ${context ? `DỮ LIỆU THỰC TẾ:\n${context}\n\n` : ''}CÂU HỎI: ${messag
       throw new Error('Gemini API key or URL is not set');
     }
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.1,
@@ -1224,7 +1290,9 @@ ${context ? `DỮ LIỆU THỰC TẾ:\n${context}\n\n` : ''}CÂU HỎI: ${messag
 
     // Add structured output configuration if enabled
     if (structuredOutput && this.config.ai.enableStructuredOutput) {
-      requestBody.generationConfig.responseMimeType = 'application/json';
+      (
+        requestBody.generationConfig as Record<string, unknown>
+      ).responseMimeType = 'application/json';
     }
 
     try {
