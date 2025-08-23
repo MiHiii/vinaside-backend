@@ -34,8 +34,10 @@ export class StaffCreateBookingDto {
   @IsNotEmpty()
   listingId: string;
 
-  @IsMongoId()
   @IsOptional()
+  @IsMongoId({
+    message: 'guestId phải là ObjectId hợp lệ hoặc không được truyền',
+  })
   guestId?: string; // Optional - staff có thể tạo booking cho guest
 
   @IsDateString()
