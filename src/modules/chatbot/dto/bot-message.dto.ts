@@ -12,6 +12,8 @@ import { Type } from 'class-transformer';
 export enum BotMessageType {
   TEXT = 'text',
   LISTINGS = 'listings',
+  AVAILABILITY = 'availability',
+  BOOKING = 'booking',
 }
 
 export enum CTAActionType {
@@ -35,6 +37,18 @@ export class MetaData {
   @IsOptional()
   @IsNumber()
   total?: number;
+
+  @IsOptional()
+  @IsNumber()
+  nights?: number;
+
+  @IsOptional()
+  @IsString()
+  checkIn?: string;
+
+  @IsOptional()
+  @IsString()
+  checkOut?: string;
 }
 
 export class ListingItem {
@@ -67,6 +81,10 @@ export class ListingItem {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 }
 
 export class CTAButton {
@@ -114,8 +132,50 @@ export class ListingsBotMessage {
   cta?: CTAButton;
 }
 
+// DTO for availability bot message
+export class AvailabilityBotMessage {
+  @IsString()
+  readonly type: BotMessageType.AVAILABILITY = BotMessageType.AVAILABILITY;
+
+  @IsString()
+  text: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MetaData)
+  meta?: MetaData;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CTAButton)
+  cta?: CTAButton;
+}
+
+// DTO for booking bot message
+export class BookingBotMessage {
+  @IsString()
+  readonly type: BotMessageType.BOOKING = BotMessageType.BOOKING;
+
+  @IsString()
+  text: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MetaData)
+  meta?: MetaData;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CTAButton)
+  cta?: CTAButton;
+}
+
 // Union type for bot messages
-export type BotMessage = TextBotMessage | ListingsBotMessage;
+export type BotMessage =
+  | TextBotMessage
+  | ListingsBotMessage
+  | AvailabilityBotMessage
+  | BookingBotMessage;
 
 // DTO for receiving messages from the frontend
 export class SocketChatbotMessageDto {

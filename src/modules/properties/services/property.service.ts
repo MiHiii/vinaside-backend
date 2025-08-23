@@ -525,8 +525,15 @@ export class PropertyService {
       }
     }
 
+    // Ensure default dateRange is set to last_30_days if not provided
+    const queryWithDefaults = {
+      dateRange: DateRangeType.LAST_30_DAYS,
+      ...queryDto,
+    };
+
     // Get date range from query (similar to dashboard service)
-    const { startDate, endDate } = this.getDateRangeFromQuery(queryDto);
+    const { startDate, endDate } =
+      this.getDateRangeFromQuery(queryWithDefaults);
     const dateFilter = {
       created_at: { $gte: startDate, $lte: endDate },
     };
@@ -1116,7 +1123,10 @@ export class PropertyService {
       ),
     );
 
-    switch (queryDto.dateRange) {
+    // Ensure dateRange has a default value
+    const dateRange = queryDto.dateRange || DateRangeType.LAST_30_DAYS;
+
+    switch (dateRange) {
       case DateRangeType.TODAY:
         return {
           startDate: today,

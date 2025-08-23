@@ -2,7 +2,9 @@ export const STATIC_RESPONSES = {
   ask_voucher:
     'Hiện tại chưa có voucher nào áp dụng. Đừng lo, hãy theo dõi Fanpage của chúng tôi để cập nhật ngay những ưu đãi hấp dẫn nhất cho kỳ nghỉ mơ ước của bạn nhé!',
   greeting:
-    'Xin chào! Rất vui được hỗ trợ bạn! Bạn đang tìm phòng nghỉ giá rẻ, voucher giảm giá hay thông tin du lịch tại đâu? Hãy cho tôi biết để tôi giúp bạn ngay!',
+    'Chào bạn! Mình là trợ lý ảo của Vinaside, rất vui được hỗ trợ bạn. Bạn cần tìm homestay ở đâu ạ?',
+  contextual_greeting:
+    'Chào bạn! Mình là trợ lý ảo của Vinaside. Mình thấy bạn đang tìm phòng. Bạn cho mình biết thêm thông tin để mình tìm phòng phù hợp nhé!',
   goodbye:
     'Tạm biệt! Chúc bạn có một chuyến đi tuyệt vời và đừng quên quay lại với chúng tôi nhé!',
   unknown:
@@ -11,9 +13,9 @@ export const STATIC_RESPONSES = {
   'message.send':
     'Nhân viên được gán vào property sẽ có quyền trả lời tin nhắn liên quan đến property đó.',
   ask_booking_process:
-    '**Quy trình đặt phòng tại Vinaside:**\n\n1. **Tìm phòng:** Chọn phòng phù hợp với nhu cầu và ngân sách\n2. **Kiểm tra lịch:** Xem ngày trống và đặt lịch\n3. **Điền thông tin:** Cung cấp thông tin cá nhân và thanh toán\n4. **Xác nhận:** Nhận email xác nhận đặt phòng\n5. **Check-in:** Đến nhận phòng theo lịch đã đặt\n\n**Thanh toán:** Chấp nhận VNPay, MoMo, tiền mặt\n**Hỗ trợ:** Liên hệ 0909.123.456 để được tư vấn!',
+    '✨ **Quy trình đặt phòng tại Vinaside** ✨\n\n**1. Tìm kiếm**\n\nTruy cập website www.vinaside.com\nhoặc gọi hotline 0909.123.456 để tìm homestay phù hợp theo địa điểm, thời gian và số lượng khách.\n\n**2. Chọn phòng**\n\nXem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọn phòng ưng ý.\n\n**3. Đặt phòng**\n\nĐiền thông tin đặt phòng và gửi yêu cầu.\n\n**4. Xác nhận**\n\nĐội ngũ Vinaside sẽ liên hệ với bạn để xác nhận thông tin và hoàn tất thủ tục nhanh chóng.\n\n👉 **Bạn muốn tìm homestay ở khu vực nào ạ?**',
   ask_booking_steps:
-    '**Các bước đặt phòng chi tiết:**\n\n**Bước 1: Tìm kiếm**\n- Chọn địa điểm và ngày check-in/check-out\n- Lọc theo giá, tiện nghi, đánh giá\n\n**Bước 2: Chọn phòng**\n- Xem chi tiết phòng và hình ảnh\n- Kiểm tra chính sách hủy phòng\n\n**Bước 3: Đặt phòng**\n- Điền thông tin cá nhân\n- Chọn phương thức thanh toán\n\n**Bước 4: Xác nhận**\n- Nhận email xác nhận\n- Lưu mã đặt phòng\n\n**Bước 5: Check-in**\n- Đến đúng giờ nhận phòng\n- Xuất trình giấy tờ tùy thân\n\nCần hỗ trợ? Gọi ngay 0909.123.456!',
+    '✨ **Quy trình đặt phòng tại Vinaside** ✨\n\n**1. Tìm kiếm**\n\nTruy cập website www.vinaside.com\nhoặc gọi hotline 0909.123.456 để tìm homestay phù hợp theo địa điểm, thời gian và số lượng khách.\n\n**2. Chọn phòng**\n\nXem thông tin chi tiết về phòng, tiện nghi và giá cả, sau đó chọn phòng ưng ý.\n\n**3. Đặt phòng**\n\nĐiền thông tin đặt phòng và gửi yêu cầu.\n\n**4. Xác nhận**\n\nĐội ngũ Vinaside sẽ liên hệ với bạn để xác nhận thông tin và hoàn tất thủ tục nhanh chóng.\n\n👉 **Bạn muốn tìm homestay ở khu vực nào ạ?**',
   ask_vinaside_info:
     '**Vinaside - Nơi nghỉ dưỡng lý tưởng của bạn!**\n\n**Chúng tôi cung cấp:**\n- Phòng nghỉ chất lượng cao với giá tốt nhất\n- Đa dạng loại phòng: Standard, Deluxe, Suite, Villa\n- Vị trí đắc địa gần biển, trung tâm thành phố\n- Tiện nghi hiện đại: WiFi, điều hòa, TV, bếp\n- Dịch vụ 24/7 và hỗ trợ tận tâm\n\n**Địa điểm nổi bật:**\n- Đà Nẵng: Biển Mỹ Khê, Bán đảo Sơn Trà\n- Hội An: Phố cổ, Biển An Bàng\n- Ngũ Hành Sơn: Núi đá, Biển Non Nước\n\n**Ưu đãi đặc biệt:**\n- Voucher giảm giá thường xuyên\n- Ưu đãi dài ngày\n- Gói combo du lịch\n\n**Liên hệ:** 0909.123.456\n**Website:** www.vinaside.com\n\nHãy để Vinaside mang đến cho bạn kỳ nghỉ hoàn hảo!',
 };
@@ -119,7 +121,7 @@ export function detectIntent(
     ask_booking_steps:
       /(các bước|steps|quy trình|process).*(đặt phòng|booking|reserve|đặt|book)/i,
     ask_payment_methods:
-      /(thanh toán|payment|pay).*(bằng gì|method|cách nào|momo|vnpay|tiền mặt|cash|thẻ|card)/i,
+      /(thanh toán|payment|pay).*(bằng gì|method|cách nào|momo|vnpay|tiền mặt|cash|thẻ|card|hình thức)/i,
     ask_checkin_checkout:
       /(check.?in|check.?out|nhận phòng|trả phòng|giờ nhận|giờ trả|thời gian).*(mấy giờ|time|when)/i,
     ask_room_capacity:

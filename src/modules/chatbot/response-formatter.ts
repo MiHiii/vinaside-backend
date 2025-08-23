@@ -4,6 +4,8 @@ import {
   CTAActionType,
   ListingsBotMessage,
   TextBotMessage,
+  AvailabilityBotMessage,
+  BookingBotMessage,
 } from './dto/bot-message.dto';
 
 interface Listing {
@@ -24,6 +26,13 @@ interface Listing {
     description?: string;
   };
   max_guests?: number;
+  beds?: number;
+  bathrooms?: number;
+  view_type?: 'sea' | 'city' | 'garden';
+  pet_friendly?: boolean;
+  family_friendly?: boolean;
+  allow_infants?: boolean;
+  cancellation_policy?: string;
 }
 
 export class ResponseFormatter {
@@ -40,6 +49,46 @@ export class ResponseFormatter {
     return {
       type: BotMessageType.TEXT,
       text: formattedText,
+    };
+  }
+
+  /**
+   * Format availability response
+   */
+  static formatAvailabilityResponse(
+    text: string,
+    meta?: {
+      city?: string;
+      checkIn?: string;
+      checkOut?: string;
+      guests?: number;
+      nights?: number;
+    },
+  ): AvailabilityBotMessage {
+    return {
+      type: BotMessageType.AVAILABILITY,
+      text: this.removeIcons(text),
+      meta,
+    };
+  }
+
+  /**
+   * Format booking response
+   */
+  static formatBookingResponse(
+    text: string,
+    meta?: {
+      city?: string;
+      checkIn?: string;
+      checkOut?: string;
+      guests?: number;
+      nights?: number;
+    },
+  ): BookingBotMessage {
+    return {
+      type: BotMessageType.BOOKING,
+      text: this.removeIcons(text),
+      meta,
     };
   }
 
@@ -169,7 +218,20 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
 
     const formatDate = (dateStr: string) => {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('vi-VN');
+      return date.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    };
+
+    const formatShortDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('vi-VN', {
+        month: 'short',
+        day: 'numeric',
+      });
     };
 
     const dateRange =
@@ -177,14 +239,50 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         ? `${formatDate(checkIn)} - ${formatDate(checkOut)}`
         : undefined;
 
+    const shortDateRange =
+      checkIn && checkOut
+        ? `${formatShortDate(checkIn)} - ${formatShortDate(checkOut)}`
+        : undefined;
+
+    // Generate dynamic header based on context
+    let header = 'Danh sách phòng trống';
+    if (city) {
+      header += ` tại ${city}`;
+    }
+    if (dateRange) {
+      header += ` cho ${dateRange}`;
+    }
+    if (guests) {
+      header += ` (${guests} khách)`;
+    }
+    if (nights && nights > 1) {
+      header += ` (${nights} đêm)`;
+    }
+
+    // Add availability status
+    if (rooms.length === 0) {
+      header = 'Không có phòng trống';
+      if (city) header += ` tại ${city}`;
+      if (dateRange) header += ` cho ${dateRange}`;
+    } else if (rooms.length === 1) {
+      header = `Phòng phù hợp${city ? ` tại ${city}` : ''}`;
+      if (dateRange) header += ` cho ${dateRange}`;
+    } else {
+      header = `Tìm thấy ${rooms.length} phòng${city ? ` tại ${city}` : ''}`;
+      if (dateRange) header += ` cho ${dateRange}`;
+    }
+
     return {
       type: BotMessageType.LISTINGS,
-      header: `Danh sách phòng trống${city ? ` tại ${city}` : ''}`,
+      header: header,
       meta: {
-        dateRange,
+        dateRange: shortDateRange,
         guests,
         city,
         total: rooms.length,
+        nights,
+        checkIn: checkIn ? formatDate(checkIn) : undefined,
+        checkOut: checkOut ? formatDate(checkOut) : undefined,
       },
       items: rooms.map((room) => ({
         id: room._id,
@@ -194,7 +292,8 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         address: room.propertyId?.location?.address || room.propertyId?.name,
         imageUrl: room.images?.[0],
         detailUrl: `/room-detail/${room._id}`,
-        tags: this.generateTags(room),
+        tags: this.generateEnhancedTags(room, nights),
+        description: this.generateRoomDescription(room, nights),
       })),
       cta:
         holdId === 'book_now'
@@ -204,6 +303,10 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
               payload: {
                 holdId: 'book_now',
                 roomId: rooms[0]?._id,
+                checkIn,
+                checkOut,
+                guests,
+                nights,
               },
             }
           : holdId
@@ -213,6 +316,10 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
                 payload: {
                   holdId,
                   roomId: rooms[0]?._id,
+                  checkIn,
+                  checkOut,
+                  guests,
+                  nights,
                 },
               }
             : {
@@ -278,6 +385,16 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         const guestsMatch = listing.match(/Số khách tối đa:\s*(\d+)/);
         const maxGuests = guestsMatch ? parseInt(guestsMatch[1]) : undefined;
 
+        // Extract view type
+        const viewMatch = listing.match(/Hướng:\s*(.*?)(?:\n|$)/);
+        const viewType = viewMatch ? viewMatch[1].trim() : undefined;
+
+        // Extract special features
+        const features: string[] = [];
+        if (listing.match(/thú cưng|pet/i)) features.push('Thú cưng');
+        if (listing.match(/gia đình|family/i)) features.push('Gia đình');
+        if (listing.match(/trẻ sơ sinh|infant/i)) features.push('Trẻ sơ sinh');
+
         // Generate a temporary ID
         const id = `temp-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -290,6 +407,8 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
             ...(beds ? [`${beds} giường`] : []),
             ...(bathrooms ? [`${bathrooms} phòng tắm`] : []),
             ...(maxGuests ? [`${maxGuests} khách`] : []),
+            ...(viewType ? [viewType] : []),
+            ...features,
           ],
         };
       })
@@ -315,14 +434,28 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
     const headerMatch = text.match(/^(.*?)(?:\n|$)/);
     const header = headerMatch ? headerMatch[1].trim() : 'Danh sách phòng';
 
-    // Try to extract meta information
+    // Try to extract meta information with enhanced patterns
     const dateRangeMatch = text.match(
       /(\d{1,2}\/\d{1,2}\/\d{4})(?:\s*[-–]\s*)(\d{1,2}\/\d{1,2}\/\d{4})/,
     );
+
+    // Enhanced guest extraction
     const guestsMatch = text.match(/(\d+)\s*(?:khách|người|guest|guests)/i);
-    // Capture multi-word city names like "Hà Nội" instead of just "Hà"
+
+    // Enhanced city extraction - capture multi-word city names
     const cityMatch = text.match(
-      /ở\s+([A-Za-zÀ-ỹ\s]{2,}?)(?=(?:\s+(?:có|sau|đang|hiện)|[\.,:\n]|$))/i,
+      /(?:ở|tại|tìm|phòng)\s+([A-Za-zÀ-ỹ\s]{2,}?)(?=(?:\s+(?:có|sau|đang|hiện|cho|với|ngày|từ|đến)|[\.,:\n]|$))/i,
+    );
+
+    // Extract nights information
+    const nightsMatch = text.match(/(\d+)\s*(?:đêm|night|nights)/i);
+
+    // Extract check-in and check-out dates separately
+    const checkInMatch = text.match(
+      /(?:từ|check-in|ngày đến):\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
+    );
+    const checkOutMatch = text.match(
+      /(?:đến|check-out|ngày về):\s*(\d{1,2}\/\d{1,2}\/\d{4})/i,
     );
 
     const meta = {
@@ -332,12 +465,16 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
       guests: guestsMatch ? parseInt(guestsMatch[1]) : undefined,
       city: cityMatch ? cityMatch[1].trim() : undefined,
       total: items.length,
+      nights: nightsMatch ? parseInt(nightsMatch[1]) : undefined,
+      checkIn: checkInMatch ? checkInMatch[1] : undefined,
+      checkOut: checkOutMatch ? checkOutMatch[1] : undefined,
     };
 
     // Check for CTA
     const hasHoldCTA =
       text.toLowerCase().includes('đặt phòng') ||
-      text.toLowerCase().includes('ưng ý phòng nào');
+      text.toLowerCase().includes('ưng ý phòng nào') ||
+      text.toLowerCase().includes('đặt ngay');
 
     const base: ListingsBotMessage = {
       type: BotMessageType.LISTINGS,
@@ -347,10 +484,28 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
     } as ListingsBotMessage;
 
     // Show CTA when there is a concrete date range or when it's a room details request
-    if (meta.dateRange || items.length === 1) {
+    if (meta.dateRange || items.length === 1 || meta.checkIn) {
       base.cta = hasHoldCTA
-        ? { label: 'Đặt ngay', action: CTAActionType.HOLD }
-        : { label: 'Xem chi tiết', action: CTAActionType.DETAIL };
+        ? {
+            label: 'Đặt ngay',
+            action: CTAActionType.HOLD,
+            payload: {
+              checkIn: meta.checkIn,
+              checkOut: meta.checkOut,
+              guests: meta.guests,
+              nights: meta.nights,
+            },
+          }
+        : {
+            label: 'Xem chi tiết',
+            action: CTAActionType.DETAIL,
+            payload: {
+              checkIn: meta.checkIn,
+              checkOut: meta.checkOut,
+              guests: meta.guests,
+              nights: meta.nights,
+            },
+          };
     }
 
     return base;
@@ -370,6 +525,13 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         images?: string[];
         propertyId?: { location?: { address?: string; city?: string } };
         max_guests?: number;
+        beds?: number;
+        bathrooms?: number;
+        view_type?: 'sea' | 'city' | 'garden';
+        pet_friendly?: boolean;
+        family_friendly?: boolean;
+        allow_infants?: boolean;
+        cancellation_policy?: string;
       }>;
     } | null,
   ): ListingsBotMessage {
@@ -396,6 +558,10 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
       if (!match) return it;
       const matchedCity = match.propertyId?.location?.city;
       if (matchedCity) citiesCollected.push(matchedCity);
+
+      // Calculate nights from meta if available
+      const nights = message.meta?.nights;
+
       return {
         ...it,
         id: match._id,
@@ -403,15 +569,44 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         address: match.propertyId?.location?.address || it.address,
         imageUrl: match.images?.[0] || it.imageUrl,
         detailUrl: `/room-detail/${match._id}`,
-        tags: this.generateTags({
-          _id: match._id,
-          title: match.title,
-          price_per_night: match.price_per_night,
-          description: '',
-          status: 'active',
-          propertyId: match.propertyId as any,
-          max_guests: match.max_guests,
-        } as any),
+        tags: this.generateEnhancedTags(
+          {
+            _id: match._id,
+            title: match.title,
+            price_per_night: match.price_per_night,
+            description: '',
+            status: 'active',
+            propertyId: match.propertyId as any,
+            max_guests: match.max_guests,
+            beds: match.beds,
+            bathrooms: match.bathrooms,
+            view_type: match.view_type,
+            pet_friendly: match.pet_friendly,
+            family_friendly: match.family_friendly,
+            allow_infants: match.allow_infants,
+            cancellation_policy: match.cancellation_policy,
+          } as any,
+          nights,
+        ),
+        description: this.generateRoomDescription(
+          {
+            _id: match._id,
+            title: match.title,
+            price_per_night: match.price_per_night,
+            description: '',
+            status: 'active',
+            propertyId: match.propertyId as any,
+            max_guests: match.max_guests,
+            beds: match.beds,
+            bathrooms: match.bathrooms,
+            view_type: match.view_type,
+            pet_friendly: match.pet_friendly,
+            family_friendly: match.family_friendly,
+            allow_infants: match.allow_infants,
+            cancellation_policy: match.cancellation_policy,
+          } as any,
+          nights,
+        ),
       };
     });
 
@@ -467,6 +662,154 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
     }
 
     return tags;
+  }
+
+  /**
+   * Generate enhanced tags for a room based on its properties and stay duration
+   */
+  private static generateEnhancedTags(
+    room: Listing,
+    nights?: number,
+  ): string[] {
+    const tags: string[] = [];
+
+    // Basic capacity info
+    if (room.max_guests) {
+      tags.push(`${room.max_guests} khách`);
+    }
+
+    // Location info
+    if (room.propertyId?.location?.city) {
+      tags.push(room.propertyId.location.city);
+    }
+
+    // Stay duration
+    if (nights && nights > 1) {
+      tags.push(`${nights} đêm`);
+    }
+
+    // Room features
+    if (room.beds) {
+      tags.push(`${room.beds} giường`);
+    }
+
+    if (room.bathrooms) {
+      tags.push(`${room.bathrooms} phòng tắm`);
+    }
+
+    // View type
+    if (room.view_type) {
+      const viewLabels = {
+        sea: 'Hướng biển',
+        city: 'Hướng thành phố',
+        garden: 'Hướng vườn',
+      };
+      tags.push(viewLabels[room.view_type] || room.view_type);
+    }
+
+    // Special features
+    if (room.pet_friendly) {
+      tags.push('Thú cưng');
+    }
+
+    if (room.family_friendly) {
+      tags.push('Gia đình');
+    }
+
+    if (room.allow_infants) {
+      tags.push('Trẻ sơ sinh');
+    }
+
+    // Price range indicator
+    if (room.price_per_night) {
+      if (room.price_per_night < 500000) {
+        tags.push('Giá tốt');
+      } else if (room.price_per_night < 1000000) {
+        tags.push('Giá trung bình');
+      } else {
+        tags.push('Cao cấp');
+      }
+    }
+
+    return tags;
+  }
+
+  /**
+   * Generate a description for a room based on its properties and stay duration
+   */
+  private static generateRoomDescription(
+    room: Listing,
+    nights?: number,
+  ): string {
+    const parts: string[] = [];
+
+    // Basic capacity info
+    if (room.max_guests) {
+      parts.push(`Sức chứa tối đa: ${room.max_guests} khách`);
+    }
+
+    // Room features
+    if (room.beds) {
+      parts.push(`${room.beds} giường`);
+    }
+
+    if (room.bathrooms) {
+      parts.push(`${room.bathrooms} phòng tắm`);
+    }
+
+    // Location
+    if (room.propertyId?.location?.address) {
+      parts.push(`Địa chỉ: ${room.propertyId.location.address}`);
+    } else if (room.propertyId?.location?.city) {
+      parts.push(`Khu vực: ${room.propertyId.location.city}`);
+    }
+
+    // Stay duration and pricing
+    if (nights && nights > 1) {
+      const totalPrice = room.price_per_night * nights;
+      parts.push(
+        `${nights} đêm - Tổng: ${totalPrice.toLocaleString('vi-VN')} VNĐ`,
+      );
+    }
+
+    // Special features
+    const features: string[] = [];
+    if (room.view_type) {
+      const viewLabels = {
+        sea: 'Hướng biển',
+        city: 'Hướng thành phố',
+        garden: 'Hướng vườn',
+      };
+      features.push(viewLabels[room.view_type] || room.view_type);
+    }
+
+    if (room.pet_friendly) {
+      features.push('Cho phép thú cưng');
+    }
+
+    if (room.family_friendly) {
+      features.push('Phù hợp gia đình');
+    }
+
+    if (room.allow_infants) {
+      features.push('Cho phép trẻ sơ sinh');
+    }
+
+    if (features.length > 0) {
+      parts.push(`Đặc điểm: ${features.join(', ')}`);
+    }
+
+    // Cancellation policy
+    if (room.cancellation_policy) {
+      parts.push(`Chính sách hủy: ${room.cancellation_policy}`);
+    }
+
+    // Description
+    if (room.description) {
+      parts.push(`Mô tả: ${room.description}`);
+    }
+
+    return parts.join('. ');
   }
 
   /**
@@ -531,7 +874,7 @@ Bạn cần tư vấn thêm về dịch vụ nào không?`;
         )
         // Transportation
         .replace(
-          /[🚗🚕🚙🚌🚎🏎️🚓🚑🚒🚐🚚🚛🚜🏍️🚲🛴🛵🚁🛸✈️🛩️🚀🛰️🚢⛵🚤🛥️⚓]/g,
+          /[🚗🚕🚙🚌🚎🏎️🚓🚑🚒🚐🚚🚛🚜🏍️🚲🛵🚁🛸✈️🛩️🚀🛰️🚢⛵🚤🛥️⚓]/g,
           '',
         )
         // Food and drinks

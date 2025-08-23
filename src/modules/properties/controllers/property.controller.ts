@@ -122,7 +122,7 @@ export class PropertyController {
   @ApiOperation({
     summary: 'Lấy thống kê chi tiết của một tài sản',
     description:
-      'Lấy thống kê chi tiết bao gồm booking, property, listing, service, voucher, users với date range filter',
+      'Lấy thống kê chi tiết bao gồm booking, property, listing, service, voucher, users với date range filter. Mặc định là last_30_days nếu không chỉ định.',
   })
   @ApiResponse({
     status: 200,

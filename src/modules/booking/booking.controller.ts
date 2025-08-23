@@ -373,7 +373,7 @@ export class BookingController {
   @Roles('staff', 'admin')
   @RequirePropertyStaff({
     propertyIdSource: 'param',
-    propertyIdParam: 'propertyId'
+    propertyIdParam: 'propertyId',
   })
   @RequirePermission('booking.cancel')
   @ApiOperation({ summary: 'Admin/Staff hủy booking trực tiếp' })
