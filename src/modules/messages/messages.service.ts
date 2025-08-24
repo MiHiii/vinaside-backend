@@ -296,9 +296,30 @@ export class MessagesService {
         .findById(conversation._id)
         .lean();
       const participantIds = await this.participantsOfConversation(conv);
-      participantIds.forEach((uid) =>
-        this.messagesGateway.emitNewMessage(formatted, uid),
-      );
+
+      console.log('🔍 Emitting new message to participants:', {
+        conversationId: this.getIdString(conversation._id),
+        senderId: user._id,
+        participantIds,
+        formattedMessage: {
+          content: formatted.content,
+          sender_id: formatted.sender_id,
+          sent_at: formatted.sent_at,
+        },
+      });
+
+      // Emit to all participants
+      for (const uid of participantIds) {
+        console.log(`🔍 Emitting to participant: ${uid}`);
+        const isUserOnline = this.messagesGateway.isUserOnline(uid);
+        console.log(`🔍 Participant ${uid} online status: ${isUserOnline}`);
+        try {
+          await this.messagesGateway.emitNewMessage(formatted, uid);
+          console.log(`🔍 Successfully emitted to participant: ${uid}`);
+        } catch (emitError) {
+          console.error(`🔍 Failed to emit to participant ${uid}:`, emitError);
+        }
+      }
 
       // Notifications: notify all participants except sender
       try {
@@ -377,6 +398,35 @@ export class MessagesService {
           lastMessageAt: saved.sent_at,
           unreadCount: unread,
         });
+      }
+
+      // Emit conversation update for realtime API support
+      try {
+        const updatedMessages = await this.messageModel
+          .find({ conversation_id: conversation._id })
+          .sort({ sent_at: 1 })
+          .populate('sender_id', 'username email name avatar_url role')
+          .lean();
+
+        for (const uid of participantIds) {
+          if (uid === user._id) continue; // Skip sender
+
+          const isOnline = this.messagesGateway.isUserOnline(uid);
+          if (isOnline) {
+            this.messagesGateway.emitConversationUpdate(uid, {
+              conversationId: this.getIdString(conversation._id),
+              messages: updatedMessages,
+              updatedBy: user._id,
+              timestamp: new Date().toISOString(),
+              messageCount: updatedMessages.length,
+            });
+          }
+        }
+      } catch (conversationUpdateError) {
+        console.error(
+          'Failed to emit conversation update:',
+          conversationUpdateError,
+        );
       }
     } catch (err) {
       console.error('Failed to emit realtime message:', err);
@@ -1332,13 +1382,22 @@ export class MessagesService {
       }
     }
 
+    // For realtime conversation, get all messages by default
+    // Only apply pagination if explicitly requested
     const limit = query.limit && query.limit > 0 ? query.limit : undefined;
     const page = query.page && query.page > 0 ? query.page : 1;
+
     const messagesQ = this.messageModel
       .find({ conversation_id: conv._id })
-      .sort({ sent_at: 1 })
+      .sort({ sent_at: 1 }) // Ensure messages are sorted chronologically (newest at the end)
       .populate('sender_id', 'username email name avatar_url role');
-    if (limit) messagesQ.limit(limit).skip((page - 1) * limit);
+
+    // Only apply pagination if limit is specified
+    if (limit) {
+      messagesQ.limit(limit).skip((page - 1) * limit);
+    }
+    // If no limit specified, get all messages for realtime support
+
     const docs = await messagesQ.exec();
 
     const ui = ui_for || user.role;
@@ -2368,5 +2427,127 @@ export class MessagesService {
     }
 
     return updatedMessage;
+  }
+
+  /**
+   * Emit conversation update to all participants when conversation is accessed
+   * This enables realtime updates for the @Get('conversation') API
+   */
+  async emitConversationUpdateToParticipants(
+    conversationId: string,
+    currentUserId: string,
+    messages: any[],
+  ): Promise<void> {
+    try {
+      if (!isValidObjectId(conversationId)) {
+        console.warn('Invalid conversationId for emission:', conversationId);
+        return;
+      }
+
+      const conv = await this.conversationModel.findById(conversationId).lean();
+      if (!conv) {
+        console.warn('Conversation not found for emission:', conversationId);
+        return;
+      }
+
+      // Get all participants
+      const participantIds = await this.participantsOfConversation(conv);
+
+      console.log('🔍 Emitting conversation update to participants:', {
+        conversationId,
+        currentUserId,
+        participantCount: participantIds.length,
+        participants: participantIds,
+      });
+
+      // Emit to all participants except the current user
+      for (const participantId of participantIds) {
+        if (participantId === currentUserId) {
+          continue; // Skip current user
+        }
+
+        try {
+          const isOnline = this.messagesGateway.isUserOnline(participantId);
+          console.log(
+            `🔍 Participant ${participantId} online status: ${isOnline}`,
+          );
+
+          if (isOnline) {
+            // Emit conversation update event
+            this.messagesGateway.emitConversationUpdate(participantId, {
+              conversationId,
+              messages,
+              updatedBy: currentUserId,
+              timestamp: new Date().toISOString(),
+              messageCount: messages.length,
+            });
+
+            console.log(
+              `🔍 Emitted conversation update to participant: ${participantId}`,
+            );
+          } else {
+            console.log(
+              `🔍 Participant ${participantId} is offline, skipping emit`,
+            );
+          }
+        } catch (emitError) {
+          console.error(
+            `🔍 Failed to emit to participant ${participantId}:`,
+            emitError,
+          );
+        }
+      }
+    } catch (error) {
+      console.error('🔍 Failed to emit conversation update:', error);
+    }
+  }
+
+  /**
+   * Get WebSocket connection status
+   */
+  getWebSocketStatus() {
+    return this.messagesGateway.getConnectionStatus();
+  }
+
+  /**
+   * Test WebSocket emission
+   */
+  testWebSocketEmission(userId: string, testData: { message: string }) {
+    try {
+      const isOnline = this.messagesGateway.isUserOnline(userId);
+
+      if (!isOnline) {
+        return {
+          success: false,
+          message: `User ${userId} is not online`,
+          onlineUsers: this.messagesGateway.getConnectionStatus(),
+        };
+      }
+
+      // Test emit a message
+      const testMessage = {
+        content: testData.message,
+        sender_id: 'test-sender',
+        receiver_id: userId,
+        sent_at: new Date().toISOString(),
+        is_read: 'sent',
+      };
+
+      this.messagesGateway.emitNewMessage(testMessage, userId);
+
+      return {
+        success: true,
+        message: `Test message emitted to user ${userId}`,
+        testMessage,
+        onlineUsers: this.messagesGateway.getConnectionStatus(),
+      };
+    } catch (error) {
+      console.error('Error testing WebSocket emission:', error);
+      return {
+        success: false,
+        error: error.message,
+        onlineUsers: this.messagesGateway.getConnectionStatus(),
+      };
+    }
   }
 }
