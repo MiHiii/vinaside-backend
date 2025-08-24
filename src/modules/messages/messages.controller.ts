@@ -258,7 +258,7 @@ export class MessagesController {
   @Roles('guest', 'staff', 'admin')
   @ApiOperation({ summary: 'Kiểm tra trạng thái WebSocket connection' })
   @ApiResponse({ status: 200, description: 'Trạng thái WebSocket' })
-  getWebSocketStatus(@Request() req: RequestWithUser) {
+  getWebSocketStatus() {
     return this.messagesService.getWebSocketStatus();
   }
 

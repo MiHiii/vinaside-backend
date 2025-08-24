@@ -205,13 +205,13 @@ export class MessagesGateway
         console.log(`🔍 Debug: User online status: ${isUserOnline}`);
 
         // Emit với cấu trúc chuẩn cho frontend
+        const messageData = formattedMessage as Record<string, unknown>;
         this.server.to(receiverRoom).emit('new_message', {
-          content: (formattedMessage as any)?.content || '',
-          senderId: (formattedMessage as any)?.sender_id || '',
+          content: (messageData?.content as string) || '',
+          senderId: (messageData?.sender_id as string) || '',
           receiverId: receiverId,
-          sent_at:
-            (formattedMessage as any)?.sent_at || new Date().toISOString(),
-          is_read: (formattedMessage as any)?.is_read || 'sent',
+          sent_at: (messageData?.sent_at as string) || new Date().toISOString(),
+          is_read: (messageData?.is_read as string) || 'sent',
           message: formattedMessage, // Giữ nguyên để backward compatibility
           timestamp: new Date().toISOString(),
           isUserOnline,

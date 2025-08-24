@@ -2533,7 +2533,7 @@ export class MessagesService {
         is_read: 'sent',
       };
 
-      this.messagesGateway.emitNewMessage(testMessage, userId);
+      void this.messagesGateway.emitNewMessage(testMessage, userId);
 
       return {
         success: true,
@@ -2545,7 +2545,7 @@ export class MessagesService {
       console.error('Error testing WebSocket emission:', error);
       return {
         success: false,
-        error: error.message,
+        error: (error as Error).message,
         onlineUsers: this.messagesGateway.getConnectionStatus(),
       };
     }
