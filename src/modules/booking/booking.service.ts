@@ -711,24 +711,30 @@ export class BookingService {
         throw new BadRequestException('Không được giảm tổng tiền dịch vụ.');
       }
 
-      // c. Cộng phần chênh lệch vào final_amount
-      const diff = totalServicesAmount - oldTotal;
-      if (diff > 0) {
-        updateBookingDto.final_amount = booking.final_amount + diff;
-      } else {
-        updateBookingDto.final_amount = booking.final_amount;
-      }
+      // c. Tính lại toàn bộ final_amount dựa trên subtotal mới
+      const newSubtotalAmount = booking.total_price + totalServicesAmount;
+      const discountAmount = booking.discount_amount || 0;
+      const amountAfterDiscount = newSubtotalAmount - discountAmount;
+      const serviceFee = amountAfterDiscount * 0.1; // 10% của amount_after_discount
+      const taxAmount = amountAfterDiscount * 0.08; // 8% của amount_after_discount
+      const newFinalAmount = amountAfterDiscount + serviceFee + taxAmount;
 
-      // d. Cập nhật lại services_total_amount và selected_services
+      updateBookingDto.final_amount = Math.round(newFinalAmount);
+      updateBookingDto.amount_after_discount = amountAfterDiscount;
+      updateBookingDto.service_fee = serviceFee;
+      updateBookingDto.tax_amount = taxAmount;
+
+      // d. Cập nhật lại services_total_amount, subtotal_amount và selected_services
       updateBookingDto.services_total_amount = totalServicesAmount;
+      updateBookingDto.subtotal_amount = newSubtotalAmount;
       updateBookingDto.selected_services = processedServices;
 
       // e. Cập nhật payment_status nếu có thêm dịch vụ và booking đã PAID
       // Chỉ chuyển sang PARTIALLY_PAID nếu số tiền đã trả chưa đủ cho tổng tiền mới
+      const diff = totalServicesAmount - oldTotal;
       if (diff > 0 && booking.payment_status === PaymentStatus.PAID) {
-        const newTotalAmount = booking.final_amount + diff;
         const paidAmount = booking.deposit_paid_amount || 0;
-        if (paidAmount < newTotalAmount) {
+        if (paidAmount < newFinalAmount) {
           updateBookingDto.payment_status = PaymentStatus.PARTIALLY_PAID;
         }
         // Nếu đã trả đủ cho tổng tiền mới thì giữ nguyên PAID

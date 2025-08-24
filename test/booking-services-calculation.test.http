@@ -1,0 +1,94 @@
+### Test Booking Services Calculation Fix
+
+### 1. Tạo booking với services có quantity
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "listingId": "{{listingId}}",
+  "checkInDate": "2025-08-28",
+  "checkOutDate": "2025-08-29",
+  "guests": 2,
+  "infants": 0,
+  "services": [
+    {
+      "serviceId": "{{serviceId1}}",
+      "quantity": 3
+    },
+    {
+      "serviceId": "{{serviceId2}}",
+      "quantity": 1
+    }
+  ],
+  "voucherCode": "WINTER2025"
+}
+
+### 2. Kiểm tra booking được tạo với calculation đúng
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+
+### 3. Cập nhật services với quantity khác
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "selected_services": [
+    {
+      "serviceId": "{{serviceId1}}",
+      "quantity": 5
+    },
+    {
+      "serviceId": "{{serviceId2}}",
+      "quantity": 2
+    },
+    {
+      "serviceId": "{{serviceId3}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### 4. Kiểm tra booking sau khi update với calculation đúng
+GET {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+
+### 5. Test validation - Service không cho phép quantity > 1
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "selected_services": [
+    {
+      "serviceId": "{{serviceIdNoQuantity}}",
+      "quantity": 3
+    }
+  ]
+}
+
+### 6. Test validation - Giảm số lượng service đã có
+PATCH {{baseUrl}}/bookings/{{propertyId}}/{{bookingId}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "selected_services": [
+    {
+      "serviceId": "{{serviceId1}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_jwt_token_here
+# @propertyId = your_property_id_here
+# @bookingId = your_booking_id_here
+# @listingId = your_listing_id_here
+# @serviceId1 = service_id_that_allows_quantity
+# @serviceId2 = another_service_id_that_allows_quantity
+# @serviceId3 = third_service_id_that_allows_quantity
+# @serviceIdNoQuantity = service_id_that_does_not_allow_quantity
