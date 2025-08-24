@@ -250,6 +250,27 @@ export class ServicesController {
     return this.servicesService.toggleStatus(id, req.user);
   }
 
+  @Put(':id/toggle-quantity')
+  @RequirePermission('service.edit')
+  @ApiOperation({
+    summary: 'Toggle trạng thái allow_quantity của dịch vụ',
+    description: 'Thay đổi trạng thái cho phép nhập số lượng của dịch vụ',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Trạng thái allow_quantity được thay đổi thành công',
+  })
+  @ResponseMessage('Thay đổi trạng thái allow_quantity thành công')
+  async toggleAllowQuantity(
+    @Param('id') serviceId: string,
+    @Request() req: RequestWithUser,
+  ) {
+    if (!req.user.role) {
+      throw new BadRequestException('Thiếu thông tin vai trò người dùng');
+    }
+    return this.servicesService.toggleAllowQuantity(serviceId, req.user);
+  }
+
   @Get('stats/detailed/:id')
   @RequirePermission('booking.view')
   @StaffFiltered({ propertyField: 'propertyId' })

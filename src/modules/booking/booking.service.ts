@@ -879,7 +879,11 @@ export class BookingService {
 
     const query: FilterQuery<Booking> & {
       checkInDate?: { $gte?: Date; $lte?: Date };
-    } = { isDeleted: filters.includeDeleted ?? false };
+    } = {
+      isDeleted: filters.includeDeleted ?? false,
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
+    };
 
     if (filters.propertyId)
       query.propertyId = new Types.ObjectId(filters.propertyId);
@@ -1285,6 +1289,8 @@ export class BookingService {
     // Tạo base query
     const baseQuery: FilterQuery<Booking> = {
       isDeleted: includeDeleted,
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
     };
 
     // Thêm các bộ lọc khác
@@ -1582,6 +1588,8 @@ export class BookingService {
       const query: FilterQuery<Booking> = {
         guestId: guestObjectId,
         isDeleted: includeDeleted,
+        // Loại trừ booking pending và unpaid
+        $nor: [{ status: 'pending', payment_status: 'unpaid' }],
       };
 
       // Thêm các bộ lọc khác
@@ -1634,6 +1642,8 @@ export class BookingService {
       const query: FilterQuery<Booking> = {
         propertyId: propertyObjectId,
         isDeleted: includeDeleted,
+        // Loại trừ booking pending và unpaid
+        $nor: [{ status: 'pending', payment_status: 'unpaid' }],
       };
 
       // Thêm các bộ lọc khác
@@ -1687,6 +1697,8 @@ export class BookingService {
       const query: FilterQuery<Booking> = {
         listingId: listingObjectId,
         isDeleted: includeDeleted,
+        // Loại trừ booking pending và unpaid
+        $nor: [{ status: 'pending', payment_status: 'unpaid' }],
       };
 
       // Thêm các bộ lọc khác
@@ -1786,7 +1798,11 @@ export class BookingService {
     propertyId?: string,
     listingId?: string,
   ): any {
-    const filter: any = { isDeleted: false };
+    const filter: any = {
+      isDeleted: false,
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
+    };
 
     if (startDate || endDate) {
       filter.created_at = {};
@@ -1814,7 +1830,11 @@ export class BookingService {
     propertyId?: string,
     listingId?: string,
   ): any {
-    const filter: any = { isDeleted: false };
+    const filter: any = {
+      isDeleted: false,
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
+    };
 
     if (startDate || endDate) {
       filter.created_at = {};
@@ -1925,7 +1945,7 @@ export class BookingService {
     const finalGroupBy = 'day';
     const { format: groupFormat } = getGroupFormat(finalGroupBy);
 
-    // Lấy dữ liệu cho biểu đồ (sử dụng cùng khoảng thời gian)
+    // Lấy dữ liệu cho biểu đồ (sử dụng cùng khoảng thời gian, đã loại trừ pending + unpaid)
     const chartMatch: any = { ...filter };
 
     const chartDataAgg = await this.bookingRepo.getModel().aggregate([
@@ -2050,7 +2070,7 @@ export class BookingService {
       },
     ]);
 
-    // Thống kê theo trạng thái
+    // Thống kê theo trạng thái (đã loại trừ pending + unpaid)
     const statusStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2134,7 +2154,7 @@ export class BookingService {
       );
     }
 
-    // Thống kê theo trạng thái thanh toán
+    // Thống kê theo trạng thái thanh toán (đã loại trừ pending + unpaid)
     const paymentStatusStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2163,7 +2183,7 @@ export class BookingService {
       },
     );
 
-    // Thống kê voucher
+    // Thống kê voucher (đã loại trừ pending + unpaid)
     const voucherStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2188,7 +2208,7 @@ export class BookingService {
       averageVoucherDiscountPercent: 0,
     };
 
-    // Thống kê chi tiết voucher theo mã
+    // Thống kê chi tiết voucher theo mã (đã loại trừ pending + unpaid)
     const voucherBreakdown = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       { $match: { voucher_id: { $ne: null } } },
@@ -2205,7 +2225,7 @@ export class BookingService {
       { $limit: 10 },
     ]);
 
-    // Thống kê services
+    // Thống kê services (đã loại trừ pending + unpaid)
     const servicesStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2224,7 +2244,7 @@ export class BookingService {
       totalServicesBooked: 0,
     };
 
-    // Top services used
+    // Top services used (đã loại trừ pending + unpaid)
     const topServices = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       { $unwind: '$selected_services' },
@@ -2355,7 +2375,7 @@ export class BookingService {
   }
 
   /**
-   * Lấy thông tin chi tiết booking theo filter
+   * Lấy thông tin chi tiết booking theo filter (đã loại trừ pending + unpaid)
    */
   private async getBookingDetails(filter: any): Promise<BookingDetailDto[]> {
     const bookings = await this.bookingRepo.getModel().aggregate([
@@ -2533,7 +2553,7 @@ export class BookingService {
       listingId,
     );
 
-    // Thống kê tài chính tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành
+    // Thống kê tài chính tổng quan - chỉ tính doanh thu từ booking đã xác nhận/hoàn thành (đã loại trừ pending + unpaid)
     const financialStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2584,7 +2604,7 @@ export class BookingService {
       },
     ]);
 
-    // Thống kê doanh thu theo tháng - chỉ tính từ booking đã xác nhận/hoàn thành
+    // Thống kê doanh thu theo tháng - chỉ tính từ booking đã xác nhận/hoàn thành (đã loại trừ pending + unpaid)
     const revenueByMonth = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2640,7 +2660,7 @@ export class BookingService {
       averageBookingValue: 0,
     };
 
-    // Calculate additional financial metrics - chỉ tính từ booking đã xác nhận/hoàn thành
+    // Calculate additional financial metrics - chỉ tính từ booking đã xác nhận/hoàn thành (đã loại trừ pending + unpaid)
     const voucherServicesStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2749,7 +2769,7 @@ export class BookingService {
 
       this.logger.log('Statistics filter:', filter);
 
-      // Thống kê khách hàng (loại bỏ guestId null)
+      // Thống kê khách hàng (loại bỏ guestId null, đã loại trừ pending + unpaid)
       const customerStats = await this.bookingRepo.getModel().aggregate([
         { $match: { ...filter, guestId: { $ne: null } } },
         {
@@ -2764,7 +2784,7 @@ export class BookingService {
         },
       ]);
 
-      // Thống kê khách hàng mới vs quay lại (loại bỏ guestId null)
+      // Thống kê khách hàng mới vs quay lại (loại bỏ guestId null, đã loại trừ pending + unpaid)
       const newCustomers = await this.bookingRepo.getModel().aggregate([
         { $match: { ...filter, guestId: { $ne: null } } },
         {
@@ -2816,7 +2836,7 @@ export class BookingService {
         0,
       );
 
-      // Voucher usage by customers (loại bỏ guestId null)
+      // Voucher usage by customers (loại bỏ guestId null, đã loại trừ pending + unpaid)
       const voucherUsageStats = await this.bookingRepo.getModel().aggregate([
         { $match: { ...filter, guestId: { $ne: null } } },
         {
@@ -2845,7 +2865,7 @@ export class BookingService {
           totalVoucherDiscount: user.totalVoucherDiscount,
         }));
 
-      // Services usage by customers (loại bỏ guestId null)
+      // Services usage by customers (loại bỏ guestId null, đã loại trừ pending + unpaid)
       const servicesUsageStats = await this.bookingRepo.getModel().aggregate([
         { $match: { ...filter, guestId: { $ne: null } } },
         { $unwind: '$selected_services' },
@@ -2932,7 +2952,7 @@ export class BookingService {
       listingId,
     );
 
-    // Thống kê theo ngày
+    // Thống kê theo ngày (đã loại trừ pending + unpaid)
     const bookingsByDay = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2951,7 +2971,7 @@ export class BookingService {
       },
     ]);
 
-    // Thống kê theo tuần
+    // Thống kê theo tuần (đã loại trừ pending + unpaid)
     const bookingsByWeek = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2969,7 +2989,7 @@ export class BookingService {
       },
     ]);
 
-    // Thống kê theo tháng
+    // Thống kê theo tháng (đã loại trừ pending + unpaid)
     const bookingsByMonth = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -2987,7 +3007,7 @@ export class BookingService {
       },
     ]);
 
-    // Tính thời gian đặt trước trung bình
+    // Tính thời gian đặt trước trung bình (đã loại trừ pending + unpaid)
     const advanceBookingStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -3056,6 +3076,7 @@ export class BookingService {
       listingId,
     );
 
+    // Thống kê voucher (đã loại trừ pending + unpaid)
     const voucherStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -3106,6 +3127,7 @@ export class BookingService {
       listingId,
     );
 
+    // Thống kê services (đã loại trừ pending + unpaid)
     const servicesStats = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       {
@@ -3126,7 +3148,7 @@ export class BookingService {
       totalServicesBooked: 0,
     };
 
-    // Top services used
+    // Top services used (đã loại trừ pending + unpaid)
     const topServices = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       { $unwind: '$selected_services' },
@@ -3176,6 +3198,7 @@ export class BookingService {
       listingId,
     );
 
+    // Thống kê services theo user (đã loại trừ pending + unpaid)
     const servicesByUser = await this.bookingRepo.getModel().aggregate([
       { $match: filter },
       { $unwind: '$selected_services' },
@@ -3219,6 +3242,7 @@ export class BookingService {
       listingId,
     );
 
+    // Thống kê voucher theo user (đã loại trừ pending + unpaid)
     const vouchersByUser = await this.bookingRepo.getModel().aggregate([
       { $match: { ...filter, voucher_id: { $ne: null } } },
       {
@@ -4046,9 +4070,11 @@ export class BookingService {
     } = queryDto;
     const skip = (page - 1) * limit;
 
-    // Tạo filter cơ bản
+    // Tạo filter cơ bản (loại trừ pending + unpaid)
     const baseFilter: any = {
       voucher_id: new Types.ObjectId(voucherId),
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
     };
 
     // Thêm staff filter nếu cần
@@ -4221,11 +4247,13 @@ export class BookingService {
       endDate.setUTCHours(23, 59, 59, 999);
     }
 
-    // Tạo filter cho booking
+    // Tạo filter cho booking (loại trừ pending + unpaid)
     const filter: any = {
       isDeleted: false,
       checkInDate: { $lte: endDate },
       check_out_date: { $gte: startDate },
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
     };
 
     // Filter theo property nếu có
@@ -4488,9 +4516,11 @@ export class BookingService {
     } = queryDto;
     const skip = (page - 1) * limit;
 
-    // Tạo filter cơ bản
+    // Tạo filter cơ bản (loại trừ pending + unpaid)
     const baseFilter: any = {
       'selected_services.service_id': new Types.ObjectId(serviceId),
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
     };
 
     // Thêm staff filter nếu cần
@@ -4624,6 +4654,8 @@ export class BookingService {
       isDeleted: false,
       checkInDate: { $lt: nextDate },
       check_out_date: { $gte: targetDate },
+      // Loại trừ booking pending và unpaid
+      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
     };
 
     if (propertyId) {

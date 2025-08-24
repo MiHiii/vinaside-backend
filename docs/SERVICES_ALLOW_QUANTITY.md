@@ -53,7 +53,33 @@ allow_quantity: boolean;
 }
 ```
 
-### 3. Service Response
+### 3. Toggle Service Allow Quantity (NEW)
+
+**Endpoint**: `PUT /services/:id/toggle-allow-quantity`
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "message": "Thay đổi trạng thái allow_quantity thành công",
+  "data": {
+    "_id": "...",
+    "name": "WiFi miễn phí",
+    "allow_quantity": true, // Đã được toggle
+    "is_active": true,
+    "created_at": "...",
+    "updated_at": "..."
+  }
+}
+```
+
+**Validation**:
+
+- Service ID phải hợp lệ
+- Service phải tồn tại
+
+### 4. Service Response
 
 Tất cả API response liên quan đến services sẽ bao gồm trường `allow_quantity`:
 
@@ -122,6 +148,7 @@ Booking response sẽ bao gồm thông tin `allow_quantity` cho mỗi service:
 
 - `POST /services` - Tạo service mới
 - `PUT /services/:id` - Cập nhật service
+- `PUT /services/:id/toggle-allow-quantity` - Toggle trạng thái allow_quantity (NEW)
 - `GET /services` - Lấy danh sách services
 - `GET /services/:id` - Lấy chi tiết service
 
@@ -183,7 +210,38 @@ Khi booking: `quantity` luôn = 1
 
 Khi booking: `quantity` có thể là 1, 2, 3...
 
-### 3. Frontend Integration
+### 3. Toggle Allow Quantity trong Frontend
+
+```javascript
+// Toggle allow_quantity của service
+const toggleServiceAllowQuantity = async (serviceId) => {
+  try {
+    const response = await fetch(
+      `/api/v1/services/${serviceId}/toggle-allow-quantity`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (response.ok) {
+      const result = await response.json();
+      // Update UI với service data mới
+      updateServiceData(result.data);
+    } else {
+      const errorData = await response.json();
+      console.error('Error toggling allow_quantity:', errorData.message);
+    }
+  } catch (error) {
+    console.error('Error toggling allow_quantity:', error);
+  }
+};
+```
+
+### 4. Frontend Integration
 
 ```javascript
 // Hiển thị input quantity dựa trên allow_quantity
@@ -215,12 +273,14 @@ const renderServiceQuantity = (service) => {
 - Cập nhật form tạo/sửa service để include `allow_quantity`
 - Cập nhật booking form để hiển thị quantity input conditionally
 - Cập nhật service list để hiển thị thông tin `allow_quantity`
+- Thêm toggle button cho allow_quantity trong service management
 
 ## Related Features
 
 - **Booking Services**: Tính năng này ảnh hưởng trực tiếp đến cách services được thêm vào booking
 - **Service Management**: Admin có thể quản lý thuộc tính `allow_quantity` của từng service
 - **Price Calculation**: Quantity ảnh hưởng đến total price của service trong booking
+- **Service Toggle**: Toggle allow_quantity để bật/tắt tính năng chọn số lượng
 
 ## Testing
 
@@ -230,5 +290,6 @@ const renderServiceQuantity = (service) => {
 2. Cập nhật `allow_quantity` của service
 3. Tạo booking với service `allow_quantity = false` và `quantity > 1` (should fail)
 4. Tạo booking với service `allow_quantity = true` và `quantity > 1` (should pass)
-5. Verify booking response includes `allow_quantity` info
-
+5. Toggle allow_quantity của service từ true sang false (should work)
+6. Toggle allow_quantity của service từ false sang true (should work)
+7. Verify booking response includes `allow_quantity` info

@@ -1,0 +1,56 @@
+### Test Staff Payment Endpoint Fix
+
+### 1. Test staff tạo payment URL với propertyId
+POST {{baseUrl}}/bookings/{{bookingId}}/payment/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "propertyId": "{{propertyId}}",
+  "amount": 500000,
+  "returnUrl": "{{returnUrl}}",
+  "cancelUrl": "{{cancelUrl}}",
+  "note": "Admin tạo booking với VNPay"
+}
+
+### 2. Test staff tạo payment URL không có propertyId (should fail)
+POST {{baseUrl}}/bookings/{{bookingId}}/payment/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "vnpay",
+  "amount": 500000,
+  "returnUrl": "{{returnUrl}}",
+  "cancelUrl": "{{cancelUrl}}",
+  "note": "Admin tạo booking với VNPay"
+}
+
+### 3. Test với MoMo payment
+POST {{baseUrl}}/bookings/{{bookingId}}/payment/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "paymentMethod": "momo",
+  "propertyId": "{{propertyId}}",
+  "amount": 500000,
+  "returnUrl": "{{returnUrl}}",
+  "cancelUrl": "{{cancelUrl}}",
+  "note": "Admin tạo booking với MoMo"
+}
+
+### Expected Results:
+# - Endpoint trả về payment URL thành công
+# - Không còn lỗi "returnUrl must be a URL address"
+# - propertyId là bắt buộc
+# - Hỗ trợ cả VNPay và MoMo
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_jwt_token_here
+# @bookingId = your_booking_id_here
+# @propertyId = your_property_id_here
+# @returnUrl = http://localhost:5173/admin/bookings?payment=success&bookingId=your_booking_id
+# @cancelUrl = http://localhost:5173/admin/bookings?payment=cancel&bookingId=your_booking_id

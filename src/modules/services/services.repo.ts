@@ -309,6 +309,29 @@ export class ServicesRepo extends BaseRepo<Service> {
   }
 
   /**
+   * Toggle trạng thái allow_quantity của service
+   */
+  async toggleAllowQuantity(
+    id: string,
+    userId?: string,
+  ): Promise<Service | null> {
+    const service = await this.serviceModel.findById(id);
+    if (!service) return null;
+
+    const updatedService = await this.serviceModel.findByIdAndUpdate(
+      id,
+      {
+        allow_quantity: !service.allow_quantity,
+        updated_at: new Date(),
+        ...(userId && { updatedBy: new Types.ObjectId(userId) }),
+      },
+      { new: true },
+    );
+
+    return updatedService;
+  }
+
+  /**
    * Bulk update trạng thái services
    */
   async bulkUpdateStatus(

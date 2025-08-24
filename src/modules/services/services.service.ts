@@ -371,6 +371,22 @@ export class ServicesService {
   }
 
   /**
+   * Toggle trạng thái allow_quantity của service
+   */
+  async toggleAllowQuantity(id: string, user?: JwtPayload): Promise<Service> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID không hợp lệ');
+    }
+
+    const service = await this.servicesRepo.toggleAllowQuantity(id, user?._id);
+    if (!service) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID: ${id}`);
+    }
+
+    return service;
+  }
+
+  /**
    * Lấy thống kê services theo unit
    */
   async getStatsByUnit(): Promise<

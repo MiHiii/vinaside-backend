@@ -790,4 +790,34 @@ export class BookingController {
       req,
     );
   }
+
+  @Post(':id/payment/staff')
+  @RequirePermission('booking.update')
+  @ApiOperation({
+    summary: 'Tạo payment URL cho staff/admin (hỗ trợ VNPay & MoMo)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Payment URL được tạo thành công',
+    type: PaymentResponseDto,
+  })
+  @ResponseMessage('Tạo payment URL thành công')
+  async createPaymentForStaff(
+    @Param('id') bookingId: string,
+    @Body() createPaymentDto: CreatePaymentDto,
+    @Request() req: RequestWithUser,
+  ): Promise<PaymentResponseDto> {
+    // Yêu cầu propertyId trong request body
+    if (!createPaymentDto.propertyId) {
+      throw new BadRequestException('propertyId là bắt buộc cho staff payment');
+    }
+
+    // Sử dụng logic đã có sẵn
+    return await this.bookingService.createStaffRemainingPayment(
+      createPaymentDto.propertyId,
+      bookingId,
+      createPaymentDto,
+      req.user as any as JwtPayload,
+    );
+  }
 }

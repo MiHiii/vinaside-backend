@@ -1,0 +1,41 @@
+### Test Guest Users Endpoint
+
+### 1. Test endpoint chính - Lấy danh sách guest users
+GET {{baseUrl}}/users/guests?page=1&limit=10&keyword=test
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### 2. Test endpoint với search keyword
+GET {{baseUrl}}/users/guests?keyword=guest&page=1&limit=5
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### 3. Test endpoint với pagination
+GET {{baseUrl}}/users/guests?page=2&limit=5
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### 4. Test endpoint với sorting
+GET {{baseUrl}}/users/guests?sortBy=createdAt&sortOrder=desc&page=1&limit=10
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### 5. Test endpoint với filter is_verified
+GET {{baseUrl}}/users/guests?is_verified=true&page=1&limit=10
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### 6. Test endpoint với filter date range
+GET {{baseUrl}}/users/guests?createdFrom=2024-01-01&createdTo=2024-12-31&page=1&limit=10
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+### Expected Results:
+# - Endpoint trả về danh sách guest users
+# - Chỉ có users với role = 'guest'
+# - Hỗ trợ search, pagination, sorting, filtering
+# - Permission: booking.create
+
+### Variables cho test
+# @baseUrl = http://localhost:3000/api/v1
+# @authToken = your_jwt_token_with_booking.create_permission
