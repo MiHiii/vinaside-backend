@@ -80,6 +80,25 @@ export class UsersController {
   }
 
   @UseGuards(PermissionGuard)
+  @RequirePermission('booking.create')
+  @Get('guests')
+  @ApiOperation({ summary: 'Lấy danh sách guest users cho việc tạo booking' })
+  @ApiResponse({ status: 200, description: 'Danh sách guest users' })
+  @ResponseMessage('Lấy danh sách guest users thành công.')
+  findAllGuests(
+    @Query() query: Omit<QueryUserDto, 'role'>,
+    @Request() req: RequestWithUser,
+  ): Promise<any> {
+    // Force role to be 'guest'
+    const guestQuery: QueryUserDto = {
+      ...query,
+      role: 'guest',
+    };
+
+    return this.usersService.findAllWithFilters(guestQuery, req.user);
+  }
+
+  @UseGuards(PermissionGuard)
   @RequirePermission('user.view')
   @Get('count/total')
   @ApiOperation({ summary: 'Đếm tổng số người dùng' })
