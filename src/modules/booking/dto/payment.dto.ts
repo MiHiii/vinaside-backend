@@ -21,6 +21,15 @@ export class CreatePaymentDto {
   bookingId?: string;
 
   @ApiProperty({
+    description: 'ID của property (cần thiết cho staff payment)',
+    example: '507f1f77bcf86cd799439011',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  propertyId?: string;
+
+  @ApiProperty({
     description: 'Phương thức thanh toán',
     enum: PaymentMethod,
     example: PaymentMethod.VNPAY,
