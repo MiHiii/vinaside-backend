@@ -1094,8 +1094,8 @@ export class BookingService {
     const { page = 1, limit = 10 } = queryDto;
 
     return {
-      bookings: result.data.map((booking) =>
-        this.transformBookingToResponse(booking),
+      bookings: await Promise.all(
+        result.data.map((booking) => this.transformBookingToResponse(booking)),
       ),
       meta: {
         total: result.total,
@@ -1116,8 +1116,8 @@ export class BookingService {
     const { page = 1, limit = 10 } = queryDto;
 
     return {
-      bookings: result.data.map((booking) =>
-        this.transformBookingToResponse(booking),
+      bookings: await Promise.all(
+        result.data.map((booking) => this.transformBookingToResponse(booking)),
       ),
       meta: {
         total: result.total,
@@ -1326,8 +1326,8 @@ export class BookingService {
     });
 
     return {
-      bookings: result.data.map((booking) =>
-        this.transformBookingToResponse(booking),
+      bookings: await Promise.all(
+        result.data.map((booking) => this.transformBookingToResponse(booking)),
       ),
       meta: {
         total: result.total,
@@ -1351,13 +1351,17 @@ export class BookingService {
       throw new ForbiddenException('Chỉ guest và admin mới có quyền này');
     }
 
-    return this.findBookingsByGuest(user._id, queryDto).then((result) => {
+    return this.findBookingsByGuest(user._id, queryDto).then(async (result) => {
       const page = queryDto.page || 1;
       const limit = queryDto.limit || 10;
+
+      // Transform bookings asynchronously
+      const transformedBookings = await Promise.all(
+        result.data.map((booking) => this.transformBookingToResponse(booking)),
+      );
+
       return {
-        bookings: result.data.map((booking) =>
-          this.transformBookingToResponse(booking),
-        ),
+        bookings: transformedBookings,
         meta: {
           total: result.total,
           page,

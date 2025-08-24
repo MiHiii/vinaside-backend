@@ -172,7 +172,7 @@ export class MessagesController {
   @ApiOperation({
     summary: 'Lấy tin nhắn trong cuộc trò chuyện với user cụ thể',
     description:
-      'Trả về danh sách tin nhắn bao gồm thông tin reply và reactions với emoji.',
+      'Trả về danh sách tin nhắn bao gồm thông tin reply và reactions với emoji. API này hỗ trợ realtime updates qua WebSocket và tự động sắp xếp tin nhắn theo thời gian (tin nhắn mới nhất ở cuối).',
   })
   @ApiResponse({
     status: 200,
@@ -190,9 +190,18 @@ export class MessagesController {
     }
 
     try {
+      // For realtime conversation, we don't use pagination by default
+      // to ensure all messages are available for realtime updates
       const queryParams: { limit?: number; page?: number } = {};
-      if (limit && !isNaN(Number(limit))) queryParams.limit = Number(limit);
-      if (page && !isNaN(Number(page))) queryParams.page = Number(page);
+
+      // Only apply pagination if explicitly requested
+      if (limit && !isNaN(Number(limit)) && Number(limit) > 0) {
+        queryParams.limit = Number(limit);
+        if (page && !isNaN(Number(page)) && Number(page) > 0) {
+          queryParams.page = Number(page);
+        }
+      }
+      // If no limit specified, get all messages for realtime support
 
       const result = await this.messagesService.getConversationMessages(
         req.user,
@@ -200,6 +209,19 @@ export class MessagesController {
         queryParams,
         ui_for,
       );
+
+      // Emit realtime conversation update to all participants
+      try {
+        await this.messagesService.emitConversationUpdateToParticipants(
+          conversationId,
+          req.user._id,
+          result,
+        );
+      } catch (emitError) {
+        console.error('Failed to emit conversation update:', emitError);
+        // Don't fail the request if WebSocket emission fails
+      }
+
       return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (err: unknown) {
       console.error('Error in getConversation controller:', err);
@@ -230,6 +252,14 @@ export class MessagesController {
       console.error('Error in getConversationDeprecated controller:', err);
       return [];
     }
+  }
+
+  @Get('websocket-status')
+  @Roles('guest', 'staff', 'admin')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái WebSocket connection' })
+  @ApiResponse({ status: 200, description: 'Trạng thái WebSocket' })
+  getWebSocketStatus() {
+    return this.messagesService.getWebSocketStatus();
   }
 
   @Get('unread-count')
