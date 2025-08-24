@@ -89,7 +89,6 @@ export class UsersController {
     @Query() query: Omit<QueryUserDto, 'role'>,
     @Request() req: RequestWithUser,
   ): Promise<any> {
-    // Force role to be 'guest'
     const guestQuery: QueryUserDto = {
       ...query,
       role: 'guest',
