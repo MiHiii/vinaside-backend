@@ -10,7 +10,7 @@ import {
   PaymentProvider,
 } from '../../transactions/schemas/transaction.schema';
 import { BookingRepo } from '../booking.repo';
-import { BookingStatus } from '../schemas/booking.schema';
+import { BookingStatus, PaymentStatus } from '../schemas/booking.schema';
 
 @Injectable()
 export class CashService extends PaymentServiceInterface {
@@ -60,20 +60,37 @@ export class CashService extends PaymentServiceInterface {
       throw new NotFoundException('Booking not found');
     }
 
-    // Cộng dồn số tiền đã trả
-    const newDepositPaidAmount = (booking.deposit_paid_amount || 0) + amount;
+    // Xử lý logic thanh toán dựa trên trạng thái hiện tại
+    let newDepositPaidAmount: number;
+    let paymentStatus: PaymentStatus;
 
-    // Xác định payment status dựa trên số tiền đã trả
-    let paymentStatus = 'partially_paid';
-    if (newDepositPaidAmount >= booking.final_amount) {
-      paymentStatus = 'paid';
+    if (booking.payment_status === PaymentStatus.UNPAID) {
+      // Nếu booking chưa thanh toán gì, set trực tiếp số tiền
+      newDepositPaidAmount = amount;
+      paymentStatus =
+        amount >= booking.final_amount
+          ? PaymentStatus.PAID
+          : PaymentStatus.PARTIALLY_PAID;
+      this.logger.log(
+        `Setting payment amount directly for unpaid booking ${bookingId}: ${amount}`,
+      );
+    } else {
+      // Nếu đã có thanh toán trước đó, cộng dồn
+      newDepositPaidAmount = (booking.deposit_paid_amount || 0) + amount;
+      paymentStatus =
+        newDepositPaidAmount >= booking.final_amount
+          ? PaymentStatus.PAID
+          : PaymentStatus.PARTIALLY_PAID;
+      this.logger.log(
+        `Adding to existing payment for booking ${bookingId}: ${booking.deposit_paid_amount || 0} + ${amount} = ${newDepositPaidAmount}`,
+      );
     }
 
     // Cập nhật trạng thái booking
     await this.bookingRepo.updateById(
       bookingId,
       {
-        payment_method: 'cash',
+        payment_method: PaymentMethod.CASH,
         payment_status: paymentStatus,
         deposit_paid_amount: newDepositPaidAmount,
         paid_at: new Date(),

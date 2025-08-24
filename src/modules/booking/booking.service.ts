@@ -3358,10 +3358,6 @@ export class BookingService {
       booking.deposit_paid_amount || booking.deposit_amount || 0;
     const outstandingAmount = booking.final_amount - depositPaidAmount;
 
-    if (outstandingAmount <= 0) {
-      throw new BadRequestException('Không còn số tiền nào cần thanh toán');
-    }
-
     // Kiểm tra trạng thái thanh toán
     if (
       booking.payment_status !== PaymentStatus.UNPAID &&
@@ -3373,8 +3369,35 @@ export class BookingService {
       );
     }
 
-    // Sử dụng amount từ request nếu có, nếu không thì sử dụng outstandingAmount
-    const paymentAmount = createPaymentDto.amount || outstandingAmount;
+    // Xử lý logic thanh toán dựa trên trạng thái hiện tại
+    let paymentAmount: number;
+
+    if (booking.payment_status === PaymentStatus.UNPAID) {
+      // Nếu booking chưa thanh toán gì, cho phép thanh toán toàn bộ hoặc một phần
+      if (createPaymentDto.amount) {
+        // Admin chỉ định số tiền cụ thể
+        paymentAmount = createPaymentDto.amount;
+        if (paymentAmount > booking.final_amount) {
+          throw new BadRequestException(
+            'Số tiền thanh toán không được vượt quá tổng tiền booking',
+          );
+        }
+      } else {
+        // Mặc định thanh toán toàn bộ
+        paymentAmount = booking.final_amount;
+      }
+    } else {
+      // Nếu đã thanh toán một phần, chỉ cho phép thanh toán phần còn lại
+      if (outstandingAmount <= 0) {
+        throw new BadRequestException('Không còn số tiền nào cần thanh toán');
+      }
+      paymentAmount = createPaymentDto.amount || outstandingAmount;
+      if (paymentAmount > outstandingAmount) {
+        throw new BadRequestException(
+          'Số tiền thanh toán không được vượt quá số tiền còn lại',
+        );
+      }
+    }
 
     const paymentService = this.paymentFactory.getPaymentService(
       createPaymentDto.paymentMethod,
@@ -3717,13 +3740,43 @@ export class BookingService {
         paymentStatus = createBookingDto.payment_status || PaymentStatus.UNPAID;
       }
 
+      // Xử lý guestId - tạo user mới nếu không có
+      let guestId: Types.ObjectId | null = null;
+      if (createBookingDto.guestId) {
+        // Sử dụng guestId có sẵn
+        guestId = new Types.ObjectId(createBookingDto.guestId);
+      } else {
+        // Tạo user mới từ thông tin được cung cấp
+        try {
+          const newUser = await this.createUserForBooking({
+            name: createBookingDto.guest_name,
+            email: createBookingDto.guest_email,
+            phone: createBookingDto.guest_phone || '',
+            role: 'guest',
+          });
+          guestId = new Types.ObjectId(newUser._id);
+          this.logger.log(`Created new user for booking: ${newUser._id}`);
+        } catch {
+          // Nếu email đã tồn tại, tìm user theo email
+          const existingUser = await this.findUserByEmail(
+            createBookingDto.guest_email,
+          );
+          if (existingUser) {
+            guestId = new Types.ObjectId(existingUser._id);
+            this.logger.log(`Using existing user: ${existingUser._id}`);
+          } else {
+            throw new BadRequestException(
+              'Không thể tạo user mới hoặc tìm user theo email',
+            );
+          }
+        }
+      }
+
       // Tạo booking data
       const bookingData = {
         propertyId: new Types.ObjectId(createBookingDto.propertyId),
         listingId: new Types.ObjectId(createBookingDto.listingId),
-        guestId: createBookingDto.guestId
-          ? new Types.ObjectId(createBookingDto.guestId)
-          : null,
+        guestId,
         checkInDate,
         check_out_date: checkOutDate,
         guests: createBookingDto.guests,
@@ -3798,6 +3851,56 @@ export class BookingService {
     }
 
     return weekendDays;
+  }
+
+  // Helper method để tạo user mới cho booking
+  private async createUserForBooking(userData: {
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+  }): Promise<any> {
+    const bcrypt = await import('bcryptjs');
+
+    // Lấy User model từ MongoDB connection
+    const db = this.bookingRepo.getModel().db;
+    const usersCollection = db.collection('users');
+
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await usersCollection.findOne({
+      email: userData.email,
+    });
+    if (existingUser) {
+      throw new Error('Email đã được sử dụng');
+    }
+
+    // Tạo password tạm thời
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    const newUserData = {
+      ...userData,
+      password: hashedPassword,
+      is_verified: false,
+      created_by_staff: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await usersCollection.insertOne(newUserData);
+    return { _id: result.insertedId, ...newUserData };
+  }
+
+  // Helper method để tìm user theo email
+  private async findUserByEmail(email: string): Promise<any> {
+    try {
+      const db = this.bookingRepo.getModel().db;
+      const usersCollection = db.collection('users');
+      return await usersCollection.findOne({ email });
+    } catch (error) {
+      this.logger.error('Error finding user by email:', error);
+      return null;
+    }
   }
 
   // =================== PAYMENT STATUS METHODS ===================

@@ -257,6 +257,37 @@ export class UsersService {
   }
 
   /**
+   * Tạo user mới cho staff booking (không cần password vì chỉ dành cho booking)
+   */
+  async createUserForStaffBooking(userData: {
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+  }): Promise<UserDocument> {
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await this.findByEmail(userData.email);
+    if (existingUser) {
+      throw new ConflictException(
+        'Email đã được sử dụng. Vui lòng chọn user có sẵn.',
+      );
+    }
+
+    // Tạo password tạm thời (user có thể reset sau)
+    const tempPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    const newUserData = {
+      ...userData,
+      password: hashedPassword,
+      is_verified: false, // User cần verify email sau
+      created_by_staff: true, // Đánh dấu user được tạo bởi staff
+    };
+
+    return this.userRepo.create(newUserData);
+  }
+
+  /**
    * Kiểm tra mật khẩu
    */
   async isValidPassword(password: string, hash: string): Promise<boolean> {
