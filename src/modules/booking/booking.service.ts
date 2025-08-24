@@ -879,7 +879,7 @@ export class BookingService {
 
     const query: FilterQuery<Booking> & {
       checkInDate?: { $gte?: Date; $lte?: Date };
-    } = { 
+    } = {
       isDeleted: filters.includeDeleted ?? false,
       // Loại trừ booking pending và unpaid
       $nor: [{ status: 'pending', payment_status: 'unpaid' }],
