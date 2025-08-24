@@ -1,0 +1,33 @@
+### Test Service Toggle Allow Quantity Endpoint
+
+### 1. Toggle allow_quantity từ false sang true
+PUT {{baseUrl}}/services/{{serviceId}}/toggle-allow-quantity
+Authorization: Bearer {{authToken}}
+
+### 2. Toggle allow_quantity từ true sang false
+PUT {{baseUrl}}/services/{{serviceId}}/toggle-allow-quantity
+Authorization: Bearer {{authToken}}
+
+### 3. Test validation - invalid service ID (should fail)
+PUT {{baseUrl}}/services/invalid-service-id/toggle-allow-quantity
+Authorization: Bearer {{authToken}}
+
+### 4. Test validation - service không tồn tại (should fail)
+PUT {{baseUrl}}/services/507f1f77bcf86cd799439011/toggle-allow-quantity
+Authorization: Bearer {{authToken}}
+
+### 5. Kiểm tra service sau khi toggle
+GET {{baseUrl}}/services/{{serviceId}}
+Authorization: Bearer {{authToken}}
+
+### Expected Results:
+# - Toggle allow_quantity từ false sang true thành công
+# - Toggle allow_quantity từ true sang false thành công
+# - Response trả về service data với allow_quantity đã được toggle
+# - Invalid service ID trả về lỗi 400
+# - Service không tồn tại trả về lỗi 404
+
+### Variables cho test
+# @baseUrl = http://localhost:3000
+# @authToken = your_jwt_token_here
+# @serviceId = service_id_to_test
