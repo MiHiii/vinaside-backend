@@ -20,6 +20,53 @@ import {
 } from './utils/message.util';
 import { Types } from 'mongoose';
 
+// ============= TYPE DEFINITIONS =============
+
+interface ConversationUpdateData {
+  conversationId: string;
+  lastMessage: {
+    _id: string;
+    content: string;
+    sender_id: string;
+    sender_role: 'guest' | 'staff' | 'admin';
+    sent_at: Date | string;
+    is_read: 'sent' | 'delivered' | 'read';
+  } | null;
+  lastMessageAt: Date | string | null;
+  unreadCount: number;
+}
+
+interface ConversationUpdateV2Data {
+  conversationId: string;
+  lastMessage: {
+    _id: string;
+    content: string;
+    sender_id: string;
+    sender_role: 'guest' | 'staff' | 'admin';
+    sent_at: Date | string;
+    is_read: 'sent' | 'delivered' | 'read';
+  } | null;
+  lastMessageAt: Date | string | null;
+  unreadCount: number;
+}
+
+interface ConversationListUpdateData {
+  conversations: unknown[];
+  updatedBy: string;
+  ui_for: string;
+  timestamp: string;
+  type: string;
+}
+
+interface MessageData {
+  _id?: string;
+  content?: string;
+  sender_id?: string;
+  sent_at?: Date | string;
+  is_read?: string;
+  [key: string]: unknown;
+}
+
 @WebSocketGateway({
   cors: {
     origin: [
@@ -121,7 +168,7 @@ export class MessagesGateway
     @MessageBody() data: { userId: string; role?: string },
     @ConnectedSocket() client: Socket,
   ): Promise<{ success: boolean; message: string }> {
-    const { userId, role } = data;
+    const { userId } = data;
     this.connectedUsers.set(userId, {
       userId,
       socketId: client.id,
@@ -400,11 +447,11 @@ export class MessagesGateway
     }
   }
 
-  emitMessageRecalledToAdminBroadcast(message: any): void {
+  emitMessageRecalledToAdminBroadcast(message: MessageData): void {
     console.log(
       '🔍 [Admin Broadcast] Emitting message recall to admin_broadcast room:',
       {
-        messageId: message._id,
+        messageId: (message as any)._id as string,
       },
     );
 
@@ -414,12 +461,14 @@ export class MessagesGateway
     });
   }
 
-  emitConversationListUpdateToAdminBroadcast(data: any): void {
+  emitConversationListUpdateToAdminBroadcast(
+    data: ConversationListUpdateData,
+  ): void {
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation list update to admin_broadcast room:',
       {
-        ui_for: data.ui_for,
-        conversationCount: data.conversations?.length || 0,
+        ui_for: (data as any).ui_for as string,
+        conversationCount: ((data as any).conversations?.length as number) || 0,
       },
     );
 
@@ -429,15 +478,15 @@ export class MessagesGateway
     });
   }
 
-  emitConversationListUpdateToGuest(data: any): void {
+  emitConversationListUpdateToGuest(data: ConversationListUpdateData): void {
     console.log('🔍 [Guest] Emitting conversation list update to guest:', {
-      ui_for: data.ui_for,
-      conversationCount: data.conversations?.length || 0,
-      userId: data.updatedBy,
+      ui_for: (data as any).ui_for as string,
+      conversationCount: ((data as any).conversations?.length as number) || 0,
+      userId: (data as any).updatedBy as string,
     });
 
-    const userRoom = buildUserRoom(data.updatedBy);
-    const isUserOnline = this.isUserOnline(data.updatedBy);
+    const userRoom = buildUserRoom((data as any).updatedBy as string);
+    const isUserOnline = this.isUserOnline((data as any).updatedBy as string);
 
     console.log(`🔍 [Guest] User room: ${userRoom}, Online: ${isUserOnline}`);
 
@@ -448,7 +497,7 @@ export class MessagesGateway
 
     // Also emit to all connected clients for debugging
     this.server.emit('debug_conversation_update', {
-      targetUser: data.updatedBy,
+      targetUser: (data as any).updatedBy as string,
       userRoom,
       isOnline: isUserOnline,
       timestamp: new Date().toISOString(),
@@ -456,7 +505,7 @@ export class MessagesGateway
   }
 
   emitNewMessageToAdminBroadcast(
-    message: any,
+    message: MessageData,
     conversationId: string,
     propertyId: string,
     guestId: string,
@@ -464,7 +513,7 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting new message to admin_broadcast room:',
       {
-        messageId: message._id,
+        messageId: (message as any)._id as string,
         conversationId,
         propertyId,
         guestId,
@@ -480,12 +529,12 @@ export class MessagesGateway
     });
   }
 
-  emitConversationUpdateToAdminBroadcast(data: any): void {
+  emitConversationUpdateToAdminBroadcast(data: ConversationUpdateData): void {
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation update to admin_broadcast room:',
       {
-        conversationId: data.conversationId,
-        messageCount: data.messageCount,
+        conversationId: (data as any).conversationId as string,
+        messageCount: (data as any).messageCount as number,
       },
     );
 
@@ -495,13 +544,15 @@ export class MessagesGateway
     });
   }
 
-  emitConversationUpdateV2ToAdminBroadcast(data: any): void {
+  emitConversationUpdateV2ToAdminBroadcast(
+    data: ConversationUpdateV2Data,
+  ): void {
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation update V2 to admin_broadcast room:',
       {
-        conversationId: data.conversationId,
-        lastMessageAt: data.lastMessageAt,
-        unreadCount: data.unreadCount,
+        conversationId: (data as any).conversationId as string,
+        lastMessageAt: (data as any).lastMessageAt as Date | string | null,
+        unreadCount: (data as any).unreadCount as number,
       },
     );
 
@@ -511,11 +562,11 @@ export class MessagesGateway
     });
   }
 
-  emitReactionUpdateToAdminBroadcast(message: any): void {
+  emitReactionUpdateToAdminBroadcast(message: MessageData): void {
     console.log(
       '🔍 [Admin Broadcast] Emitting reaction update to admin_broadcast room:',
       {
-        messageId: message._id,
+        messageId: (message as any)._id as string,
       },
     );
 

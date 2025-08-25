@@ -333,7 +333,7 @@ export class MessagesService {
 
       // Emit to admin broadcast room for admin users
       try {
-        await this.messagesGateway.emitNewMessageToAdminBroadcast(
+        this.messagesGateway.emitNewMessageToAdminBroadcast(
           formatted,
           this.getIdString(conversation._id),
           this.getIdString(propertyId),
@@ -449,14 +449,11 @@ export class MessagesService {
 
         // Also emit new message event for immediate UI update
         try {
-          await this.messagesGateway.emitNewMessage(
-            formatted,
-            guestId.toString(),
-          );
+          this.messagesGateway.emitNewMessage(formatted, guestId.toString());
           console.log(
             `🔍 [Immediate] Emitted new message to guest ${guestId.toString()}`,
           );
-        } catch (emitError) {
+        } catch {
           console.warn(
             'Failed to emit new message, but continuing with other updates',
           );
@@ -1438,7 +1435,8 @@ export class MessagesService {
             lastMessageDoc.sender_id &&
             typeof lastMessageDoc.sender_id === 'object'
           ) {
-            const senderRole = (lastMessageDoc.sender_id as any).role;
+            const senderRole = (lastMessageDoc.sender_id as { role?: string })
+              .role;
             sender_role = senderRole === 'admin' ? 'admin' : 'staff';
           } else {
             // Fallback to staff if we can't determine the role
@@ -1452,16 +1450,16 @@ export class MessagesService {
       const guestName = guest?.name ?? 'Guest';
 
       // For admin view, get all participants (guest + all assigned staff)
-      let allParticipants: any[] = [];
+      const allParticipants: any[] = [];
       if (role === 'admin') {
         // Get guest info
         if (guest) {
           allParticipants.push({
             _id: guest._id.toString(),
             name: guest.name || 'Guest',
-            username: (guest as any).username || '',
+            username: (guest as { username?: string }).username || '',
             avatar_url: guest.avatar_url || null,
-            role: (guest as any).role || 'guest',
+            role: (guest as { role?: string }).role || 'guest',
             type: 'guest',
           });
         }
@@ -1474,7 +1472,9 @@ export class MessagesService {
           );
 
         for (const staffAssignment of assignedStaff) {
-          const staffId = this.getIdString((staffAssignment as any).staffId);
+          const staffId = this.getIdString(
+            (staffAssignment as { staffId: Types.ObjectId | string }).staffId,
+          );
           const staffInfo = await this.messageModel.db
             .collection<UserLeanBasic>('users')
             .findOne(
@@ -1494,9 +1494,9 @@ export class MessagesService {
             allParticipants.push({
               _id: staffInfo._id.toString(),
               name: staffInfo.name || 'Staff',
-              username: (staffInfo as any).username || '',
+              username: (staffInfo as { username?: string }).username || '',
               avatar_url: staffInfo.avatar_url || null,
-              role: (staffInfo as any).role || 'staff',
+              role: (staffInfo as { role?: string }).role || 'staff',
               type: 'staff',
             });
           }
@@ -1561,14 +1561,27 @@ export class MessagesService {
                 typeof lastMessageDoc.sender_id === 'object'
                   ? {
                       _id: this.getIdString(
-                        (lastMessageDoc.sender_id as any)._id,
+                        (
+                          lastMessageDoc.sender_id as {
+                            _id?: Types.ObjectId | string;
+                          }
+                        )._id,
                       ),
-                      name: (lastMessageDoc.sender_id as any).name || '',
+                      name:
+                        (lastMessageDoc.sender_id as { name?: string }).name ||
+                        '',
                       username:
-                        (lastMessageDoc.sender_id as any).username || '',
+                        (lastMessageDoc.sender_id as { username?: string })
+                          .username || '',
                       avatar_url:
-                        (lastMessageDoc.sender_id as any).avatar_url || null,
-                      role: (lastMessageDoc.sender_id as any).role || 'guest',
+                        (
+                          lastMessageDoc.sender_id as {
+                            avatar_url?: string | null;
+                          }
+                        ).avatar_url || null,
+                      role:
+                        (lastMessageDoc.sender_id as { role?: string }).role ||
+                        'guest',
                     }
                   : null,
             }
@@ -1581,8 +1594,8 @@ export class MessagesService {
 
       // Add participants array for admin view
       if (role === 'admin') {
-        result.participants = allParticipants;
-        result.participant_count = allParticipants.length;
+        (result as any).participants = allParticipants;
+        (result as any).participant_count = allParticipants.length;
       }
 
       results.push(result);
@@ -2213,7 +2226,9 @@ export class MessagesService {
 
       // Emit reaction update to admin broadcast room for admin users
       try {
-        this.messagesGateway.emitReactionUpdateToAdminBroadcast(updatedMessage);
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
         console.log('🔍 Emitted reaction update to admin broadcast room');
       } catch (adminEmitError) {
         console.error(
@@ -2315,7 +2330,9 @@ export class MessagesService {
 
       // Emit reaction update to admin broadcast room for admin users
       try {
-        this.messagesGateway.emitReactionUpdateToAdminBroadcast(updatedMessage);
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
         console.log('🔍 Emitted reaction removal to admin broadcast room');
       } catch (adminEmitError) {
         console.error(
@@ -2634,7 +2651,9 @@ export class MessagesService {
 
       // Emit reaction update to admin broadcast room for admin users
       try {
-        this.messagesGateway.emitReactionUpdateToAdminBroadcast(updatedMessage);
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
         console.log('🔍 Emitted toggle reaction to admin broadcast room');
       } catch (adminEmitError) {
         console.error(
@@ -2715,7 +2734,7 @@ export class MessagesService {
       // Emit message recall to admin broadcast room for admin users
       try {
         this.messagesGateway.emitMessageRecalledToAdminBroadcast(
-          updatedMessage,
+          updatedMessage as any,
         );
         console.log('🔍 Emitted message recall to admin broadcast room');
       } catch (adminEmitError) {
@@ -2927,21 +2946,25 @@ export class MessagesService {
         conversations: {
           total: totalConversations,
           sample: sampleConversations.map((c) => ({
-            _id: c._id.toString(),
-            property_id: c.property_id.toString(),
-            guest_id: c.guest_id.toString(),
+            _id: this.getIdString(c._id),
+            property_id: this.getIdString(c.property_id),
+            guest_id: this.getIdString(c.guest_id),
             last_message_at: c.last_message_at,
-            staff_ids: c.staff_ids?.map((id) => id.toString()) || [],
+            staff_ids: c.staff_ids?.map((id) => this.getIdString(id)) || [],
           })),
         },
         messages: {
           total: totalMessages,
           sample: sampleMessages.map((m) => ({
-            _id: m._id.toString(),
-            conversation_id: m.conversation_id?.toString(),
-            property_id: m.property_id?.toString(),
-            guest_id: m.guest_id?.toString(),
-            sender_id: m.sender_id?.toString(),
+            _id: this.getIdString(m._id),
+            conversation_id: m.conversation_id
+              ? this.getIdString(m.conversation_id)
+              : undefined,
+            property_id: m.property_id
+              ? this.getIdString(m.property_id)
+              : undefined,
+            guest_id: m.guest_id ? this.getIdString(m.guest_id) : undefined,
+            sender_id: m.sender_id ? this.getIdString(m.sender_id) : undefined,
             content: m.content,
             sent_at: m.sent_at,
           })),
@@ -2986,11 +3009,11 @@ export class MessagesService {
   /**
    * Emit conversation list update to admin broadcast room
    */
-  async emitConversationListUpdateToAdminBroadcast(
+  emitConversationListUpdateToAdminBroadcast(
     conversations: any[],
     userId: string,
     ui_for: string,
-  ): Promise<void> {
+  ): void {
     try {
       this.messagesGateway.emitConversationListUpdateToAdminBroadcast({
         conversations,
@@ -3013,11 +3036,11 @@ export class MessagesService {
   /**
    * Emit conversation list update to guest
    */
-  async emitConversationListUpdateToGuest(
+  emitConversationListUpdateToGuest(
     conversations: any[],
     userId: string,
     ui_for: string,
-  ): Promise<void> {
+  ): void {
     try {
       this.messagesGateway.emitConversationListUpdateToGuest({
         conversations,
@@ -3050,7 +3073,12 @@ export class MessagesService {
         .lean();
       if (!conversation) return;
 
-      const resolveReadAt = this.resolveReadAt(conversation.read_at as any);
+      const resolveReadAt = this.resolveReadAt(
+        conversation.read_at as
+          | Record<string, Date>
+          | Map<string, Date>
+          | undefined,
+      );
 
       for (const participantId of participants) {
         if (participantId === senderId) continue; // Skip sender
@@ -3066,20 +3094,20 @@ export class MessagesService {
         this.messagesGateway.emitConversationUpdateV2(participantId, {
           conversationId,
           lastMessage: {
-            _id: message._id,
-            content: message.content,
-            sender_id: message.sender_id,
-            sender_role: message.sender_role || 'guest',
-            sent_at: message.sent_at,
-            is_read: message.is_read,
+            _id: (message as any)._id,
+            content: (message as any).content,
+            sender_id: (message as any).sender_id,
+            sender_role: (message as any).sender_role || 'guest',
+            sent_at: (message as any).sent_at,
+            is_read: (message as any).is_read,
           },
-          lastMessageAt: message.sent_at,
+          lastMessageAt: (message as any).sent_at,
           unreadCount,
         });
 
         // Emit new message event for immediate UI update
         if (isOnline) {
-          this.messagesGateway.emitNewMessage(message, participantId);
+          this.messagesGateway.emitNewMessage(message as any, participantId);
         }
 
         // Emit conversation list update

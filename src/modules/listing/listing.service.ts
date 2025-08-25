@@ -106,9 +106,14 @@ export class ListingService {
       throw new NotFoundException(`Listing with ID ${id} not found.`);
     }
 
-    // Chỉ cho phép khách hàng xem listing có trạng thái active
-    if (listing.status !== ListingStatus.ACTIVE) {
-      throw new NotFoundException(`Listing with ID ${id} not found.`);
+    // Cho phép xem listing có trạng thái active hoặc inactive (sửa chữa - bảo trì)
+    if (
+      listing.status !== ListingStatus.ACTIVE &&
+      listing.status !== ListingStatus.INACTIVE
+    ) {
+      throw new NotFoundException(
+        `Listing with ID ${id} is not available for viewing. Current status: ${listing.status}`,
+      );
     }
 
     return listing;
@@ -179,14 +184,14 @@ export class ListingService {
       isDeleted: filters.isDeleted ?? false,
     };
 
-    // Chỉ cho phép khách hàng xem listing có trạng thái active
+    // Cho phép khách hàng xem listing có trạng thái active hoặc inactive (sửa chữa - bảo trì)
     // Staff có thể xem tất cả trạng thái thông qua staff filter
     if (
       !request ||
       !request.user ||
       (request.user.role !== 'admin' && request.user.role !== 'staff')
     ) {
-      query.status = ListingStatus.ACTIVE;
+      query.status = { $in: [ListingStatus.ACTIVE, ListingStatus.INACTIVE] };
     }
 
     // Apply staff filtering using utility function
@@ -827,6 +832,11 @@ export class ListingService {
       listingId: listingIdObj,
       isDeleted: false,
       created_at: { $gte: startDate, $lte: endDate },
+      $nor: [
+        { status: 'pending' },
+        { payment_status: 'failed' },
+        { payment_status: 'unpaid' },
+      ],
     };
 
     // 1. Total bookings and revenue (consistent with dashboard logic - no status filter)
