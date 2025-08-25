@@ -3603,7 +3603,8 @@ export class BookingService {
   async createStaffBooking(
     createBookingDto: StaffCreateBookingDto,
     user: JwtPayload,
-  ): Promise<BookingResponseDto> {
+  ): Promise<any> {
+    // StaffBookingResponseDto (will be imported later)
     try {
       // Kiểm tra quyền staff
       if (user.role !== 'admin' && user.role !== 'staff') {
@@ -3863,7 +3864,128 @@ export class BookingService {
         finalAmount,
       );
 
-      return this.transformBookingToResponse(booking);
+      // Transform booking để có response chuẩn
+      const bookingResponse = await this.transformBookingToResponse(booking);
+
+      // Kiểm tra có cần tạo payment URL không
+      if (
+        createBookingDto.create_payment_url &&
+        createBookingDto.payment_method_choice
+      ) {
+        try {
+          console.log('=== PAYMENT URL CREATION DEBUG ===');
+          console.log(
+            'Payment method choice:',
+            createBookingDto.payment_method_choice,
+          );
+
+          // Tạo payment URL
+          const paymentService = this.paymentFactory.getPaymentService(
+            createBookingDto.payment_method_choice,
+          );
+          console.log(
+            'Payment service obtained:',
+            paymentService.constructor.name,
+          );
+
+          // Tính số tiền thanh toán
+          let amountToPay = createBookingDto.payment_amount;
+          if (!amountToPay) {
+            const bookingAmount = bookingResponse.final_amount || 0;
+            console.log('=== Booking Service Amount Calculation ===');
+            console.log('Payment Type:', createBookingDto.payment_type);
+            console.log('Payment Status:', createBookingDto.payment_status);
+            console.log('Booking Amount:', bookingAmount);
+
+            // FIXED: Tính amount dựa trên payment_status nếu không có payment_type
+            const paymentType =
+              createBookingDto.payment_type ||
+              (createBookingDto.payment_status === 'partially_paid'
+                ? 'deposit'
+                : 'full');
+
+            console.log('Final Payment Type used:', paymentType);
+
+            if (paymentType === 'deposit') {
+              amountToPay = Math.round(bookingAmount * 0.5);
+              console.log('Calculated Deposit Amount (50%):', amountToPay);
+            } else {
+              amountToPay = bookingAmount;
+              console.log('Calculated Full Amount:', amountToPay);
+            }
+          }
+          console.log('Final Amount to pay:', amountToPay);
+
+          // Tạo payment request
+          const finalPaymentType =
+            createBookingDto.payment_type ||
+            (createBookingDto.payment_status === 'partially_paid'
+              ? 'deposit'
+              : 'full');
+
+          const paymentRequest = {
+            bookingId:
+              (booking._id as any)?.toString() ||
+              booking._id?.toString() ||
+              'unknown', // Fixed: ensure booking._id is a string
+            paymentMethod: createBookingDto.payment_method_choice,
+            amount: amountToPay,
+            paymentType: finalPaymentType,
+            description:
+              createBookingDto.payment_description ||
+              `Thanh toán booking ${booking._id?.toString() || 'unknown'}`,
+            returnUrl:
+              createBookingDto.payment_return_url ||
+              'http://localhost:5173/admin/bookings/payment-success',
+            notifyUrl: createBookingDto.payment_notify_url,
+            metadata: {
+              isStaffBooking: true, // Đánh dấu đây là staff booking
+            },
+          };
+          console.log(
+            'Payment request:',
+            JSON.stringify(paymentRequest, null, 2),
+          );
+
+          const paymentResult =
+            await paymentService.createPaymentUrl(paymentRequest);
+          console.log(
+            'Payment result:',
+            JSON.stringify(paymentResult, null, 2),
+          );
+
+          // Trả về cả booking và payment URL
+          return {
+            booking: bookingResponse,
+            paymentUrl: {
+              success: paymentResult.success,
+              paymentMethod: paymentResult.paymentMethod,
+              paymentUrl: paymentResult.paymentUrl,
+              orderId: paymentResult.orderId,
+              amount: paymentResult.amount,
+              message: paymentResult.message,
+              expiresAt: paymentResult.expiresAt,
+              createdAt: paymentResult.createdAt,
+            },
+          };
+        } catch (paymentError) {
+          this.logger.error(
+            `Failed to create payment URL for booking ${booking._id?.toString() || 'unknown'}:`,
+            paymentError,
+          );
+          // Trả về booking thôi, không có payment URL
+          return {
+            booking: bookingResponse,
+            paymentUrl: null,
+            error: 'Tạo booking thành công nhưng không thể tạo payment URL',
+          };
+        }
+      }
+
+      // Trường hợp không cần payment URL, chỉ trả về booking
+      return {
+        booking: bookingResponse,
+      };
     } catch (error) {
       this.handleError(error, 'createStaffBooking');
     }

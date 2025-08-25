@@ -79,7 +79,11 @@ export class VNPayService extends PaymentServiceInterface {
   async createPaymentUrl(
     request: CreatePaymentRequest,
   ): Promise<PaymentResponse> {
-    const { bookingId, description, paymentType } = request;
+    this.logger.log('=== VNPay createPaymentUrl START ===');
+    this.logger.log('Request:', JSON.stringify(request, null, 2));
+    this.logger.log('Request metadata:', request.metadata);
+
+    const { bookingId, description, paymentType, returnUrl } = request;
 
     // Lấy thông tin booking
     const booking = (await this.bookingRepo.findById(bookingId)) as Booking;
@@ -125,9 +129,16 @@ export class VNPayService extends PaymentServiceInterface {
     }
 
     // Kiểm tra PAID và PARTIALLY_PAID status - chỉ cho phép thanh toán nếu có outstanding amount
+    // EXCEPTION: Cho phép staff booking tạo payment URL ngay cả khi status là PAID/PARTIALLY_PAID
+    // (vì đây là workflow tạo booking + payment URL đồng thời)
+    const isStaffBooking =
+      request.metadata &&
+      (request.metadata as { isStaffBooking?: boolean }).isStaffBooking;
+
     if (
-      booking.payment_status === PaymentStatus.PAID ||
-      booking.payment_status === PaymentStatus.PARTIALLY_PAID
+      !isStaffBooking &&
+      (booking.payment_status === PaymentStatus.PAID ||
+        booking.payment_status === PaymentStatus.PARTIALLY_PAID)
     ) {
       const depositPaidAmount = booking.deposit_paid_amount || 0;
       const outstandingAmount = booking.final_amount - depositPaidAmount;
@@ -140,9 +151,30 @@ export class VNPayService extends PaymentServiceInterface {
     // Tính số tiền cần thanh toán
     let amountToPay: number;
 
+    this.logger.log('=== Amount Calculation Debug ===');
+    this.logger.log('Is Staff Booking:', isStaffBooking);
+    this.logger.log('Payment Type:', paymentType);
+    this.logger.log('Request Amount:', request.amount);
+
     if (request.amount && request.amount > 0) {
       // Sử dụng số tiền được chỉ định (cho trường hợp thanh toán phần còn lại)
       amountToPay = request.amount;
+      this.logger.log('Using specified amount:', amountToPay);
+    } else if (isStaffBooking) {
+      // Logic đặc biệt cho staff booking: tính theo payment_type
+      this.logger.log('=== Staff Booking Amount Calculation ===');
+      this.logger.log('Payment Type:', paymentType);
+      this.logger.log('Booking Final Amount:', booking.final_amount);
+
+      if (paymentType === 'deposit') {
+        // Thanh toán 50% tổng tiền
+        amountToPay = Math.round((booking.final_amount || 0) * 0.5);
+        this.logger.log('Calculated Deposit Amount (50%):', amountToPay);
+      } else {
+        // Thanh toán toàn bộ
+        amountToPay = booking.final_amount || 0;
+        this.logger.log('Calculated Full Amount:', amountToPay);
+      }
     } else {
       // Tính toán theo logic cũ cho trường hợp tạo booking mới
       amountToPay = booking.final_amount;
@@ -184,6 +216,13 @@ export class VNPayService extends PaymentServiceInterface {
     this.logger.log(`Original amountToPay: ${amountToPay}`);
     this.logger.log(`Formatted amount for VNPay: ${amount}`);
 
+    // Validate amount
+    if (amountToPay <= 0) {
+      throw new BadRequestException(
+        `Số tiền thanh toán không hợp lệ: ${amountToPay}`,
+      );
+    }
+
     // Tạo parameters cho VNPay (chỉ những parameters cần thiết như official code)
     const vnpParams: VNPayParams = {
       vnp_Version: this.vnpVersion,
@@ -195,12 +234,15 @@ export class VNPayService extends PaymentServiceInterface {
       vnp_OrderInfo: description || `Thanh toan booking ${String(booking._id)}`,
       vnp_OrderType: 'other',
       vnp_Locale: 'vn',
-      vnp_ReturnUrl: 'http://localhost:5173/payment/return',
+      vnp_ReturnUrl: returnUrl || 'http://localhost:5173/payment/return',
       vnp_IpAddr: '127.0.0.1', // Sẽ được cập nhật từ request IP
       vnp_CreateDate: createDate,
     };
 
     // Debug: Log parameters trước khi tạo hash
+    this.logger.log('=== VNPay URL Creation Debug ===');
+    this.logger.log('Request returnUrl:', returnUrl);
+    this.logger.log('Final vnp_ReturnUrl:', vnpParams.vnp_ReturnUrl);
     this.logger.debug('VNPay Parameters:', JSON.stringify(vnpParams, null, 2));
     this.logger.debug(
       'Return URL from config:',
