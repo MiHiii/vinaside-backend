@@ -1597,8 +1597,9 @@ export class MessagesService {
 
       // Add participants array for admin view
       if (role === 'admin') {
-        (result as any).participants = allParticipants;
-        (result as any).participant_count = allParticipants.length;
+        (result as Record<string, unknown>).participants = allParticipants;
+        (result as Record<string, unknown>).participant_count =
+          allParticipants.length;
       }
 
       results.push(result);

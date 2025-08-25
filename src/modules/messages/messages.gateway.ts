@@ -58,14 +58,7 @@ interface ConversationListUpdateData {
   type: string;
 }
 
-interface MessageData {
-  _id?: string;
-  content?: string;
-  sender_id?: string;
-  sent_at?: Date | string;
-  is_read?: string;
-  [key: string]: unknown;
-}
+// MessageData removed to avoid unused type; using unknown with safe extraction instead
 
 @WebSocketGateway({
   cors: {

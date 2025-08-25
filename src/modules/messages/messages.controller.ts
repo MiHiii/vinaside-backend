@@ -222,18 +222,8 @@ export class MessagesController {
     }
 
     try {
-      // For realtime conversation, we don't use pagination by default
-      // to ensure all messages are available for realtime updates
+      // For realtime conversation, ALWAYS ignore pagination for all roles
       const queryParams: { limit?: number; page?: number } = {};
-
-      // Only apply pagination if explicitly requested
-      if (limit && !isNaN(Number(limit)) && Number(limit) > 0) {
-        queryParams.limit = Number(limit);
-        if (page && !isNaN(Number(page)) && Number(page) > 0) {
-          queryParams.page = Number(page);
-        }
-      }
-      // If no limit specified, get all messages for realtime support
 
       const result = await this.messagesService.getConversationMessages(
         req.user,
