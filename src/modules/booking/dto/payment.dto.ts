@@ -2,7 +2,6 @@ import {
   IsNotEmpty,
   IsString,
   IsOptional,
-  IsUrl,
   IsEnum,
   IsNumber,
   Min,
@@ -64,7 +63,7 @@ export class CreatePaymentDto {
     required: false,
   })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   returnUrl?: string;
 
   @ApiProperty({
@@ -73,7 +72,7 @@ export class CreatePaymentDto {
     required: false,
   })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   notifyUrl?: string;
 
   @ApiProperty({

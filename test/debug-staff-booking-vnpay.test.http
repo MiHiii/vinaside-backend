@@ -1,0 +1,82 @@
+### Debug Staff Booking with VNPay Integration
+POST http://localhost:3000/api/v1/bookings/staff/create
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d7c5",
+  "additionalCost": 0,
+  "checkInDate": "2025-09-29",
+  "checkOutDate": "2025-09-30",
+  "create_payment_url": true,
+  "deposit_paid_amount": 1227200,
+  "final_amount": 1227200,
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_email": "doan121212112@gmail.com",
+  "guest_name": "LeDoan",
+  "guest_phone": "0364599119",
+  "guests": 1,
+  "infants": 0,
+  "payment_description": "Admin tạo booking với VNPay",
+  "payment_method": "vnpay",
+  "payment_method_choice": "vnpay",
+  "payment_return_url": "http://localhost:5173/admin/bookings?payment=success",
+  "payment_status": "paid",
+  "payment_type": "full",
+  "price_per_night": 930000,
+  "services": [{"serviceId": "687a91871a48e97f537b07e5", "quantity": 1}],
+  "skip_availability_check": false,
+  "status": "confirmed"
+}
+
+### Test without VNPay payment (should work)
+POST http://localhost:3000/api/v1/bookings/staff/create
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d7c5",
+  "additionalCost": 0,
+  "checkInDate": "2025-09-30",
+  "checkOutDate": "2025-10-01",
+  "deposit_paid_amount": 1227200,
+  "final_amount": 1227200,
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_email": "doan121212112@gmail.com",
+  "guest_name": "LeDoan",
+  "guest_phone": "0364599119",
+  "guests": 1,
+  "infants": 0,
+  "payment_method": "cash",
+  "payment_status": "paid",
+  "price_per_night": 930000,
+  "services": [{"serviceId": "687a91871a48e97f537b07e5", "quantity": 1}],
+  "skip_availability_check": false,
+  "status": "confirmed"
+}
+
+### Test minimal VNPay request
+POST http://localhost:3000/api/v1/bookings/staff/create
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d7c5",
+  "checkInDate": "2025-10-01",
+  "checkOutDate": "2025-10-02",
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_email": "doan121212112@gmail.com",
+  "guest_name": "LeDoan",
+  "guests": 1,
+  "infants": 0,
+  "payment_method": "vnpay",
+  "payment_status": "unpaid",
+  "status": "confirmed",
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_return_url": "http://localhost:5173/admin/bookings?payment=success"
+}

@@ -1,0 +1,108 @@
+### Test Admin tạo booking với VNPay tích hợp
+
+# Bước 1: Admin tạo booking với VNPay tự động
+POST http://localhost:3000/bookings/staff/create
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "propertyId": "507f1f77bcf86cd799439011",
+  "listingId": "507f1f77bcf86cd799439012",
+  "checkInDate": "2024-12-20",
+  "checkOutDate": "2024-12-22",
+  "guests": 2,
+  "infants": 0,
+  "guest_name": "Nguyễn Văn A",
+  "guest_email": "guest@example.com",
+  "guest_phone": "0123456789",
+  "specialRequests": "Booking test cho VNPay tích hợp",
+  "note": "Admin tạo booking với VNPay tích hợp",
+  "status": "confirmed",
+  "payment_status": "unpaid",
+  "payment_method": "vnpay",
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_description": "Admin tạo booking với VNPay",
+  "payment_return_url": "http://localhost:5173/admin/bookings?payment=success"
+}
+
+###
+
+# Bước 2: Admin tạo booking với VNPay - thanh toán đặt cọc
+POST http://localhost:3000/bookings/staff/create
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "propertyId": "507f1f77bcf86cd799439011",
+  "listingId": "507f1f77bcf86cd799439012",
+  "checkInDate": "2024-12-25",
+  "checkOutDate": "2024-12-27",
+  "guests": 2,
+  "infants": 0,
+  "guest_name": "Trần Thị B",
+  "guest_email": "guest2@example.com",
+  "guest_phone": "0987654321",
+  "note": "Admin tạo booking với VNPay - đặt cọc",
+  "status": "confirmed",
+  "payment_status": "unpaid",
+  "payment_method": "vnpay",
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "deposit",
+  "payment_description": "Admin tạo booking - đặt cọc 50%",
+  "payment_return_url": "http://localhost:5173/admin/bookings?payment=success"
+}
+
+###
+
+# Bước 3: Admin tạo booking với số tiền thanh toán cụ thể
+POST http://localhost:3000/bookings/staff/create
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "propertyId": "507f1f77bcf86cd799439011",
+  "listingId": "507f1f77bcf86cd799439012",
+  "checkInDate": "2024-12-30",
+  "checkOutDate": "2025-01-02",
+  "guests": 3,
+  "infants": 1,
+  "guest_name": "Lê Văn C",
+  "guest_email": "guest3@example.com",
+  "guest_phone": "0123456789",
+  "note": "Admin tạo booking với số tiền custom",
+  "status": "confirmed",
+  "payment_status": "unpaid",
+  "payment_method": "vnpay",
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_amount": 1500000,
+  "payment_description": "Admin tạo booking - số tiền custom",
+  "payment_return_url": "http://localhost:5173/admin/bookings?payment=success"
+}
+
+###
+
+# Bước 4: Admin tạo booking không có VNPay (để so sánh)
+POST http://localhost:3000/bookings/staff/create
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "propertyId": "507f1f77bcf86cd799439011",
+  "listingId": "507f1f77bcf86cd799439012",
+  "checkInDate": "2025-01-05",
+  "checkOutDate": "2025-01-07",
+  "guests": 2,
+  "infants": 0,
+  "guest_name": "Phạm Thị D",
+  "guest_email": "guest4@example.com",
+  "guest_phone": "0987654321",
+  "note": "Admin tạo booking thường - không VNPay",
+  "status": "confirmed",
+  "payment_status": "unpaid",
+  "payment_method": "cash"
+}

@@ -1,0 +1,122 @@
+### Debug VNPay Staff Booking Creation
+### Test endpoint để debug việc tạo booking với VNPay URL
+
+@baseUrl = http://localhost:3000/api/v1
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2OGE5ZTJhODgyYTdmNmJhYzBhMzc5MmIiLCJ1c2VybmFtZSI6ImxlZG9hbiIsInJvbGUiOiJhZG1pbiIsInBlcm1pc3Npb25zIjpbImJvb2tpbmcuY3JlYXRlIiwiYm9va2luZy5yZWFkIiwiYm9va2luZy51cGRhdGUiLCJib29raW5nLmRlbGV0ZSIsInVzZXIuY3JlYXRlIiwidXNlci5yZWFkIiwidXNlci51cGRhdGUiLCJ1c2VyLmRlbGV0ZSIsInByb3BlcnR5LmNyZWF0ZSIsInByb3BlcnR5LnJlYWQiLCJwcm9wZXJ0eS51cGRhdGUiLCJwcm9wZXJ0eS5kZWxldGUiLCJkYXNoYm9hcmQucmVhZCJdLCJpYXQiOjE3MzUwNDY2NjEsImV4cCI6MTczNzYzODY2MX0.JVZE_U1-XGPMnYOvAJc0sMlBpgaEEkY1aXd8a8n8lOI
+
+### 1. Debug tạo staff booking với VNPay - Payload đơn giản
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d77c5",
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_name": "LeDoan Test",
+  "guest_email": "test@example.com",
+  "guest_phone": "0364599119",
+  "checkInDate": "2025-09-29",
+  "checkOutDate": "2025-09-30",
+  "guests": 1,
+  "infants": 0,
+  "price_per_night": 930000,
+  "final_amount": 1227200,
+  "deposit_paid_amount": 1227200,
+  "additionalCost": 0,
+  "services": [
+    {
+      "serviceId": "687a91871a48e97f537b07e5",
+      "quantity": 1
+    }
+  ],
+  "payment_method": "vnpay",
+  "payment_status": "paid",
+  "status": "confirmed",
+  "skip_availability_check": false,
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_description": "Admin tạo booking với VNPay",
+  "payment_return_url": "http://localhost:5173/admin/bookings/payment-success"
+}
+
+### 2. Test với URL đơn giản hơn
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d77c5",
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_name": "LeDoan Test",
+  "guest_email": "test@example.com",
+  "guest_phone": "0364599119",
+  "checkInDate": "2025-09-29",
+  "checkOutDate": "2025-09-30",
+  "guests": 1,
+  "infants": 0,
+  "price_per_night": 930000,
+  "final_amount": 1227200,
+  "deposit_paid_amount": 1227200,
+  "additionalCost": 0,
+  "services": [],
+  "payment_method": "vnpay",
+  "payment_status": "paid",
+  "status": "confirmed",
+  "skip_availability_check": false,
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_description": "Test VNPay",
+  "payment_return_url": "https://google.com"
+}
+
+### 3. Test không có payment_return_url (sử dụng default)
+POST {{baseUrl}}/bookings/staff/create
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "listingId": "68a161e8eebed1cbdf09d77c5",
+  "guestId": "68a9e2a882a7f6bac0a3792b",
+  "guest_name": "LeDoan Test",
+  "guest_email": "test@example.com", 
+  "guest_phone": "0364599119",
+  "checkInDate": "2025-09-29",
+  "checkOutDate": "2025-09-30",
+  "guests": 1,
+  "infants": 0,
+  "price_per_night": 930000,
+  "final_amount": 1227200,
+  "deposit_paid_amount": 1227200,
+  "additionalCost": 0,
+  "services": [],
+  "payment_method": "vnpay",
+  "payment_status": "paid",
+  "status": "confirmed",
+  "skip_availability_check": false,
+  "create_payment_url": true,
+  "payment_method_choice": "vnpay",
+  "payment_type": "full",
+  "payment_description": "Test VNPay without return URL"
+}
+
+### 4. Test endpoint VNPay trực tiếp (endpoint cũ)
+POST {{baseUrl}}/bookings/68a9e4cf13cd0fc56b50fd29/payment/staff
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "propertyId": "68a1577ceebed1cbdf09c9fb",
+  "paymentMethod": "vnpay",
+  "paymentType": "full",
+  "description": "Test VNPay direct payment",
+  "returnUrl": "http://localhost:5173/admin/bookings/payment-success"
+}
+
+### 5. Test callback VNPay return (giả lập)
+GET {{baseUrl}}/bookings/vnpay/return?vnp_TmnCode=TEST&vnp_Amount=123000000&vnp_BankCode=NCB&vnp_OrderInfo=Test&vnp_TxnRef=68a9e4cf13cd0fc56b50fd29_1735046661&vnp_ResponseCode=00&vnp_TransactionNo=123456789&vnp_BankTranNo=VNP123456&vnp_CardType=ATM&vnp_PayDate=20241220144056&vnp_SecureHash=test_hash
+
