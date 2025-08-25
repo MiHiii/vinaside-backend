@@ -466,7 +466,9 @@ export class MessagesGateway
       '🔍 [Admin Broadcast] Emitting conversation list update to admin_broadcast room:',
       {
         ui_for: data.ui_for,
-        conversationCount: (data.conversations?.length as number) || 0,
+        conversationCount: Array.isArray(data.conversations)
+          ? data.conversations.length
+          : 0,
       },
     );
 
@@ -479,7 +481,9 @@ export class MessagesGateway
   emitConversationListUpdateToGuest(data: ConversationListUpdateData): void {
     console.log('🔍 [Guest] Emitting conversation list update to guest:', {
       ui_for: data.ui_for,
-      conversationCount: (data.conversations?.length as number) || 0,
+      conversationCount: Array.isArray(data.conversations)
+        ? data.conversations.length
+        : 0,
       userId: data.updatedBy,
     });
 
