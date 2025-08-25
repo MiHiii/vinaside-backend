@@ -3066,7 +3066,14 @@ export class MessagesService {
    */
   async emitRealtimeUpdatesForNewMessage(
     conversationId: string,
-    message: any,
+    message: {
+      _id: string;
+      content: string | null;
+      sender_id: string;
+      sender_role: 'guest' | 'staff' | 'admin';
+      sent_at: Date;
+      is_read: MessageStatus;
+    },
     participants: string[],
     senderId: string,
   ): Promise<void> {
@@ -3097,23 +3104,20 @@ export class MessagesService {
         this.messagesGateway.emitConversationUpdateV2(participantId, {
           conversationId,
           lastMessage: {
-            _id: (message as any)._id,
-            content: (message as any).content,
-            sender_id: (message as any).sender_id,
-            sender_role: (message as any).sender_role || 'guest',
-            sent_at: (message as any).sent_at,
-            is_read: (message as any).is_read,
+            _id: message._id,
+            content: message.content || '',
+            sender_id: message.sender_id,
+            sender_role: message.sender_role || 'guest',
+            sent_at: message.sent_at,
+            is_read: message.is_read,
           },
-          lastMessageAt: (message as any).sent_at,
+          lastMessageAt: message.sent_at,
           unreadCount,
         });
 
         // Emit new message event for immediate UI update
         if (isOnline) {
-          void this.messagesGateway.emitNewMessage(
-            message as any,
-            participantId,
-          );
+          void this.messagesGateway.emitNewMessage(message, participantId);
         }
 
         // Emit conversation list update
