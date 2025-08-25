@@ -36,7 +36,10 @@ Lấy danh sách conversations cho UI, được tối ưu cho hiển thị.
 
 #### Query Parameters
 
-- `ui_for` (optional): `'guest' | 'staff'` - Định dạng UI cho role nào
+- `ui_for` (optional): `'guest' | 'staff' | 'admin'` - Định dạng UI cho role nào
+  - `guest`: Chỉ hiển thị conversations của guest hiện tại
+  - `staff`: Chỉ hiển thị conversations của properties được assign
+  - `admin`: Hiển thị tất cả conversations trong hệ thống
 
 #### Response
 

@@ -153,13 +153,45 @@ export class MessagesController {
   })
   async getConversations(
     @Request() req: RequestWithUser,
-    @Query('ui_for') ui_for?: 'guest' | 'staff',
+    @Query('ui_for') ui_for?: 'guest' | 'staff' | 'admin',
   ): Promise<unknown[]> {
     try {
       const result = await this.messagesService.getConversationsUI(
         req.user,
         ui_for,
       );
+
+      // Emit realtime conversation list update for all users (including guest)
+      try {
+        if (req.user.role === 'admin' || req.user.role === 'staff') {
+          // Emit conversation list update to admin broadcast room
+          this.messagesService.emitConversationListUpdateToAdminBroadcast(
+            result,
+            req.user._id,
+            ui_for || req.user.role,
+          );
+          console.log(
+            '🔍 [Conversations API] Emitted realtime update for admin/staff',
+          );
+        } else if (req.user.role === 'guest') {
+          // Emit conversation list update to guest
+          this.messagesService.emitConversationListUpdateToGuest(
+            result,
+            req.user._id,
+            ui_for || req.user.role,
+          );
+          console.log(
+            '🔍 [Conversations API] Emitted realtime update for guest',
+          );
+        }
+      } catch (emitError) {
+        console.error(
+          '🔍 [Conversations API] Failed to emit realtime update:',
+          emitError,
+        );
+        // Don't fail the request if WebSocket emission fails
+      }
+
       return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (err: unknown) {
       console.error('Error in getConversations controller:', err);
@@ -183,7 +215,7 @@ export class MessagesController {
     @Query('conversationId') conversationId?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
-    @Query('ui_for') ui_for?: 'guest' | 'staff',
+    @Query('ui_for') ui_for?: 'guest' | 'staff' | 'admin',
   ): Promise<unknown[]> {
     if (!conversationId) {
       throw new BadRequestException('Thiếu tham số conversationId');
@@ -246,7 +278,38 @@ export class MessagesController {
         req.user._id,
         userId,
         query,
+        req.user, // Pass user object for role checking
       );
+
+      // Emit realtime conversation update for admin and staff
+      if (req.user.role === 'admin' || req.user.role === 'staff') {
+        try {
+          // Find conversation between these users for realtime emission
+          const conversation =
+            await this.messagesService.findConversationForRealtime(
+              req.user._id,
+              userId,
+            );
+
+          if (conversation) {
+            await this.messagesService.emitConversationUpdateToParticipants(
+              conversation._id.toString(),
+              req.user._id,
+              result,
+            );
+            console.log(
+              '🔍 [Deprecated API] Emitted realtime update for admin/staff',
+            );
+          }
+        } catch (emitError) {
+          console.error(
+            '🔍 [Deprecated API] Failed to emit realtime update:',
+            emitError,
+          );
+          // Don't fail the request if WebSocket emission fails
+        }
+      }
+
       return Array.isArray(result) ? (result as unknown[]) : [];
     } catch (err: unknown) {
       console.error('Error in getConversationDeprecated controller:', err);
@@ -531,5 +594,15 @@ export class MessagesController {
       console.error('Error in remove controller:', error);
       throw new NotFoundException('Tin nhắn không tìm thấy');
     }
+  }
+
+  @Get('debug/data')
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Debug endpoint to check conversation and message data',
+  })
+  @ApiResponse({ status: 200, description: 'Debug data information' })
+  async debugData(): Promise<any> {
+    return this.messagesService.debugConversationData();
   }
 }

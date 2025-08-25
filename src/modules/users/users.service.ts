@@ -164,6 +164,19 @@ export class UsersService {
       throw new NotFoundException('Không tìm thấy người dùng');
     }
 
+    // Kiểm tra email trùng lặp nếu có cập nhật email
+    if (updateUserDto.email && updateUserDto.email !== existingUser.email) {
+      const userWithSameEmail = await this.userRepo.findByEmail(
+        updateUserDto.email,
+      );
+      if (
+        userWithSameEmail &&
+        (userWithSameEmail._id as { toString(): string }).toString() !== id
+      ) {
+        throw new ConflictException('Email đã tồn tại trong hệ thống');
+      }
+    }
+
     // Staff restrictions
     if (currentUser.role === 'staff') {
       // Cannot change role
@@ -279,7 +292,7 @@ export class UsersService {
 
     const newUserData = {
       ...userData,
-      password: hashedPassword,
+      password_hash: hashedPassword,
       is_verified: false, // User cần verify email sau
       created_by_staff: true, // Đánh dấu user được tạo bởi staff
     };
