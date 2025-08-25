@@ -78,14 +78,6 @@ interface CustomerStats {
   totalBookings: number;
   totalSpent: number;
 }
-
-interface VoucherUsage {
-  _id: string;
-  voucherCode: string;
-  usageCount: number;
-  totalDiscount: number;
-}
-
 interface ServiceUsage {
   _id: string;
   serviceName: string;
@@ -1564,31 +1556,55 @@ export class DashboardService {
       };
 
     // Top vouchers
-    const topVouchers: VoucherUsage[] = await this.voucherModel.aggregate([
-      { $match: dateFilter },
+    const topVouchers = await this.bookingModel.aggregate([
+      {
+        $match: {
+          ...dateFilter,
+          ...propertyMatch,
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+          voucher_id: { $ne: null },
+        },
+      },
       {
         $group: {
-          _id: '$_id',
-          voucherCode: { $first: '$code' },
-          usageCount: { $first: '$uses_count' },
-          totalDiscount: { $first: '$discount_percent' },
+          _id: '$voucher_id',
+          voucherCode: { $first: '$voucher_code' },
+          usageCount: { $sum: 1 },
+          totalDiscount: { $sum: '$voucher_discount_amount' },
         },
       },
       { $sort: { usageCount: -1 } },
       { $limit: 10 },
     ]);
 
+    interface TopVoucherItem {
+      _id: string | { toString(): string };
+      voucherCode: string;
+      usageCount: number;
+      totalDiscount: number;
+    }
+
     const formattedTopVouchers: Array<{
       voucherId: string;
       voucherCode: string;
       usageCount: number;
       totalDiscount: number;
-    }> = topVouchers.map((item: VoucherUsage) => ({
-      voucherId: item._id.toString(),
-      voucherCode: item.voucherCode,
-      usageCount: item.usageCount,
-      totalDiscount: item.totalDiscount,
-    }));
+    }> = topVouchers.map((item) => {
+      const v = item as TopVoucherItem;
+      return {
+        voucherId:
+          v._id && typeof v._id === 'object' && 'toString' in v._id
+            ? v._id.toString()
+            : String(v._id),
+        voucherCode: v.voucherCode,
+        usageCount: v.usageCount,
+        totalDiscount: v.totalDiscount,
+      };
+    });
 
     // Service performance - calculate from booking data instead
     const servicePerformance: ServicePerformanceAggregation[] =
