@@ -66,7 +66,15 @@ interface ConversationLeanBasic {
 interface LeanMessageMinimal {
   _id: Types.ObjectId;
   content?: string;
-  sender_id: Types.ObjectId;
+  sender_id:
+    | Types.ObjectId
+    | {
+        _id: Types.ObjectId;
+        name?: string;
+        username?: string;
+        avatar_url?: string | null;
+        role?: string;
+      };
   sent_at: Date;
   is_read: MessageStatus;
 }
@@ -82,7 +90,9 @@ interface PropertyLeanBasic {
 interface UserLeanBasic {
   _id: Types.ObjectId;
   name?: string;
+  username?: string;
   avatar_url?: string | null;
+  role?: string;
 }
 
 type ConversationDisplay = {
@@ -283,7 +293,7 @@ export class MessagesService {
     const populated = await this.messageModel
       .findById(saved._id)
       .populate('sender_id', 'username email name avatar_url role')
-      .populate('receiver_id', 'username email name avatar_url role')
+      .populate('receiver_id', 'username email name avatar_url')
       .populate('reactions.user_id', 'username email name avatar_url')
       .populate('reply_to_message_id', 'content sender_id receiver_id sent_at')
       .exec();
@@ -308,17 +318,41 @@ export class MessagesService {
         },
       });
 
-      // Emit to all participants
+      // Emit to all participants (non-blocking per user)
       for (const uid of participantIds) {
         console.log(`🔍 Emitting to participant: ${uid}`);
         const isUserOnline = this.messagesGateway.isUserOnline(uid);
         console.log(`🔍 Participant ${uid} online status: ${isUserOnline}`);
         try {
-          await this.messagesGateway.emitNewMessage(formatted, uid);
+          void this.messagesGateway.emitNewMessage(formatted, uid);
           console.log(`🔍 Successfully emitted to participant: ${uid}`);
         } catch (emitError) {
           console.error(`🔍 Failed to emit to participant ${uid}:`, emitError);
         }
+      }
+
+      // Emit to admin broadcast room for admin users
+      try {
+        this.messagesGateway.emitNewMessageToAdminBroadcast(
+          formatted,
+          this.getIdString(conversation._id),
+          this.getIdString(propertyId),
+          this.getIdString(guestId),
+        );
+        console.log(
+          '🔍 Emitted new message to admin broadcast room with data:',
+          {
+            messageId: formatted._id,
+            conversationId: this.getIdString(conversation._id),
+            content: formatted.content,
+            sender_id: formatted.sender_id,
+          },
+        );
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit to admin broadcast room:',
+          adminEmitError,
+        );
       }
 
       // Notifications: notify all participants except sender
@@ -348,7 +382,7 @@ export class MessagesService {
       // Conversation summary
       const lastMessage = {
         _id: this.getIdString(saved._id),
-        content: saved.content,
+        content: saved.content || '',
         sender_id: this.getIdString(saved.sender_id),
         sender_role:
           this.getIdString(saved.sender_id) === this.getIdString(guestId)
@@ -365,24 +399,74 @@ export class MessagesService {
         is_read: MessageStatus;
       };
 
+      console.log('🔍 [Service] Created lastMessage object:', {
+        _id: lastMessage._id,
+        content: lastMessage.content,
+        sender_id: lastMessage.sender_id,
+        sender_role: lastMessage.sender_role,
+        contentLength: lastMessage.content?.length || 0,
+      });
+
       // Emit per-user unread counts
       const resolveReadAt = this.resolveReadAt(
         conversation.read_at as unknown as
           | Map<string, Date>
           | Record<string, Date>,
       );
-      // Guest
+
+      // Guest - Emit immediately for realtime
       const guestReadAt = resolveReadAt(guestId.toString());
       const guestUnread = await this.messageModel.countDocuments({
         conversation_id: conversation._id,
         sent_at: { $gt: guestReadAt },
       });
+
+      // Emit conversation update V2 immediately
       this.messagesGateway.emitConversationUpdateV2(guestId.toString(), {
         conversationId: this.getIdString(conversation._id),
         lastMessage,
         lastMessageAt: saved.sent_at,
         unreadCount: guestUnread,
       });
+
+      // Emit conversation list update immediately for guest
+      try {
+        // Debug connection status
+        this.messagesGateway.debugConnectionStatus(guestId.toString());
+
+        const guestConversations = await this.getConversationsUI(
+          { _id: guestId.toString(), role: 'guest' } as JwtPayload,
+          'guest',
+        );
+        this.emitConversationListUpdateToGuest(
+          guestConversations,
+          guestId.toString(),
+          'guest',
+        );
+        console.log(
+          `🔍 [Immediate] Emitted conversation list update to guest ${guestId.toString()}`,
+        );
+
+        // Also emit new message event for immediate UI update
+        try {
+          void this.messagesGateway.emitNewMessage(
+            formatted,
+            guestId.toString(),
+          );
+          console.log(
+            `🔍 [Immediate] Emitted new message to guest ${guestId.toString()}`,
+          );
+        } catch {
+          console.warn(
+            'Failed to emit new message, but continuing with other updates',
+          );
+        }
+      } catch (guestUpdateError) {
+        console.error(
+          'Failed to emit immediate guest update:',
+          guestUpdateError,
+        );
+      }
 
       // Staffs
       for (const uid of participantIds) {
@@ -400,32 +484,47 @@ export class MessagesService {
         });
       }
 
-      // Emit conversation update for realtime API support
+      // Emit conversation update V2 to admin broadcast room for admin users
       try {
-        const updatedMessages = await this.messageModel
-          .find({ conversation_id: conversation._id })
-          .sort({ sent_at: 1 })
-          .populate('sender_id', 'username email name avatar_url role')
-          .lean();
-
-        for (const uid of participantIds) {
-          if (uid === user._id) continue; // Skip sender
-
-          const isOnline = this.messagesGateway.isUserOnline(uid);
-          if (isOnline) {
-            this.messagesGateway.emitConversationUpdate(uid, {
-              conversationId: this.getIdString(conversation._id),
-              messages: updatedMessages,
-              updatedBy: user._id,
-              timestamp: new Date().toISOString(),
-              messageCount: updatedMessages.length,
-            });
-          }
-        }
-      } catch (conversationUpdateError) {
+        this.messagesGateway.emitConversationUpdateV2ToAdminBroadcast({
+          conversationId: this.getIdString(conversation._id),
+          lastMessage,
+          lastMessageAt: saved.sent_at,
+          unreadCount: 0, // Admin sẽ tính toán unread count riêng
+        });
+        console.log(
+          '🔍 Emitted conversation update V2 to admin broadcast room',
+        );
+      } catch (adminEmitError) {
         console.error(
-          'Failed to emit conversation update:',
-          conversationUpdateError,
+          '🔍 Failed to emit V2 to admin broadcast room:',
+          adminEmitError,
+        );
+      }
+
+      // Use optimized realtime update method
+      try {
+        await this.emitRealtimeUpdatesForNewMessage(
+          this.getIdString(conversation._id),
+          {
+            _id: this.getIdString(saved._id),
+            content: saved.content,
+            sender_id: this.getIdString(saved.sender_id),
+            sender_role:
+              this.getIdString(saved.sender_id) === this.getIdString(guestId)
+                ? 'guest'
+                : 'staff',
+            sent_at: saved.sent_at,
+            is_read: saved.is_read,
+          },
+          participantIds,
+          user._id,
+        );
+        console.log('🔍 [Optimized] Emitted realtime updates for new message');
+      } catch (realtimeError) {
+        console.error(
+          'Failed to emit optimized realtime updates:',
+          realtimeError,
         );
       }
     } catch (err) {
@@ -780,7 +879,15 @@ export class MessagesService {
           interface LeanMessageMinimal {
             _id: Types.ObjectId;
             content?: string;
-            sender_id: Types.ObjectId;
+            sender_id:
+              | Types.ObjectId
+              | {
+                  _id: Types.ObjectId;
+                  name?: string;
+                  username?: string;
+                  avatar_url?: string | null;
+                  role?: string;
+                };
             sent_at: Date;
             is_read: MessageStatus;
           }
@@ -1201,20 +1308,30 @@ export class MessagesService {
   // ==================== CONVERSATION-BASED QUERIES ====================
   async getConversationsUI(
     user: JwtPayload,
-    ui_for?: 'guest' | 'staff',
+    ui_for?: 'guest' | 'staff' | 'admin',
   ): Promise<any[]> {
     const role = ui_for || user.role;
+
+    console.log('🔍 getConversationsUI Debug:', {
+      userId: user._id,
+      userRole: user.role,
+      ui_for,
+      finalRole: role,
+    });
 
     let filter: FilterQuery<Conversation> = {};
     if (role === 'guest') {
       filter = {
         guest_id: new Types.ObjectId(user._id),
       } as FilterQuery<Conversation>;
+      console.log('🔍 Guest filter:', filter);
     } else if (role === 'staff') {
       const assignments =
         await this.propertyStaffAssignmentService.getPropertiesByStaff(
           new Types.ObjectId(user._id),
         );
+      console.log('🔍 Staff assignments:', assignments);
+
       const propertyIds = assignments.map((a) => {
         // Handle populated propertyId object
         if (typeof a.propertyId === 'object' && a.propertyId !== null) {
@@ -1225,12 +1342,32 @@ export class MessagesService {
       filter = {
         property_id: { $in: propertyIds },
       } as FilterQuery<Conversation>;
+      console.log('🔍 Staff filter:', filter, 'Property IDs:', propertyIds);
+    } else if (role === 'admin') {
+      // Admin can see all conversations - no filter needed
+      filter = {} as FilterQuery<Conversation>;
+      console.log('🔍 Admin filter (no filter):', filter);
     }
+
+    // Check total conversations in database
+    const totalConversations = await this.conversationModel.countDocuments({});
+    console.log('🔍 Total conversations in database:', totalConversations);
 
     const conversations = await this.conversationModel
       .find(filter)
       .sort({ last_message_at: -1 })
       .lean<ConversationLeanBasic[]>();
+
+    console.log('🔍 Found conversations with filter:', conversations.length);
+    console.log(
+      '🔍 Conversations:',
+      conversations.map((c) => ({
+        _id: c._id.toString(),
+        property_id: c.property_id.toString(),
+        guest_id: c.guest_id.toString(),
+        last_message_at: c.last_message_at,
+      })),
+    );
 
     const results: any[] = [];
     for (const conv of conversations) {
@@ -1254,12 +1391,18 @@ export class MessagesService {
                 },
               },
             ),
-          this.messageModel.db
-            .collection<UserLeanBasic>('users')
-            .findOne(
-              { _id: guestId },
-              { projection: { _id: 1, name: 1, avatar_url: 1 } },
-            ),
+          this.messageModel.db.collection<UserLeanBasic>('users').findOne(
+            { _id: guestId },
+            {
+              projection: {
+                _id: 1,
+                name: 1,
+                username: 1,
+                avatar_url: 1,
+                role: 1,
+              },
+            },
+          ),
           this.messageModel
             .findOne({ conversation_id: convId })
             .sort({ sent_at: -1 })
@@ -1270,6 +1413,7 @@ export class MessagesService {
               sent_at: 1,
               is_read: 1,
             })
+            .populate('sender_id', 'username email name avatar_url role')
             .lean<LeanMessageMinimal | null>(),
           this.messageModel.countDocuments({ conversation_id: convId }),
         ],
@@ -1285,18 +1429,88 @@ export class MessagesService {
       let sender_role: 'guest' | 'staff' | 'admin' | null = null;
       if (lastMessageDoc) {
         const senderIdStr = this.getIdString(lastMessageDoc.sender_id);
-        sender_role = senderIdStr === guestId.toString() ? 'guest' : 'staff';
+        // Check if sender is guest
+        if (senderIdStr === guestId.toString()) {
+          sender_role = 'guest';
+        } else {
+          // Check the actual role from populated sender data
+          if (
+            lastMessageDoc.sender_id &&
+            typeof lastMessageDoc.sender_id === 'object'
+          ) {
+            const senderRole = (lastMessageDoc.sender_id as { role?: string })
+              .role;
+            sender_role = senderRole === 'admin' ? 'admin' : 'staff';
+          } else {
+            // Fallback to staff if we can't determine the role
+            sender_role = 'staff';
+          }
+        }
       }
 
       const lastContent = lastMessageDoc?.content ?? '';
       const propertyName = property?.name ?? 'Property';
       const guestName = guest?.name ?? 'Guest';
 
+      // For admin view, get all participants (guest + all assigned staff)
+      const allParticipants: any[] = [];
+      if (role === 'admin') {
+        // Get guest info
+        if (guest) {
+          allParticipants.push({
+            _id: guest._id.toString(),
+            name: guest.name || 'Guest',
+            username: (guest as { username?: string }).username || '',
+            avatar_url: guest.avatar_url || null,
+            role: (guest as { role?: string }).role || 'guest',
+            type: 'guest',
+          });
+        }
+
+        // Get all assigned staff for this property
+        const propertyObjectId = new Types.ObjectId(propertyId.toString());
+        const assignedStaff =
+          await this.propertyStaffAssignmentService.getStaffByProperty(
+            propertyObjectId,
+          );
+
+        for (const staffAssignment of assignedStaff) {
+          const staffId = this.getIdString(
+            (staffAssignment as { staffId: Types.ObjectId | string }).staffId,
+          );
+          const staffInfo = await this.messageModel.db
+            .collection<UserLeanBasic>('users')
+            .findOne(
+              { _id: new Types.ObjectId(staffId) },
+              {
+                projection: {
+                  _id: 1,
+                  name: 1,
+                  username: 1,
+                  avatar_url: 1,
+                  role: 1,
+                },
+              },
+            );
+
+          if (staffInfo) {
+            allParticipants.push({
+              _id: staffInfo._id.toString(),
+              name: staffInfo.name || 'Staff',
+              username: (staffInfo as { username?: string }).username || '',
+              avatar_url: staffInfo.avatar_url || null,
+              role: (staffInfo as { role?: string }).role || 'staff',
+              type: 'staff',
+            });
+          }
+        }
+      }
+
       const display: ConversationDisplay =
         role === 'guest'
           ? {
               title: propertyName,
-              subtitle: `${sender_role === 'staff' ? 'Nhân viên' : 'Bạn'}: ${lastContent}`,
+              subtitle: `${sender_role === 'guest' ? 'Bạn' : sender_role === 'admin' ? 'Admin' : 'Nhân viên'}: ${lastContent}`,
               avatar_url: property?.thumbnail ?? null,
               badge: null,
               unreadCount,
@@ -1313,15 +1527,21 @@ export class MessagesService {
             };
 
       const lastActive = conv.last_active_staff_id
-        ? await this.messageModel.db
-            .collection('users')
-            .findOne(
-              { _id: conv.last_active_staff_id },
-              { projection: { _id: 1, name: 1, avatar_url: 1 } },
-            )
+        ? await this.messageModel.db.collection('users').findOne(
+            { _id: conv.last_active_staff_id },
+            {
+              projection: {
+                _id: 1,
+                name: 1,
+                username: 1,
+                avatar_url: 1,
+                role: 1,
+              },
+            },
+          )
         : null;
 
-      results.push({
+      const result: any = {
         _id: convId.toString(),
         thread_type: 'property',
         property: property || null,
@@ -1338,13 +1558,51 @@ export class MessagesService {
               sender_role: sender_role || 'guest',
               sent_at: lastMessageDoc.sent_at,
               is_read: lastMessageDoc.is_read,
+              // Add full sender information if populated
+              sender:
+                lastMessageDoc.sender_id &&
+                typeof lastMessageDoc.sender_id === 'object'
+                  ? {
+                      _id: this.getIdString(
+                        (
+                          lastMessageDoc.sender_id as {
+                            _id?: Types.ObjectId | string;
+                          }
+                        )._id,
+                      ),
+                      name:
+                        (lastMessageDoc.sender_id as { name?: string }).name ||
+                        '',
+                      username:
+                        (lastMessageDoc.sender_id as { username?: string })
+                          .username || '',
+                      avatar_url:
+                        (
+                          lastMessageDoc.sender_id as {
+                            avatar_url?: string | null;
+                          }
+                        ).avatar_url || null,
+                      role:
+                        (lastMessageDoc.sender_id as { role?: string }).role ||
+                        'guest',
+                    }
+                  : null,
             }
           : null,
         lastMessageAt: conv.last_message_at || null,
         messageCount,
         ui_for: role === 'admin' ? 'staff' : role,
         display,
-      });
+      };
+
+      // Add participants array for admin view
+      if (role === 'admin') {
+        (result as Record<string, unknown>).participants = allParticipants;
+        (result as Record<string, unknown>).participant_count =
+          allParticipants.length;
+      }
+
+      results.push(result);
     }
 
     return results;
@@ -1354,7 +1612,7 @@ export class MessagesService {
     user: JwtPayload,
     conversationId: string,
     query: { limit?: number; page?: number },
-    ui_for?: 'guest' | 'staff',
+    ui_for?: 'guest' | 'staff' | 'admin',
   ): Promise<any[]> {
     if (!isValidObjectId(conversationId)) {
       throw new BadRequestException('conversationId không hợp lệ');
@@ -1407,17 +1665,27 @@ export class MessagesService {
       const mine = this.getIdString(m.sender_id) === currentUserId;
       const senderIdStr = this.getIdString(m.sender_id);
       const senderIsGuest = senderIdStr === guestId.toString();
-      const show_sender_meta =
-        ui === 'guest'
-          ? !senderIsGuest
-          : senderIsGuest || (!mine && ui === 'staff');
+
+      // Logic show_sender_meta cải thiện
+      let show_sender_meta = false;
+      if (ui === 'guest') {
+        // Guest UI: chỉ hiển thị sender meta cho tin nhắn không phải của guest
+        show_sender_meta = !senderIsGuest;
+      } else if (ui === 'staff') {
+        // Staff UI: hiển thị sender meta cho tin nhắn của guest hoặc tin nhắn không phải của mình
+        show_sender_meta = senderIsGuest || !mine;
+      } else if (ui === 'admin') {
+        // Admin UI: hiển thị sender meta cho tất cả tin nhắn không phải của admin
+        show_sender_meta = !mine;
+      }
+
       const sender = m.sender_id as unknown as {
         name?: string;
         avatar_url?: string;
       };
       return {
         ...this.formatReactionResponse(m),
-        ui_for: ui === 'admin' ? 'staff' : ui,
+        ui_for: ui, // Giữ nguyên ui_for được truyền vào
         ui: {
           mine,
           show_sender_meta,
@@ -1465,7 +1733,15 @@ export class MessagesService {
       interface LeanMessageMinimal {
         _id: Types.ObjectId;
         content?: string;
-        sender_id: Types.ObjectId;
+        sender_id:
+          | Types.ObjectId
+          | {
+              _id: Types.ObjectId;
+              name?: string;
+              username?: string;
+              avatar_url?: string | null;
+              role?: string;
+            };
         sent_at: Date;
         is_read: MessageStatus;
       }
@@ -1760,8 +2036,33 @@ export class MessagesService {
     userId: string,
     otherUserId: string,
     query?: ConversationQueryDto,
+    user?: JwtPayload, // Add user parameter for role checking
   ): Promise<any[]> {
     try {
+      // If user is admin, allow access to any conversation
+      if (user?.role === 'admin') {
+        // For admin, we need to find the conversation between these users
+        // First try to find existing conversation
+        const conversation = await this.conversationModel
+          .findOne({
+            $or: [
+              { guest_id: new Types.ObjectId(userId) },
+              { guest_id: new Types.ObjectId(otherUserId) },
+            ],
+          })
+          .sort({ last_message_at: -1 });
+
+        if (conversation) {
+          // Use the new conversation-based system for admin
+          return this.getConversationMessages(
+            user,
+            (conversation._id as Types.ObjectId).toString(),
+            query || {},
+          );
+        }
+      }
+
+      // Fallback to legacy direct messaging for non-admin users
       const messages = await this.findConversation(userId, otherUserId);
 
       // Chỉ áp dụng limit khi user chủ động truyền vào
@@ -1926,6 +2227,19 @@ export class MessagesService {
       uids.forEach((uid) =>
         this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
       );
+
+      // Emit reaction update to admin broadcast room for admin users
+      try {
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
+        console.log('🔍 Emitted reaction update to admin broadcast room');
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit reaction to admin broadcast room:',
+          adminEmitError,
+        );
+      }
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }
@@ -2017,6 +2331,19 @@ export class MessagesService {
       uids.forEach((uid) =>
         this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
       );
+
+      // Emit reaction update to admin broadcast room for admin users
+      try {
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
+        console.log('🔍 Emitted reaction removal to admin broadcast room');
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit reaction removal to admin broadcast room:',
+          adminEmitError,
+        );
+      }
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }
@@ -2325,6 +2652,19 @@ export class MessagesService {
       uids.forEach((uid) =>
         this.messagesGateway.emitReactionUpdate(updatedMessage, uid),
       );
+
+      // Emit reaction update to admin broadcast room for admin users
+      try {
+        this.messagesGateway.emitReactionUpdateToAdminBroadcast(
+          updatedMessage as any,
+        );
+        console.log('🔍 Emitted toggle reaction to admin broadcast room');
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit toggle reaction to admin broadcast room:',
+          adminEmitError,
+        );
+      }
     } catch (error) {
       console.error('Failed to emit reaction update:', error);
     }
@@ -2394,6 +2734,19 @@ export class MessagesService {
       uids.forEach((uid) =>
         this.messagesGateway.emitMessageRecalled(updatedMessage, uid),
       );
+
+      // Emit message recall to admin broadcast room for admin users
+      try {
+        this.messagesGateway.emitMessageRecalledToAdminBroadcast(
+          updatedMessage as any,
+        );
+        console.log('🔍 Emitted message recall to admin broadcast room');
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit message recall to admin broadcast room:',
+          adminEmitError,
+        );
+      }
     } catch (error) {
       console.error('Failed to emit message recall notification:', error);
     }
@@ -2497,6 +2850,26 @@ export class MessagesService {
           );
         }
       }
+
+      // Emit to admin broadcast room for admin users
+      try {
+        this.messagesGateway.server
+          .to('admin_broadcast')
+          .emit('conversation_update', {
+            conversationId,
+            messages,
+            updatedBy: currentUserId,
+            timestamp: new Date().toISOString(),
+            messageCount: messages.length,
+            type: 'conversation_update',
+          });
+        console.log('🔍 Emitted conversation update to admin broadcast room');
+      } catch (adminEmitError) {
+        console.error(
+          '🔍 Failed to emit to admin broadcast room:',
+          adminEmitError,
+        );
+      }
     } catch (error) {
       console.error('🔍 Failed to emit conversation update:', error);
     }
@@ -2549,5 +2922,245 @@ export class MessagesService {
         onlineUsers: this.messagesGateway.getConnectionStatus(),
       };
     }
+  }
+
+  /**
+   * Debug method to check conversation data
+   */
+  async debugConversationData(): Promise<any> {
+    try {
+      // Check total conversations
+      const totalConversations = await this.conversationModel.countDocuments(
+        {},
+      );
+
+      // Get sample conversations
+      const sampleConversations = await this.conversationModel
+        .find({})
+        .limit(5)
+        .lean();
+
+      // Check total messages
+      const totalMessages = await this.messageModel.countDocuments({});
+
+      // Get sample messages
+      const sampleMessages = await this.messageModel.find({}).limit(5).lean();
+
+      return {
+        conversations: {
+          total: totalConversations,
+          sample: sampleConversations.map((c) => ({
+            _id: this.getIdString(c._id),
+            property_id: this.getIdString(c.property_id),
+            guest_id: this.getIdString(c.guest_id),
+            last_message_at: c.last_message_at,
+            staff_ids: c.staff_ids?.map((id) => this.getIdString(id)) || [],
+          })),
+        },
+        messages: {
+          total: totalMessages,
+          sample: sampleMessages.map((m) => ({
+            _id: this.getIdString(m._id),
+            conversation_id: m.conversation_id
+              ? this.getIdString(m.conversation_id)
+              : undefined,
+            property_id: m.property_id
+              ? this.getIdString(m.property_id)
+              : undefined,
+            guest_id: m.guest_id ? this.getIdString(m.guest_id) : undefined,
+            sender_id: m.sender_id ? this.getIdString(m.sender_id) : undefined,
+            content: m.content,
+            sent_at: m.sent_at,
+          })),
+        },
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('Error in debugConversationData:', error);
+      return {
+        error: (error as Error).message,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
+
+  /**
+   * Find conversation between two users for realtime emission (used by deprecated API)
+   */
+  async findConversationForRealtime(
+    userId1: string,
+    userId2: string,
+  ): Promise<{ _id: Types.ObjectId } | null> {
+    try {
+      // Try to find existing conversation between these users
+      const conversation = await this.conversationModel
+        .findOne({
+          $or: [
+            { guest_id: new Types.ObjectId(userId1) },
+            { guest_id: new Types.ObjectId(userId2) },
+          ],
+        })
+        .select({ _id: 1 })
+        .lean();
+
+      return conversation as { _id: Types.ObjectId } | null;
+    } catch (error) {
+      console.error('Error finding conversation for realtime:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Emit conversation list update to admin broadcast room
+   */
+  emitConversationListUpdateToAdminBroadcast(
+    conversations: any[],
+    userId: string,
+    ui_for: string,
+  ): void {
+    try {
+      this.messagesGateway.emitConversationListUpdateToAdminBroadcast({
+        conversations,
+        updatedBy: userId,
+        ui_for,
+        timestamp: new Date().toISOString(),
+        type: 'conversation_list_update',
+      });
+      console.log(
+        '🔍 [Service] Emitted conversation list update to admin broadcast room',
+      );
+    } catch (error) {
+      console.error(
+        '🔍 [Service] Failed to emit conversation list update:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Emit conversation list update to guest
+   */
+  emitConversationListUpdateToGuest(
+    conversations: any[],
+    userId: string,
+    ui_for: string,
+  ): void {
+    try {
+      this.messagesGateway.emitConversationListUpdateToGuest({
+        conversations,
+        updatedBy: userId,
+        ui_for,
+        timestamp: new Date().toISOString(),
+        type: 'conversation_list_update',
+      });
+      console.log('🔍 [Service] Emitted conversation list update to guest');
+    } catch (error) {
+      console.error(
+        '🔍 [Service] Failed to emit conversation list update to guest:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Optimized method to emit realtime updates for new messages
+   */
+  async emitRealtimeUpdatesForNewMessage(
+    conversationId: string,
+    message: {
+      _id: string;
+      content: string | null;
+      sender_id: string;
+      sender_role: 'guest' | 'staff' | 'admin';
+      sent_at: Date;
+      is_read: MessageStatus;
+    },
+    participants: string[],
+    senderId: string,
+  ): Promise<void> {
+    try {
+      const conversation = await this.conversationModel
+        .findById(conversationId)
+        .lean();
+      if (!conversation) return;
+
+      const resolveReadAt = this.resolveReadAt(
+        conversation.read_at as
+          | Record<string, Date>
+          | Map<string, Date>
+          | undefined,
+      );
+
+      for (const participantId of participants) {
+        if (participantId === senderId) continue; // Skip sender
+
+        const isOnline = this.messagesGateway.isUserOnline(participantId);
+        const readAt = resolveReadAt(participantId);
+        const unreadCount = await this.messageModel.countDocuments({
+          conversation_id: conversationId,
+          sent_at: { $gt: readAt },
+        });
+
+        // Emit conversation update V2
+        this.messagesGateway.emitConversationUpdateV2(participantId, {
+          conversationId,
+          lastMessage: {
+            _id: message._id,
+            content: message.content || '',
+            sender_id: message.sender_id,
+            sender_role: message.sender_role || 'guest',
+            sent_at: message.sent_at,
+            is_read: message.is_read,
+          },
+          lastMessageAt: message.sent_at,
+          unreadCount,
+        });
+
+        // Emit new message event for immediate UI update
+        if (isOnline) {
+          void this.messagesGateway.emitNewMessage(message, participantId);
+        }
+
+        // Emit conversation list update
+        try {
+          const userRole =
+            participantId === conversation.guest_id.toString()
+              ? 'guest'
+              : 'staff';
+          const userConversations = await this.getConversationsUI(
+            { _id: participantId, role: userRole } as JwtPayload,
+            userRole,
+          );
+
+          if (userRole === 'guest') {
+            this.emitConversationListUpdateToGuest(
+              userConversations,
+              participantId,
+              'guest',
+            );
+          } else {
+            this.emitConversationListUpdateToAdminBroadcast(
+              userConversations,
+              participantId,
+              'staff',
+            );
+          }
+        } catch (listUpdateError) {
+          console.error(
+            'Failed to emit conversation list update:',
+            listUpdateError,
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Failed to emit realtime updates:', error);
+    }
+  }
+
+  /**
+   * Get messagesGateway for testing purposes
+   */
+  getMessagesGateway() {
+    return this.messagesGateway;
   }
 }

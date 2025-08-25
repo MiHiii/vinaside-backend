@@ -20,6 +20,46 @@ import {
 } from './utils/message.util';
 import { Types } from 'mongoose';
 
+// ============= TYPE DEFINITIONS =============
+
+interface ConversationUpdateData {
+  conversationId: string;
+  lastMessage: {
+    _id: string;
+    content: string;
+    sender_id: string;
+    sender_role: 'guest' | 'staff' | 'admin';
+    sent_at: Date | string;
+    is_read: 'sent' | 'delivered' | 'read';
+  } | null;
+  lastMessageAt: Date | string | null;
+  unreadCount: number;
+}
+
+interface ConversationUpdateV2Data {
+  conversationId: string;
+  lastMessage: {
+    _id: string;
+    content: string;
+    sender_id: string;
+    sender_role: 'guest' | 'staff' | 'admin';
+    sent_at: Date | string;
+    is_read: 'sent' | 'delivered' | 'read';
+  } | null;
+  lastMessageAt: Date | string | null;
+  unreadCount: number;
+}
+
+interface ConversationListUpdateData {
+  conversations: unknown[];
+  updatedBy: string;
+  ui_for: string;
+  timestamp: string;
+  type: string;
+}
+
+// MessageData removed to avoid unused type; using unknown with safe extraction instead
+
 @WebSocketGateway({
   cors: {
     origin: [
@@ -47,14 +87,34 @@ export class MessagesGateway
 
   afterInit(): void {
     this.logger.log('WebSocket Gateway initialized');
+
+    // Check if server is ready after initialization
+    setTimeout(() => {
+      const isReady = this.isServerReady();
+      this.logger.log(`WebSocket Gateway ready status: ${isReady}`);
+
+      if (!isReady) {
+        this.logger.warn('WebSocket Gateway not ready after initialization');
+      }
+    }, 1000);
   }
 
   isServerReady(): boolean {
-    return !!(
+    const isReady = !!(
       this.server &&
       this.server.sockets &&
-      this.server.sockets.adapter
+      this.server.sockets.adapter &&
+      this.server.sockets.adapter.rooms
     );
+
+    console.log(`🔍 [Server Ready Check] Server ready: ${isReady}`, {
+      hasServer: !!this.server,
+      hasSockets: !!this.server?.sockets,
+      hasAdapter: !!this.server?.sockets?.adapter,
+      hasRooms: !!this.server?.sockets?.adapter?.rooms,
+    });
+
+    return isReady;
   }
 
   handleConnection(client: Socket): void {
@@ -98,7 +158,7 @@ export class MessagesGateway
 
   @SubscribeMessage('join_room')
   async handleJoinRoom(
-    @MessageBody() data: { userId: string },
+    @MessageBody() data: { userId: string; role?: string },
     @ConnectedSocket() client: Socket,
   ): Promise<{ success: boolean; message: string }> {
     const { userId } = data;
@@ -110,6 +170,31 @@ export class MessagesGateway
     this.logger.log(`User ${userId} joined room with socket ${client.id}`);
     this.server.emit('user_online', { userId });
     return { success: true, message: 'Joined room successfully' };
+  }
+
+  @SubscribeMessage('admin_join_all_rooms')
+  async handleAdminJoinAllRooms(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ success: boolean; message: string }> {
+    const { userId } = data;
+
+    // Join admin room
+    await client.join(buildUserRoom(userId));
+
+    // Join admin broadcast room for all conversations
+    await client.join('admin_broadcast');
+
+    this.connectedUsers.set(userId, {
+      userId,
+      socketId: client.id,
+    });
+
+    this.logger.log(
+      `Admin ${userId} joined all rooms with socket ${client.id}`,
+    );
+    this.server.emit('admin_online', { userId });
+    return { success: true, message: 'Admin joined all rooms successfully' };
   }
 
   @SubscribeMessage('send_message')
@@ -180,8 +265,8 @@ export class MessagesGateway
     formattedMessage: unknown,
     receiverId: string,
   ): Promise<void> {
-    const maxRetries = 3;
-    const retryDelay = 100; // ms
+    const maxRetries = 5;
+    const retryDelay = 200; // ms
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -192,7 +277,8 @@ export class MessagesGateway
             await new Promise((resolve) => setTimeout(resolve, retryDelay));
             continue;
           } else {
-            throw new Error('WebSocket server not ready after retries');
+            console.warn('WebSocket server not ready, skipping emit');
+            return; // Don't throw error, just skip
           }
         }
 
@@ -224,11 +310,10 @@ export class MessagesGateway
       } catch (error) {
         console.error(`🔍 Attempt ${attempt}/${maxRetries} failed:`, error);
         if (attempt === maxRetries) {
-          this.logger.error(
-            'Error emitting new message after all retries:',
-            error,
+          console.warn(
+            'Failed to emit new message after all retries, skipping',
           );
-          throw error; // Re-throw để service có thể handle
+          return; // Don't throw error, just skip
         }
         await new Promise((resolve) => setTimeout(resolve, retryDelay));
       }
@@ -355,6 +440,158 @@ export class MessagesGateway
     }
   }
 
+  emitMessageRecalledToAdminBroadcast(message: unknown): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting message recall to admin_broadcast room:',
+      {
+        messageId:
+          typeof (message as Record<string, unknown>)?._id === 'string'
+            ? ((message as Record<string, unknown>)._id as string)
+            : ((
+                message as { _id?: { toString?: () => string } }
+              )._id?.toString?.() ?? ''),
+      },
+    );
+
+    this.server.to('admin_broadcast').emit('message_recalled', {
+      message,
+      type: 'message_recalled',
+    });
+  }
+
+  emitConversationListUpdateToAdminBroadcast(
+    data: ConversationListUpdateData,
+  ): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting conversation list update to admin_broadcast room:',
+      {
+        ui_for: data.ui_for,
+        conversationCount: Array.isArray(data.conversations)
+          ? data.conversations.length
+          : 0,
+      },
+    );
+
+    this.server.to('admin_broadcast').emit('conversation_list_update', {
+      ...data,
+      type: 'conversation_list_update',
+    });
+  }
+
+  emitConversationListUpdateToGuest(data: ConversationListUpdateData): void {
+    console.log('🔍 [Guest] Emitting conversation list update to guest:', {
+      ui_for: data.ui_for,
+      conversationCount: Array.isArray(data.conversations)
+        ? data.conversations.length
+        : 0,
+      userId: data.updatedBy,
+    });
+
+    const userRoom = buildUserRoom(data.updatedBy);
+    const isUserOnline = this.isUserOnline(data.updatedBy);
+
+    console.log(`🔍 [Guest] User room: ${userRoom}, Online: ${isUserOnline}`);
+
+    this.server.to(userRoom).emit('conversation_list_update', {
+      ...data,
+      type: 'conversation_list_update',
+    });
+
+    // Also emit to all connected clients for debugging
+    this.server.emit('debug_conversation_update', {
+      targetUser: data.updatedBy,
+      userRoom,
+      isOnline: isUserOnline,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  emitNewMessageToAdminBroadcast(
+    message: unknown,
+    conversationId: string,
+    propertyId: string,
+    guestId: string,
+  ): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting new message to admin_broadcast room:',
+      {
+        messageId:
+          typeof (message as Record<string, unknown>)?._id === 'string'
+            ? ((message as Record<string, unknown>)._id as string)
+            : ((
+                message as { _id?: { toString?: () => string } }
+              )._id?.toString?.() ?? ''),
+        conversationId,
+        propertyId,
+        guestId,
+      },
+    );
+
+    const messageObj =
+      typeof message === 'object' && message !== null
+        ? (message as Record<string, unknown>)
+        : ({} as Record<string, unknown>);
+
+    this.server.to('admin_broadcast').emit('new_message', {
+      ...messageObj,
+      conversationId,
+      propertyId,
+      guestId,
+      type: 'new_message',
+    });
+  }
+
+  emitConversationUpdateToAdminBroadcast(data: ConversationUpdateData): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting conversation update to admin_broadcast room:',
+      {
+        conversationId: data.conversationId,
+      },
+    );
+
+    this.server.to('admin_broadcast').emit('conversation_update', {
+      ...data,
+      type: 'conversation_update',
+    });
+  }
+
+  emitConversationUpdateV2ToAdminBroadcast(
+    data: ConversationUpdateV2Data,
+  ): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting conversation update V2 to admin_broadcast room:',
+      {
+        conversationId: data.conversationId,
+        lastMessageAt: data.lastMessageAt,
+        unreadCount: data.unreadCount,
+      },
+    );
+
+    this.server.to('admin_broadcast').emit('conversation_update_v2', {
+      ...data,
+      type: 'conversation_update_v2',
+    });
+  }
+
+  emitReactionUpdateToAdminBroadcast(message: unknown): void {
+    console.log(
+      '🔍 [Admin Broadcast] Emitting reaction update to admin_broadcast room:',
+      {
+        messageId:
+          typeof (message as Record<string, unknown>)?._id === 'string'
+            ? ((message as Record<string, unknown>)._id as string)
+            : ((
+                message as { _id?: { toString?: () => string } }
+              )._id?.toString?.() ?? ''),
+      },
+    );
+
+    this.server.to('admin_broadcast').emit('reaction_update', {
+      message,
+      type: 'reaction_update',
+    });
+  }
+
   emitPropertyMessage(message: Message, propertyId: string): void {
     try {
       const propertyRoom = `property_${propertyId}`;
@@ -405,5 +642,37 @@ export class MessagesGateway
       }
       this.connectedUsers.delete(userId);
     }
+  }
+
+  // Debug method to check connection status
+  debugConnectionStatus(userId: string): void {
+    const isOnline = this.isUserOnline(userId);
+    const userRoom = buildUserRoom(userId);
+    const connectedUsers = Array.from(this.connectedUsers.keys());
+
+    console.log(`🔍 [Debug] Connection status for user ${userId}:`, {
+      isOnline,
+      userRoom,
+      totalConnectedUsers: this.connectedUsers.size,
+      connectedUsers,
+      serverReady: this.isServerReady(),
+    });
+  }
+
+  // Method to wait for server to be ready
+  async waitForServerReady(maxWaitTime: number = 5000): Promise<boolean> {
+    const startTime = Date.now();
+    const checkInterval = 100; // ms
+
+    while (Date.now() - startTime < maxWaitTime) {
+      if (this.isServerReady()) {
+        console.log('🔍 [Server Ready] WebSocket server is ready');
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+    }
+
+    console.warn('🔍 [Server Ready] WebSocket server not ready after timeout');
+    return false;
   }
 }

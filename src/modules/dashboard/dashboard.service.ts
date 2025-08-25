@@ -538,10 +538,21 @@ export class DashboardService {
       0,
     );
 
-    // Booking statistics
+    // Booking statistics - loại trừ booking pending và payment failed
     const bookingStats: BookingStatusCount[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: '$status',
@@ -760,7 +771,18 @@ export class DashboardService {
 
     // Revenue by month
     const revenueByMonth: RevenueByMonth[] = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyMatch } },
+      {
+        $match: {
+          ...dateFilter,
+          ...propertyMatch,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       {
         $group: {
           _id: {
@@ -821,7 +843,18 @@ export class DashboardService {
     // Top performing properties
     const topPropertiesByRevenue: TopPropertyRevenue[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $lookup: {
             from: 'properties',
@@ -945,7 +978,18 @@ export class DashboardService {
 
     // Top customers
     const topCustomers: CustomerStats[] = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyMatch } },
+      {
+        $match: {
+          ...dateFilter,
+          ...propertyMatch,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       {
         $lookup: {
           from: 'users',
@@ -982,7 +1026,18 @@ export class DashboardService {
     // Customer engagement metrics
     const engagementStats: EngagementAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: null,
@@ -1061,7 +1116,18 @@ export class DashboardService {
     // Bookings by day
     const bookingsByDay: BookingDayAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: {
@@ -1091,7 +1157,18 @@ export class DashboardService {
     // Bookings by week
     const bookingsByWeek: BookingWeekAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: {
@@ -1118,7 +1195,18 @@ export class DashboardService {
     // Bookings by month
     const bookingsByMonth: BookingMonthAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: {
@@ -1421,7 +1509,18 @@ export class DashboardService {
     // Booking patterns
     const bookingPatterns: BookingPatternAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: null,
@@ -1494,7 +1593,18 @@ export class DashboardService {
     // Service performance - calculate from booking data instead
     const servicePerformance: ServicePerformanceAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: { ...dateFilter, ...propertyMatch } },
+        {
+          $match: {
+            ...dateFilter,
+            ...propertyMatch,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         {
           $group: {
             _id: null,
@@ -1512,7 +1622,18 @@ export class DashboardService {
 
     // Top services - calculate from booking data instead
     const topServices: ServiceUsage[] = await this.bookingModel.aggregate([
-      { $match: { ...dateFilter, ...propertyMatch } },
+      {
+        $match: {
+          ...dateFilter,
+          ...propertyMatch,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       { $unwind: '$selected_services' },
       {
         $group: {
@@ -1621,7 +1742,17 @@ export class DashboardService {
       : {};
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       {
         $group: {
           _id: null,
@@ -1718,7 +1849,17 @@ export class DashboardService {
       : {};
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       { $group: { _id: null, total: { $sum: '$services_total_amount' } } },
     ]);
     return result[0]?.total || 0;
@@ -1751,7 +1892,17 @@ export class DashboardService {
 
     const result: ReturningCustomersAggregation[] =
       await this.bookingModel.aggregate([
-        { $match: matchStage },
+        {
+          $match: {
+            ...matchStage,
+            // Loại trừ booking có trạng thái không xác định
+            $nor: [
+              { status: 'pending' },
+              { payment_status: 'failed' },
+              { payment_status: 'unpaid' },
+            ],
+          },
+        },
         { $group: { _id: '$customer', bookingCount: { $sum: 1 } } },
         { $match: { bookingCount: { $gt: 1 } } },
         { $count: 'returningCustomers' },
@@ -1775,7 +1926,17 @@ export class DashboardService {
       : {};
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       { $group: { _id: null, total: { $sum: '$service_fee' } } },
     ]);
     return result[0]?.total || 0;
@@ -1797,7 +1958,17 @@ export class DashboardService {
       : {};
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       { $group: { _id: null, total: { $sum: '$tax_amount' } } },
     ]);
     return result[0]?.total || 0;
@@ -1819,7 +1990,17 @@ export class DashboardService {
       : { status: 'cancelled' };
 
     const result: TotalAggregation[] = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       { $group: { _id: null, total: { $sum: '$refund_amount' } } },
     ]);
     return result[0]?.total || 0;
@@ -2005,7 +2186,17 @@ export class DashboardService {
       : dateFilter;
 
     const result = await this.bookingModel.aggregate([
-      { $match: matchStage },
+      {
+        $match: {
+          ...matchStage,
+          // Loại trừ booking có trạng thái không xác định
+          $nor: [
+            { status: 'pending' },
+            { payment_status: 'failed' },
+            { payment_status: 'unpaid' },
+          ],
+        },
+      },
       {
         $group: {
           _id: {

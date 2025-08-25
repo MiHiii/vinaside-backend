@@ -1832,8 +1832,11 @@ export class BookingService {
   ): any {
     const filter: any = {
       isDeleted: false,
-      // Loại trừ booking pending và unpaid
-      $nor: [{ status: 'pending', payment_status: 'unpaid' }],
+      $nor: [
+        { status: 'pending' },
+        { payment_status: 'failed' },
+        { payment_status: 'unpaid' },
+      ],
     };
 
     if (startDate || endDate) {
