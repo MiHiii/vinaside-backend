@@ -451,7 +451,7 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting message recall to admin_broadcast room:',
       {
-        messageId: (message as any)._id as string,
+        messageId: (message as any)._id as any as string,
       },
     );
 
@@ -467,8 +467,9 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation list update to admin_broadcast room:',
       {
-        ui_for: (data as any).ui_for as string,
-        conversationCount: ((data as any).conversations?.length as number) || 0,
+        ui_for: (data as any).ui_for as any as string,
+        conversationCount:
+          (((data as any).conversations as any)?.length as any) || 0,
       },
     );
 
@@ -480,13 +481,16 @@ export class MessagesGateway
 
   emitConversationListUpdateToGuest(data: ConversationListUpdateData): void {
     console.log('🔍 [Guest] Emitting conversation list update to guest:', {
-      ui_for: (data as any).ui_for as string,
-      conversationCount: ((data as any).conversations?.length as number) || 0,
-      userId: (data as any).updatedBy as string,
+      ui_for: (data as any).ui_for as any as string,
+      conversationCount:
+        (((data as any).conversations as any)?.length as any) || 0,
+      userId: (data as any).updatedBy as any as string,
     });
 
-    const userRoom = buildUserRoom((data as any).updatedBy as string);
-    const isUserOnline = this.isUserOnline((data as any).updatedBy as string);
+    const userRoom = buildUserRoom((data as any).updatedBy as any as string);
+    const isUserOnline = this.isUserOnline(
+      (data as any).updatedBy as any as string,
+    );
 
     console.log(`🔍 [Guest] User room: ${userRoom}, Online: ${isUserOnline}`);
 
@@ -497,7 +501,7 @@ export class MessagesGateway
 
     // Also emit to all connected clients for debugging
     this.server.emit('debug_conversation_update', {
-      targetUser: (data as any).updatedBy as string,
+      targetUser: (data as any).updatedBy as any as string,
       userRoom,
       isOnline: isUserOnline,
       timestamp: new Date().toISOString(),
@@ -513,7 +517,7 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting new message to admin_broadcast room:',
       {
-        messageId: (message as any)._id as string,
+        messageId: (message as any)._id as any as string,
         conversationId,
         propertyId,
         guestId,
@@ -533,8 +537,8 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation update to admin_broadcast room:',
       {
-        conversationId: (data as any).conversationId as string,
-        messageCount: (data as any).messageCount as number,
+        conversationId: (data as any).conversationId as any as string,
+        messageCount: (data as any).messageCount as any as number,
       },
     );
 
@@ -550,9 +554,12 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting conversation update V2 to admin_broadcast room:',
       {
-        conversationId: (data as any).conversationId as string,
-        lastMessageAt: (data as any).lastMessageAt as Date | string | null,
-        unreadCount: (data as any).unreadCount as number,
+        conversationId: (data as any).conversationId as any as string,
+        lastMessageAt: (data as any).lastMessageAt as any as
+          | Date
+          | string
+          | null,
+        unreadCount: (data as any).unreadCount as any as number,
       },
     );
 
@@ -566,7 +573,7 @@ export class MessagesGateway
     console.log(
       '🔍 [Admin Broadcast] Emitting reaction update to admin_broadcast room:',
       {
-        messageId: (message as any)._id as string,
+        messageId: (message as any)._id as any as string,
       },
     );
 

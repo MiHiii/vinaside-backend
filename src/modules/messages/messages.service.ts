@@ -318,13 +318,13 @@ export class MessagesService {
         },
       });
 
-      // Emit to all participants
+      // Emit to all participants (non-blocking per user)
       for (const uid of participantIds) {
         console.log(`🔍 Emitting to participant: ${uid}`);
         const isUserOnline = this.messagesGateway.isUserOnline(uid);
         console.log(`🔍 Participant ${uid} online status: ${isUserOnline}`);
         try {
-          await this.messagesGateway.emitNewMessage(formatted, uid);
+          void this.messagesGateway.emitNewMessage(formatted, uid);
           console.log(`🔍 Successfully emitted to participant: ${uid}`);
         } catch (emitError) {
           console.error(`🔍 Failed to emit to participant ${uid}:`, emitError);
@@ -449,7 +449,10 @@ export class MessagesService {
 
         // Also emit new message event for immediate UI update
         try {
-          this.messagesGateway.emitNewMessage(formatted, guestId.toString());
+          void this.messagesGateway.emitNewMessage(
+            formatted,
+            guestId.toString(),
+          );
           console.log(
             `🔍 [Immediate] Emitted new message to guest ${guestId.toString()}`,
           );
@@ -3107,7 +3110,10 @@ export class MessagesService {
 
         // Emit new message event for immediate UI update
         if (isOnline) {
-          this.messagesGateway.emitNewMessage(message as any, participantId);
+          void this.messagesGateway.emitNewMessage(
+            message as any,
+            participantId,
+          );
         }
 
         // Emit conversation list update
