@@ -18,7 +18,6 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { UpdateCancellationDetailsDto } from './dto/update-cancellation-details.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
-import { BookingResponseDto } from './dto/booking-response.dto';
 import {
   CreatePaymentDto,
   PaymentResponseDto,
@@ -735,13 +734,27 @@ export class BookingController {
 
   @Post('staff/create')
   @RequirePermission('booking.create')
-  @ApiOperation({ summary: 'Tạo booking cho nhân viên' })
-  @ApiResponse({ status: 201, description: 'Booking được tạo thành công' })
+  @ApiOperation({
+    summary: 'Tạo booking cho nhân viên (có thể tích hợp VNPay URL)',
+    description:
+      'Tạo booking và tùy chọn tạo URL thanh toán VNPay ngay lập tức',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Booking được tạo thành công (có thể kèm payment URL)',
+    // type: StaffBookingResponseDto,
+  })
   @ResponseMessage('Tạo booking thành công')
   async createStaffBooking(
     @Body() createBookingDto: StaffCreateBookingDto,
     @Request() req: RequestWithUser,
-  ): Promise<BookingResponseDto> {
+  ): Promise<any> {
+    // StaffBookingResponseDto
+    console.log('=== CONTROLLER PAYMENT TYPE CHECK ===');
+    console.log('payment_type:', createBookingDto.payment_type);
+    console.log('payment_status:', createBookingDto.payment_status);
+    console.log('create_payment_url:', createBookingDto.create_payment_url);
+
     return await this.bookingService.createStaffBooking(
       createBookingDto,
       req.user,

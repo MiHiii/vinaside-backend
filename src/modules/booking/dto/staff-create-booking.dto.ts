@@ -11,8 +11,11 @@ import {
   IsNumber,
   IsEmail,
   IsBoolean,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentMethod } from '../../transactions/schemas/transaction.schema';
 
 export class StaffBookingServiceDto {
   @IsMongoId()
@@ -132,4 +135,73 @@ export class StaffCreateBookingDto {
   @IsBoolean()
   @IsOptional()
   skip_availability_check?: boolean = false;
+
+  // =================== PAYMENT INTEGRATION FIELDS ===================
+
+  @ApiPropertyOptional({
+    description: 'Có tạo URL thanh toán VNPay ngay sau khi tạo booking không',
+    example: true,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  create_payment_url?: boolean = false;
+
+  @ApiPropertyOptional({
+    description:
+      'Phương thức thanh toán (chỉ cần khi create_payment_url = true)',
+    enum: PaymentMethod,
+    example: PaymentMethod.VNPAY,
+  })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  payment_method_choice?: PaymentMethod;
+
+  @ApiPropertyOptional({
+    description: 'Loại thanh toán (chỉ cần khi create_payment_url = true)',
+    enum: ['full', 'deposit', 'remaining'],
+    example: 'full',
+    default: 'full',
+  })
+  @IsOptional()
+  @IsEnum(['full', 'deposit', 'remaining'])
+  payment_type?: 'full' | 'deposit' | 'remaining' = 'full';
+
+  @ApiPropertyOptional({
+    description: 'Mô tả thanh toán (chỉ cần khi create_payment_url = true)',
+    example: 'Thanh toán booking khách sạn',
+  })
+  @IsOptional()
+  @IsString()
+  payment_description?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'URL trở về khi thanh toán thành công (chỉ cần khi create_payment_url = true)',
+    example: 'http://localhost:5173/admin/bookings/payment-success',
+  })
+  @IsOptional()
+  @IsString()
+  payment_return_url?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'URL nhận thông báo IPN (chỉ cần khi create_payment_url = true)',
+    example: 'https://api.example.com/bookings/payment/notify',
+  })
+  @IsOptional()
+  @IsString()
+  payment_notify_url?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Số tiền thanh toán cụ thể (chỉ cần khi create_payment_url = true, nếu không muốn dùng tự động)',
+    example: 2500000,
+    minimum: 0,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  payment_amount?: number;
 }
