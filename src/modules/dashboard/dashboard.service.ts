@@ -799,7 +799,7 @@ export class DashboardService {
             $sum: {
               $cond: [
                 { $in: ['$status', ['confirmed', 'completed']] },
-                '$voucher_discount_amount',
+                '$discount_amount',
                 0,
               ],
             },
@@ -1036,7 +1036,7 @@ export class DashboardService {
             averageNightsPerBooking: { $avg: '$nights' },
             averageGuestsPerBooking: { $avg: '$guests' },
             customersUsingVouchers: {
-              $sum: { $cond: [{ $gt: ['$voucher_discount_amount', 0] }, 1, 0] },
+              $sum: { $cond: [{ $gt: ['$discount_amount', 0] }, 1, 0] },
             },
             customersUsingServices: {
               $sum: { $cond: [{ $gt: ['$services_total_amount', 0] }, 1, 0] },
