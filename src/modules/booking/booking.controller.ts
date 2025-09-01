@@ -16,7 +16,10 @@ import { VNPayService } from './services/vnpay.service';
 import { PaymentFactory } from './services/payment.factory';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { UpdateCancellationDetailsDto } from './dto/update-cancellation-details.dto';
+import {
+  UpdateCancellationDetailsDto,
+  RefundBookingDto,
+} from './dto/update-cancellation-details.dto';
 import { QueryBookingDto } from './dto/query-booking.dto';
 import {
   CreatePaymentDto,
@@ -390,6 +393,31 @@ export class BookingController {
       id,
       req.user,
       cancellationDetails,
+    );
+  }
+
+  @Patch('admin/:propertyId/:id/refund')
+  @Roles('staff', 'admin')
+  @RequirePropertyStaff({
+    propertyIdSource: 'param',
+    propertyIdParam: 'propertyId',
+  })
+  @RequirePermission('booking.refund')
+  @ApiOperation({ summary: 'Admin/Staff hoàn tiền booking với ảnh minh chứng' })
+  @ApiParam({ name: 'propertyId', description: 'ID của property' })
+  @ApiParam({ name: 'id', description: 'ID của booking' })
+  @ApiResponse({ status: 200, description: 'Hoàn tiền booking thành công' })
+  @ResponseMessage('Hoàn tiền booking thành công')
+  async refundBookingAsAdmin(
+    @Param('propertyId') propertyId: string,
+    @Param('id') id: string,
+    @Body() refundDetails: RefundBookingDto,
+    @Request() req: RequestWithUser,
+  ) {
+    return this.bookingService.refundBookingAsAdmin(
+      id,
+      req.user,
+      refundDetails,
     );
   }
 

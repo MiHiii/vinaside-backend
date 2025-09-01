@@ -120,3 +120,4 @@ Content-Type: application/json
 ### 5. Test callback VNPay return (giả lập)
 GET {{baseUrl}}/bookings/vnpay/return?vnp_TmnCode=TEST&vnp_Amount=123000000&vnp_BankCode=NCB&vnp_OrderInfo=Test&vnp_TxnRef=68a9e4cf13cd0fc56b50fd29_1735046661&vnp_ResponseCode=00&vnp_TransactionNo=123456789&vnp_BankTranNo=VNP123456&vnp_CardType=ATM&vnp_PayDate=20241220144056&vnp_SecureHash=test_hash
 
+

@@ -305,6 +305,7 @@ export class Booking extends Document {
       cancellationReason: String,
       refundMethod: String,
       refundNote: String,
+      refundImageUrls: [String], // Thêm field lưu URLs ảnh hoàn trả
     },
   })
   cancellationDetails?: {
@@ -314,6 +315,7 @@ export class Booking extends Document {
     cancellationReason?: string;
     refundMethod?: string;
     refundNote?: string;
+    refundImageUrls?: string[]; // Thêm field lưu URLs ảnh hoàn trả
   };
 
   @Prop({ type: Date })
