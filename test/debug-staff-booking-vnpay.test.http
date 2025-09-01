@@ -80,3 +80,4 @@ Authorization: Bearer {{authToken}}
   "payment_type": "full",
   "payment_return_url": "http://localhost:5173/admin/bookings?payment=success"
 }
+

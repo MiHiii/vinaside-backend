@@ -1499,13 +1499,13 @@ export class BookingService {
     // 2. Cập nhật trạng thái
     booking.status = BookingStatus.CANCELLED;
     if ((booking.deposit_paid_amount || 0) > 0) {
-      booking.payment_status = PaymentStatus.REFUNDING;
+      booking.payment_status = PaymentStatus.REFUNDING; // Chuyển sang trạng thái đang hoàn tiền
     } else {
       booking.payment_status = PaymentStatus.UNPAID;
     }
     booking.cancelled_at = new Date();
 
-    // 3. Lưu thông tin hủy chi tiết nếu có
+    // 3. Lưu thông tin hủy chi tiết nếu có (KHÔNG bao gồm ảnh minh chứng)
     if (cancellationDetails) {
       booking.cancellationDetails = {
         accountName: cancellationDetails.accountName,
@@ -1514,6 +1514,7 @@ export class BookingService {
         cancellationReason: cancellationDetails.cancellationReason,
         refundMethod: cancellationDetails.refundMethod,
         refundNote: cancellationDetails.refundNote,
+        refundImageUrls: [], // Không có ảnh minh chứng khi hủy
       };
       booking.cancellationDetailsUpdatedAt = new Date();
       booking.cancellationDetailsUpdatedBy = new Types.ObjectId(adminUser._id);
@@ -1558,9 +1559,85 @@ export class BookingService {
 
     return {
       success: true,
-      message: `Admin hủy booking thành công. Số tiền hoàn lại: ${refund_amount}`,
+      message: `Admin hủy booking thành công. Booking đã chuyển sang trạng thái đang hoàn tiền. Số tiền cần hoàn: ${refund_amount}`,
       refund_amount,
       cancellationDetails: booking.cancellationDetails,
+    };
+  }
+
+  async refundBookingAsAdmin(
+    id: string,
+    adminUser: JwtPayload,
+    refundDetails: {
+      refundAmount?: number;
+      accountName?: string;
+      bankName?: string;
+      accountNumber?: string;
+      refundMethod?: string;
+      refundNote?: string;
+      refundImageUrls: string[]; // Bắt buộc phải có ảnh minh chứng
+    },
+  ) {
+    // 1. Xác thực quyền và trạng thái
+    const booking = await this.bookingRepo.findById(id);
+    if (!booking) {
+      throw new NotFoundException('Không tìm thấy booking');
+    }
+    if (booking.status !== BookingStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Chỉ có thể hoàn tiền cho booking đã bị hủy',
+      );
+    }
+    if (booking.payment_status !== PaymentStatus.REFUNDING) {
+      throw new BadRequestException('Booking không ở trạng thái chờ hoàn tiền');
+    }
+    if (refundDetails.refundImageUrls.length === 0) {
+      throw new BadRequestException(
+        'Vui lòng upload ít nhất 1 ảnh minh chứng hoàn tiền',
+      );
+    }
+
+    // 2. Cập nhật trạng thái thành đã hoàn tiền
+    booking.payment_status = PaymentStatus.REFUNDED;
+    booking.refund_amount =
+      refundDetails.refundAmount || booking.refund_amount || 0;
+
+    // 3. Cập nhật thông tin hoàn tiền chi tiết
+    if (refundDetails) {
+      // Giữ lại thông tin hủy booking cũ, chỉ cập nhật thông tin hoàn tiền
+      booking.cancellationDetails = {
+        ...booking.cancellationDetails,
+        accountName:
+          refundDetails.accountName || booking.cancellationDetails?.accountName,
+        bankName:
+          refundDetails.bankName || booking.cancellationDetails?.bankName,
+        accountNumber:
+          refundDetails.accountNumber ||
+          booking.cancellationDetails?.accountNumber,
+        refundMethod:
+          refundDetails.refundMethod ||
+          booking.cancellationDetails?.refundMethod,
+        refundNote:
+          refundDetails.refundNote || booking.cancellationDetails?.refundNote,
+        refundImageUrls: refundDetails.refundImageUrls, // Ảnh minh chứng hoàn tiền
+      };
+      booking.cancellationDetailsUpdatedAt = new Date();
+      booking.cancellationDetailsUpdatedBy = new Types.ObjectId(adminUser._id);
+    }
+
+    await booking.save();
+
+    // 4. Create status change notifications
+    await this.bookingNotificationStatusService.createStatusChangeNotification(
+      booking,
+      BookingStatus.CANCELLED, // Keep status as cancelled, but payment_status is now REFUNDED
+    );
+
+    return {
+      success: true,
+      message: `Hoàn tiền booking thành công. Số tiền đã hoàn: ${booking.refund_amount?.toLocaleString() || 0} VND`,
+      refund_amount: booking.refund_amount,
+      refundDetails: booking.cancellationDetails,
     };
   }
 
