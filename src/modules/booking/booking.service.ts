@@ -3792,29 +3792,35 @@ export class BookingService {
         }
       }
 
-      // Tính voucher discount
+      // Voucher & giảm giá
       let voucherDiscountAmount = 0;
       let voucherDiscountPercent = 0;
       let voucherId: any = null;
       let voucherCode: any = null;
 
+      // Tính subtotal trước để validate voucher trên đúng cơ sở tính giảm giá
+      const subtotalAmount =
+        totalPrice + servicesTotalAmount + weekendSurcharge;
+
+      // Validate voucher theo hệ thống hiện có để tính đúng số tiền giảm
       if (createBookingDto.voucherCode) {
-        const voucher = await this.voucherService.findByCode(
+        const validation = await this.voucherService.validateVoucher(
           createBookingDto.voucherCode,
+          subtotalAmount,
+          String(createBookingDto.listingId),
+          String(createBookingDto.propertyId),
+          String(user?._id || ''),
         );
-        if (voucher) {
-          voucherId = voucher._id;
-          voucherCode = voucher.code;
-          voucherDiscountPercent = voucher.discount_percent || 0;
-          voucherDiscountAmount = 0; // Sẽ tính dựa trên discount_percent
+        if (validation?.valid && validation.voucher) {
+          voucherId = validation.voucher._id;
+          voucherCode = validation.voucher.code;
+          voucherDiscountPercent = validation.voucher.discount_percent || 0;
+          voucherDiscountAmount = Math.round(validation.discount_amount || 0);
         }
       }
 
-      // Tính subtotal và discount
-      const subtotalAmount =
-        totalPrice + servicesTotalAmount + weekendSurcharge;
-      const discountAmount =
-        voucherDiscountAmount + (subtotalAmount * voucherDiscountPercent) / 100;
+      // Tổng giảm giá lấy theo validate (tránh tính hai lần)
+      const discountAmount = voucherDiscountAmount;
       const amountAfterDiscount = subtotalAmount - discountAmount;
 
       // Tính service fee và tax
