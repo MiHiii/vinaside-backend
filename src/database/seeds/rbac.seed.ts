@@ -470,6 +470,7 @@ export class RbacSeedService {
             'analytics.manage',
             'upload.manage',
             'dashboard.view',
+            'upload.manage',
           ],
         },
         {
@@ -488,6 +489,7 @@ export class RbacSeedService {
             'analytics.manage',
             'notification.create',
             'dashboard.view',
+            'upload.manage',
           ],
         },
         {

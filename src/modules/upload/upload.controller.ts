@@ -72,7 +72,8 @@ export class UploadController {
   }
 
   @Post('multiple')
-  @RequirePermission('upload.create')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('upload.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Tải lên nhiều ảnh listing (<50 ảnh)' })
   @ApiConsumes('multipart/form-data')
