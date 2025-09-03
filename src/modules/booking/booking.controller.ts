@@ -402,7 +402,7 @@ export class BookingController {
     propertyIdSource: 'param',
     propertyIdParam: 'propertyId',
   })
-  @RequirePermission('booking.refund')
+  @RequirePermission('booking.cancel')
   @ApiOperation({ summary: 'Admin/Staff hoàn tiền booking với ảnh minh chứng' })
   @ApiParam({ name: 'propertyId', description: 'ID của property' })
   @ApiParam({ name: 'id', description: 'ID của booking' })
